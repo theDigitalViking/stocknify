@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+
+# Turbo
+.turbo/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Prisma generated
+apps/api/src/db/migrations/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.vitest/
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Docker
+*.dockerignore
+
+# Misc
+.cache/

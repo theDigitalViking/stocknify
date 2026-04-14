@@ -1,0 +1,79 @@
+version: '3.9'
+
+# Local development stack.
+# The web app (Next.js) runs outside Docker via `pnpm dev` for faster HMR.
+# This compose file starts only the infrastructure services + the API.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stocknify-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stocknify
+      POSTGRES_USER: stocknify
+      POSTGRES_PASSWORD: stocknify_dev_password
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U stocknify -d stocknify']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: stocknify-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: builder
+    container_name: stocknify-api
+    restart: unless-stopped
+    # Hot reload in dev mode using tsx watch
+    command: sh -c "cd apps/api && pnpm tsx watch src/index.ts"
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://stocknify:stocknify_dev_password@postgres:5432/stocknify
+      DIRECT_URL: postgresql://stocknify:stocknify_dev_password@postgres:5432/stocknify
+      REDIS_URL: redis://redis:6379
+      # Fill these in from .env for local dev
+      SUPABASE_URL: ${SUPABASE_URL:-http://localhost:54321}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-placeholder}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-placeholder-jwt-secret-32chars-long}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_placeholder}
+      FROM_EMAIL: ${FROM_EMAIL:-alerts@stocknify.io}
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+      - ./packages/shared/src:/app/packages/shared/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:

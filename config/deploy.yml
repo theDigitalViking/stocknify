@@ -1,0 +1,67 @@
+# Kamal deployment configuration for stocknify-api
+# Docs: https://kamal-deploy.org
+
+service: stocknify-api
+image: ghcr.io/[GITHUB_USERNAME]/stocknify-api
+
+# Target server — replace [HETZNER_SERVER_IP] with the actual IP after provisioning
+servers:
+  web:
+    hosts:
+      - [HETZNER_SERVER_IP]
+    labels:
+      traefik.http.routers.stocknify-api.rule: Host(`api.stocknify.io`)
+      traefik.http.routers.stocknify-api.tls: 'true'
+      traefik.http.routers.stocknify-api.tls.certresolver: letsencrypt
+
+registry:
+  server: ghcr.io
+  username:
+    - KAMAL_REGISTRY_USERNAME
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# Environment variables loaded from .env on the server
+env:
+  clear:
+    PORT: '3001'
+    NODE_ENV: production
+  secret:
+    - DATABASE_URL
+    - DIRECT_URL
+    - SUPABASE_URL
+    - SUPABASE_SERVICE_ROLE_KEY
+    - SUPABASE_JWT_SECRET
+    - REDIS_URL
+    - CREDENTIALS_ENCRYPTION_KEY
+    - STRIPE_SECRET_KEY
+    - STRIPE_WEBHOOK_SECRET
+    - RESEND_API_KEY
+    - FROM_EMAIL
+    - SENTRY_DSN
+
+# Port mapping
+proxy:
+  ssl: true
+  host: api.stocknify.io
+  app_port: 3001
+
+# Health check — Kamal uses this to verify the container is ready before switching traffic
+healthcheck:
+  path: /v1/health
+  port: 3001
+  max_attempts: 10
+  interval: 3s
+
+# Zero-downtime deployment
+options:
+  stop-timeout: 10
+
+# Run DB migrations before each deploy
+hooks:
+  pre-deploy: |
+    kamal app exec 'node apps/api/dist/index.js' --no-reuse --cmd 'node -e "
+      const { PrismaClient } = require(\"@prisma/client\");
+      const p = new PrismaClient();
+      p.\$executeRaw\`SELECT 1\`.then(() => { console.log(\"DB ok\"); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });
+    "'
