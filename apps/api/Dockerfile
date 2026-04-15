@@ -3,7 +3,8 @@
 # ============================================================
 FROM node:20-alpine AS builder
 
-# Install pnpm
+# Install pnpm + OpenSSL for Prisma
+RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 WORKDIR /app
@@ -21,10 +22,13 @@ COPY packages/shared/ ./packages/shared/
 COPY apps/api/ ./apps/api/
 COPY tsconfig.base.json ./
 
+# Build shared package first (produces packages/shared/dist/)
+RUN pnpm --filter @stocknify/shared build
+
 # Generate Prisma client
 RUN pnpm --filter api db:generate
 
-# Build TypeScript
+# Build API TypeScript
 RUN pnpm --filter api build
 
 # ============================================================
@@ -32,6 +36,8 @@ RUN pnpm --filter api build
 # ============================================================
 FROM node:20-alpine AS runner
 
+# Install OpenSSL for Prisma at runtime
+RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 # Security: run as non-root user
@@ -50,10 +56,13 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Copy built artifacts
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/packages/shared/src ./packages/shared/src
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
-# Copy Prisma schema for runtime migrations
+# Copy the generated Prisma client from builder
+COPY --from=builder /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0 \
+     ./node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0
+
+# Copy Prisma schema for runtime
 COPY apps/api/src/db/schema.prisma ./apps/api/src/db/schema.prisma
 
 USER apiuser

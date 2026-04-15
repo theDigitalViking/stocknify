@@ -2,17 +2,22 @@
 # Docs: https://kamal-deploy.org
 
 service: stocknify-api
-image: ghcr.io/theDigitalViking/stocknify-api
+image: thedigitalviking/stocknify-api
 
-# Target server — replace [HETZNER_SERVER_IP] with the actual IP after provisioning
 servers:
   web:
     hosts:
       - 178.104.175.191
     labels:
-      traefik.http.routers.stocknify-api.rule: Host(`api.stocknify.io`)
-      traefik.http.routers.stocknify-api.tls: 'true'
+      traefik.http.routers.stocknify-api.rule: Host(`api.stocknify.app`)
+      traefik.http.routers.stocknify-api.tls: "true"
       traefik.http.routers.stocknify-api.tls.certresolver: letsencrypt
+
+builder:
+  arch: amd64
+  remote: false
+  dockerfile: apps/api/Dockerfile
+  context: .
 
 registry:
   server: ghcr.io
@@ -21,10 +26,9 @@ registry:
   password:
     - KAMAL_REGISTRY_PASSWORD
 
-# Environment variables loaded from .env on the server
 env:
   clear:
-    PORT: '3001'
+    PORT: "3001"
     NODE_ENV: production
   secret:
     - DATABASE_URL
@@ -32,6 +36,7 @@ env:
     - SUPABASE_URL
     - SUPABASE_SERVICE_ROLE_KEY
     - SUPABASE_JWT_SECRET
+    - SUPABASE_WEBHOOK_SECRET
     - REDIS_URL
     - CREDENTIALS_ENCRYPTION_KEY
     - STRIPE_SECRET_KEY
@@ -40,28 +45,11 @@ env:
     - FROM_EMAIL
     - SENTRY_DSN
 
-# Port mapping
 proxy:
   ssl: true
-  host: api.stocknify.io
+  host: api.stocknify.app
   app_port: 3001
-
-# Health check — Kamal uses this to verify the container is ready before switching traffic
-healthcheck:
-  path: /v1/health
-  port: 3001
-  max_attempts: 10
-  interval: 3s
-
-# Zero-downtime deployment
-options:
-  stop-timeout: 10
-
-# Run DB migrations before each deploy
-hooks:
-  pre-deploy: |
-    kamal app exec 'node apps/api/dist/index.js' --no-reuse --cmd 'node -e "
-      const { PrismaClient } = require(\"@prisma/client\");
-      const p = new PrismaClient();
-      p.\$executeRaw\`SELECT 1\`.then(() => { console.log(\"DB ok\"); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });
-    "'
+  healthcheck:
+    path: /v1/health
+    interval: 3
+    timeout: 10

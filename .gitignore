@@ -48,6 +48,9 @@ coverage/
 # Docker
 *.dockerignore
 
+# Kamal secrets (local only — never commit)
+.kamal/secrets
+
 # Prompts (AI coding agent prompts — not for version control)
 prompts/
 
