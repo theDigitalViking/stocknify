@@ -107,16 +107,17 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
         })
       }
 
-      // Supabase invite only happens after DB duplicate check passes
-      const invited = await inviteUserByEmail(email)
+      // Supabase invite only happens after DB duplicate check passes.
+      // Metadata (tenant_id, role) is stored in user_metadata so the auth webhook
+      // knows which tenant to assign when processing the user.created event.
+      const invited = await inviteUserByEmail(email, { tenant_id: request.tenantId, role })
 
-      const user = await request.db.user.create({
-        data: {
-          id: invited.id,
-          tenantId: request.tenantId,
-          email,
-          role,
-        },
+      // Use upsert: the auth webhook (Scenario 2) may create the row concurrently
+      // when Supabase fires user.created immediately after the invite API call.
+      const user = await request.db.user.upsert({
+        where: { id: invited.id },
+        create: { id: invited.id, tenantId: request.tenantId, email, role },
+        update: {},
       })
 
       return reply.code(201).send({ data: user })

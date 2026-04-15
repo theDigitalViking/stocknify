@@ -2,9 +2,13 @@ import { config } from '../config.js'
 
 /**
  * Invite a user by email via the Supabase Auth admin API.
+ * `data` is stored in user_metadata so the auth webhook can read tenant_id and role.
  * Returns the new user's UUID on success; throws on failure.
  */
-export async function inviteUserByEmail(email: string): Promise<{ id: string }> {
+export async function inviteUserByEmail(
+  email: string,
+  metadata?: { tenant_id?: string; role?: string },
+): Promise<{ id: string }> {
   const response = await fetch(`${config.SUPABASE_URL}/auth/v1/invite`, {
     method: 'POST',
     headers: {
@@ -12,7 +16,7 @@ export async function inviteUserByEmail(email: string): Promise<{ id: string }> 
       Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`,
       apikey: config.SUPABASE_SERVICE_ROLE_KEY,
     },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, data: metadata }),
   })
 
   if (!response.ok) {

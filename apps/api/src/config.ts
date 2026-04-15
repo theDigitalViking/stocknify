@@ -15,6 +15,7 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   SUPABASE_JWT_SECRET: z.string().min(1),
+  SUPABASE_WEBHOOK_SECRET: z.string().min(1),
 
   // Redis / BullMQ
   REDIS_URL: z.string().min(1),
