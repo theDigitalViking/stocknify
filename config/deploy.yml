@@ -2,13 +2,13 @@
 # Docs: https://kamal-deploy.org
 
 service: stocknify-api
-image: ghcr.io/[GITHUB_USERNAME]/stocknify-api
+image: ghcr.io/theDigitalViking/stocknify-api
 
 # Target server — replace [HETZNER_SERVER_IP] with the actual IP after provisioning
 servers:
   web:
     hosts:
-      - [HETZNER_SERVER_IP]
+      - 178.104.175.191
     labels:
       traefik.http.routers.stocknify-api.rule: Host(`api.stocknify.io`)
       traefik.http.routers.stocknify-api.tls: 'true'
