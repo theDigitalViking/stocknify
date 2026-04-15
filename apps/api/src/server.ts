@@ -11,6 +11,7 @@ import { notificationsRoutes } from './routes/notifications/index.js'
 import { productsRoutes } from './routes/products/index.js'
 import { rulesRoutes } from './routes/rules/index.js'
 import { stockRoutes } from './routes/stock/index.js'
+import { stockTypesRoutes } from './routes/stock-types/index.js'
 import { tenantRoutes } from './routes/tenant/index.js'
 import { webhookRoutes } from './routes/webhooks/index.js'
 
@@ -37,6 +38,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       await v1.register(productsRoutes)
       await v1.register(locationsRoutes)
       await v1.register(stockRoutes)
+      await v1.register(stockTypesRoutes)
       await v1.register(integrationsRoutes)
       await v1.register(rulesRoutes)
       await v1.register(notificationsRoutes)
