@@ -128,7 +128,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   // GET /products/:id — detail with non-deleted variants
   app.get('/products/:id', async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid product ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const product = await request.db.product.findFirst({
         where: { id, tenantId: request.tenantId, deletedAt: null },
@@ -152,7 +156,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   // PATCH /products/:id — update master data
   app.patch('/products/:id', async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid product ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const parse = updateProductSchema.safeParse(request.body)
       if (!parse.success) {
@@ -180,7 +188,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   // DELETE /products/:id — soft-delete product and all its variants in one transaction
   app.delete('/products/:id', async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid product ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const existing = await request.db.product.findFirst({
         where: { id, tenantId: request.tenantId, deletedAt: null },
@@ -210,7 +222,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   // POST /products/:id/variants — add a variant to an existing product
   app.post('/products/:id/variants', async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid product ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const parse = createProductVariantSchema.omit({ productId: true }).safeParse(request.body)
       if (!parse.success) {
@@ -248,7 +264,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   // PATCH /products/:id/variants/:vid — update variant fields
   app.patch('/products/:id/variants/:vid', async (request, reply) => {
     try {
-      const { id, vid } = request.params as { id: string; vid: string }
+      const paramsResult = z.object({ id: z.string().uuid(), vid: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid ID format' } })
+      }
+      const { id, vid } = paramsResult.data
 
       const parse = updateProductVariantSchema.safeParse(request.body)
       if (!parse.success) {
@@ -279,7 +299,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   // DELETE /products/:id/variants/:vid — soft-delete; reject if last active variant
   app.delete('/products/:id/variants/:vid', async (request, reply) => {
     try {
-      const { id, vid } = request.params as { id: string; vid: string }
+      const paramsResult = z.object({ id: z.string().uuid(), vid: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid ID format' } })
+      }
+      const { id, vid } = paramsResult.data
 
       const variant = await request.db.productVariant.findFirst({
         where: { id: vid, productId: id, tenantId: request.tenantId, deletedAt: null },

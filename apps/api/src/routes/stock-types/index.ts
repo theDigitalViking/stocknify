@@ -10,6 +10,7 @@ function omitUndefined<T extends object>(obj: T): T {
 import { createStockTypeDefinitionSchema } from '@stocknify/shared'
 
 import { authMiddleware } from '../../middleware/auth.js'
+import { requireRole } from '../../middleware/require-role.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
 
 // Only label, color, and sort_order can be updated on a custom stock type
@@ -45,8 +46,8 @@ export async function stockTypesRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // POST /stock-types — create tenant-custom type (is_system must not be true)
-  app.post('/stock-types', async (request, reply) => {
+  // POST /stock-types — admin only: create tenant-custom type (is_system must not be true)
+  app.post('/stock-types', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
       const parse = createStockTypeDefinitionSchema.safeParse(request.body)
       if (!parse.success) {
@@ -84,10 +85,15 @@ export async function stockTypesRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // PATCH /stock-types/:id — update label, color, sort_order; reject if is_system
-  app.patch('/stock-types/:id', async (request, reply) => {
+  // PATCH /stock-types/:id — admin only: update label, color, sort_order; reject if is_system
+  app.patch('/stock-types/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsSchema = z.object({ id: z.string().uuid() })
+      const paramsResult = paramsSchema.safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid stock type ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const parse = updateStockTypeSchema.safeParse(request.body)
       if (!parse.success) {
@@ -120,11 +126,16 @@ export async function stockTypesRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // DELETE /stock-types/:id — reject if is_system
+  // DELETE /stock-types/:id — admin only: reject if is_system
   // NOTE: StockTypeDefinition has no deletedAt — hard delete required.
-  app.delete('/stock-types/:id', async (request, reply) => {
+  app.delete('/stock-types/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsSchema = z.object({ id: z.string().uuid() })
+      const paramsResult = paramsSchema.safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid stock type ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const existing = await request.db.stockTypeDefinition.findFirst({
         where: {

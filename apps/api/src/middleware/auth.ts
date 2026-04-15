@@ -8,9 +8,11 @@ interface SupabaseJwtPayload {
   // Custom claim injected by Supabase Edge Function / JWT hook
   user_metadata?: {
     tenant_id?: string
+    role?: string
   }
   app_metadata?: {
     tenant_id?: string
+    role?: string
   }
   aud: string
   exp: number
@@ -22,6 +24,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     userId: string
     tenantId: string
+    userRole: string
   }
 }
 
@@ -54,8 +57,12 @@ export async function authMiddleware(
       return
     }
 
+    // role is stored in app_metadata by our Supabase webhook handler; fallback to 'viewer'
+    const userRole = payload.app_metadata?.role ?? payload.user_metadata?.role ?? 'viewer'
+
     request.userId = userId
     request.tenantId = tenantId
+    request.userRole = userRole
   } catch {
     await reply.code(401).send({
       error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },

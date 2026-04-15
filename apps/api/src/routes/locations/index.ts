@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 
 // Strip undefined values so Prisma update() is happy under exactOptionalPropertyTypes
 function omitUndefined<T extends object>(obj: T): T {
@@ -15,6 +16,7 @@ import {
 } from '@stocknify/shared'
 
 import { authMiddleware } from '../../middleware/auth.js'
+import { requireRole } from '../../middleware/require-role.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
 
 export async function locationsRoutes(app: FastifyInstance): Promise<void> {
@@ -82,7 +84,11 @@ export async function locationsRoutes(app: FastifyInstance): Promise<void> {
   // PATCH /locations/:id — update location
   app.patch('/locations/:id', async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid location ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const parse = updateLocationSchema.safeParse(request.body)
       if (!parse.success) {
@@ -107,10 +113,14 @@ export async function locationsRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // DELETE /locations/:id — soft-delete
-  app.delete('/locations/:id', async (request, reply) => {
+  // DELETE /locations/:id — admin only: soft-delete
+  app.delete('/locations/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid location ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const existing = await request.db.location.findFirst({
         where: { id, tenantId: request.tenantId, deletedAt: null },
@@ -133,7 +143,11 @@ export async function locationsRoutes(app: FastifyInstance): Promise<void> {
   // POST /locations/:id/storage-locations — create storage location (bin/shelf) within a location
   app.post('/locations/:id/storage-locations', async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid location ID format' } })
+      }
+      const { id } = paramsResult.data
 
       const parse = createStorageLocationSchema.omit({ locationId: true }).safeParse(request.body)
       if (!parse.success) {
@@ -167,7 +181,11 @@ export async function locationsRoutes(app: FastifyInstance): Promise<void> {
   // PATCH /locations/:id/storage-locations/:sid — update storage location
   app.patch('/locations/:id/storage-locations/:sid', async (request, reply) => {
     try {
-      const { id, sid } = request.params as { id: string; sid: string }
+      const paramsResult = z.object({ id: z.string().uuid(), sid: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid ID format' } })
+      }
+      const { id, sid } = paramsResult.data
 
       const parse = updateStorageLocationSchema.safeParse(request.body)
       if (!parse.success) {
@@ -195,7 +213,11 @@ export async function locationsRoutes(app: FastifyInstance): Promise<void> {
   // DELETE /locations/:id/storage-locations/:sid — soft-delete storage location
   app.delete('/locations/:id/storage-locations/:sid', async (request, reply) => {
     try {
-      const { id, sid } = request.params as { id: string; sid: string }
+      const paramsResult = z.object({ id: z.string().uuid(), sid: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid ID format' } })
+      }
+      const { id, sid } = paramsResult.data
 
       const existing = await request.db.storageLocation.findFirst({
         where: { id: sid, locationId: id, tenantId: request.tenantId, deletedAt: null },

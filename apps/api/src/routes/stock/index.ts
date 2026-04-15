@@ -22,6 +22,8 @@ const stockQuerySchema = z.object({
   locationId: uuidSchema.optional(),
   stockType: z.string().min(1).optional(),
   search: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  perPage: z.coerce.number().int().positive().max(100).default(50),
 })
 
 const movementsQuerySchema = paginationSchema.extend({
@@ -43,7 +45,7 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
       if (!query.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: query.error.message } })
       }
-      const { variantId, locationId, stockType, search } = query.data
+      const { variantId, locationId, stockType, search, page, perPage } = query.data
 
       const where: Prisma.StockLevelWhereInput = { tenantId: request.tenantId }
       if (variantId) where.variantId = variantId
@@ -56,6 +58,8 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         ]
       }
 
+      // NOTE: In-memory grouping requires fetching all matching rows. For large datasets,
+      // this should be replaced with a SQL GROUP BY query. For now, cap at 10k rows.
       const levels = await request.db.stockLevel.findMany({
         where,
         include: {
@@ -63,6 +67,7 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
           location: true,
         },
         orderBy: [{ variant: { sku: 'asc' } }, { location: { name: 'asc' } }],
+        take: 10_000,
       })
 
       // Group by (variantId, locationId) and aggregate quantities by stockType
@@ -99,8 +104,10 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
-      const data = Array.from(grouped.values())
-      return reply.send({ data, meta: { total: data.length, page: 1, perPage: data.length } })
+      const allData = Array.from(grouped.values())
+      const skip = (page - 1) * perPage
+      const data = allData.slice(skip, skip + perPage)
+      return reply.send({ data, meta: { total: allData.length, page, perPage } })
     } catch {
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
     }
@@ -145,7 +152,11 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
   // GET /stock/:variantId — all stock levels for one variant
   app.get('/stock/:variantId', async (request, reply) => {
     try {
-      const { variantId } = request.params as { variantId: string }
+      const paramsResult = z.object({ variantId: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid variant ID format' } })
+      }
+      const { variantId } = paramsResult.data
 
       const variant = await request.db.productVariant.findFirst({
         where: { id: variantId, tenantId: request.tenantId, deletedAt: null },
@@ -176,25 +187,60 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
       const { variantId, locationId, storageLocationId, batchId, stockType, quantity, reason } =
         parse.data
 
-      const level = await request.db.$transaction(async (tx) => {
-        // Step 1: load current stock level (or treat as 0 if missing)
-        const existing = await tx.stockLevel.findFirst({
-          where: {
-            tenantId: request.tenantId,
-            variantId,
-            locationId,
-            storageLocationId: storageLocationId ?? null,
-            batchId: batchId ?? null,
-            stockType,
-          },
-        })
+      // Fix 5: verify all referenced entities belong to this tenant before entering transaction
+      const variant = await request.db.productVariant.findFirst({
+        where: { id: variantId, tenantId: request.tenantId, deletedAt: null },
+      })
+      if (!variant) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Variant not found' } })
+      }
 
-        const quantityBefore = existing ? Number(existing.quantity) : 0
+      const location = await request.db.location.findFirst({
+        where: { id: locationId, tenantId: request.tenantId, deletedAt: null },
+      })
+      if (!location) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Location not found' } })
+      }
+
+      if (storageLocationId) {
+        const sl = await request.db.storageLocation.findFirst({
+          where: { id: storageLocationId, locationId, tenantId: request.tenantId, deletedAt: null },
+        })
+        if (!sl) {
+          return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Storage location not found' } })
+        }
+      }
+
+      if (batchId) {
+        const batch = await request.db.batch.findFirst({
+          where: { id: batchId, tenantId: request.tenantId },
+        })
+        if (!batch) {
+          return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Batch not found' } })
+        }
+      }
+
+      const level = await request.db.$transaction(async (tx) => {
+        // Fix 6: use SELECT ... FOR UPDATE to lock the row and prevent race conditions
+        // on concurrent corrections for the same (variant, location, stockType) tuple.
+        type LockRow = { id: string; quantity: string }
+        const lockRows = await tx.$queryRaw<LockRow[]>`
+          SELECT id, quantity::text FROM stock_levels
+          WHERE tenant_id = ${request.tenantId}::uuid
+            AND variant_id = ${variantId}::uuid
+            AND location_id = ${locationId}::uuid
+            AND stock_type = ${stockType}
+            AND storage_location_id IS NOT DISTINCT FROM ${storageLocationId ?? null}::uuid
+            AND batch_id IS NOT DISTINCT FROM ${batchId ?? null}::uuid
+          FOR UPDATE
+        `
+        const locked = lockRows[0] ?? null
+        const quantityBefore = locked ? Number(locked.quantity) : 0
 
         // Step 2: upsert stock level
-        const updated = existing
+        const updated = locked
           ? await tx.stockLevel.update({
-              where: { id: existing.id },
+              where: { id: locked.id },
               data: { quantity, source: 'manual' },
             })
           : await tx.stockLevel.create({

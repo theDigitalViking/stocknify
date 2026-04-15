@@ -16,6 +16,7 @@ function omitUndefined<T extends object>(obj: T): T {
 
 import { inviteUserByEmail } from '../../lib/supabase-admin.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import { requireRole } from '../../middleware/require-role.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
 
 export async function tenantRoutes(app: FastifyInstance): Promise<void> {
@@ -84,8 +85,8 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // POST /users/invite — invite user via Supabase Auth, then upsert users row
-  app.post('/users/invite', async (request, reply) => {
+  // POST /users/invite — admin only: invite user via Supabase Auth, then create users row
+  app.post('/users/invite', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
       const parse = inviteUserSchema.safeParse(request.body)
       if (!parse.success) {
@@ -93,33 +94,46 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
       }
       const { email, role } = parse.data
 
+      // Check for duplicate email before calling Supabase (avoid dangling invites)
+      const existing = await request.db.user.findFirst({ where: { email } })
+      if (existing) {
+        if (existing.tenantId !== request.tenantId) {
+          return reply.code(409).send({
+            error: { code: 'CONFLICT', message: 'This email is already associated with another tenant' },
+          })
+        }
+        return reply.code(409).send({
+          error: { code: 'CONFLICT', message: 'This user has already been invited' },
+        })
+      }
+
+      // Supabase invite only happens after DB duplicate check passes
       const invited = await inviteUserByEmail(email)
 
-      const user = await request.db.user.upsert({
-        where: { id: invited.id },
-        create: {
+      const user = await request.db.user.create({
+        data: {
           id: invited.id,
           tenantId: request.tenantId,
           email,
           role,
         },
-        update: {
-          role,
-          tenantId: request.tenantId,
-        },
       })
 
       return reply.code(201).send({ data: user })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred'
-      return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message } })
+    } catch {
+      return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
     }
   })
 
-  // PATCH /users/:id — update role only
-  app.patch('/users/:id', async (request, reply) => {
+  // PATCH /users/:id — admin only: update role
+  app.patch('/users/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsSchema = z.object({ id: z.string().uuid() })
+      const params = paramsSchema.safeParse(request.params)
+      if (!params.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user ID format' } })
+      }
+      const { id } = params.data
 
       const parse = z.object({ role: userRoleSchema }).safeParse(request.body)
       if (!parse.success) {
@@ -144,12 +158,15 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // DELETE /users/:id — soft-delete (User has no deletedAt; hard-delete required)
-  // NOTE: User model has no deletedAt column — this performs a hard delete.
-  // A future schema migration should add deletedAt to the users table.
-  app.delete('/users/:id', async (request, reply) => {
+  // DELETE /users/:id — admin only: hard-delete (User model has no deletedAt column)
+  app.delete('/users/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     try {
-      const { id } = request.params as { id: string }
+      const paramsSchema = z.object({ id: z.string().uuid() })
+      const params = paramsSchema.safeParse(request.params)
+      if (!params.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user ID format' } })
+      }
+      const { id } = params.data
 
       if (id === request.userId) {
         return reply.code(400).send({
