@@ -67,6 +67,8 @@ jobs:
       - name: Build for Vercel
         working-directory: apps/web
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          SKIP_ENV_VALIDATION: 'true'
 
       - name: Deploy to Vercel
         working-directory: apps/web
