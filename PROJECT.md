@@ -239,6 +239,93 @@ CREATE POLICY tenant_isolation ON stock_items
 - Audit timestamps: `created_at`, `updated_at` on all tables
 - Naming: `snake_case` for all database objects
 
+### Architecture Decisions
+
+**Product structure is three-tiered:** `products` (master data) → `product_variants`
+(SKU + attribute combination e.g. size/color) → `product_bundles` (which variants
+make up a bundle and in what quantity). Stock is always tracked at variant level.
+Bundle stock is derived, never stored directly.
+
+**Variants are transparent to the user by default:** A simple product (one SKU,
+no size/color) always has exactly one auto-created default variant. The UI never
+exposes the variant layer unless the product has more than one variant. The API
+aggregates to product level for display. Internally, `stock_levels` always
+references `variant_id`, never `product_id` directly.
+
+**Bundles are schema-ready but logic-deferred:** The `product_bundles` table is
+created in the initial migration. Bundle business logic (derived stock, component
+reservation) is not implemented in MVP — controlled by a `bundle_tracking` feature
+flag on the `tenants` table. Phase 3 will implement the full logic.
+
+**Location structure is two-tiered:** `locations` (warehouses/fulfillers) →
+`storage_locations` (bins/shelves within a location). Whether a storage location
+tracks its own inventory is configurable per location via `bin_tracking_enabled`.
+`stock_levels` has an optional `storage_location_id`.
+
+**Stock types are tenant-extensible:** A `stock_type_definitions` table holds
+system defaults plus any custom types a tenant adds. System defaults are:
+`available`, `physical`, `reserved`, `blocked`, `in_transit`, `expired`,
+`damaged`, `pre_transit`. Stock type is a free-text string validated against this
+table at runtime — not a TypeScript enum. New types can be added without schema
+or code changes.
+
+**Batch/MHD tracking is per-product configurable:** Products have a
+`batch_tracking` flag. When enabled, stock is tracked per batch in the `batches`
+table. `stock_levels` gets an optional `batch_id`. Batches carry `batch_number`,
+`expiry_date`, `manufactured_date`.
+
+**stock_levels uses a COALESCE-based unique index for nullable foreign keys:**
+PostgreSQL does not treat NULL as equal in standard UNIQUE constraints, which
+would allow duplicate batch-agnostic or bin-agnostic rows. A custom unique index
+using COALESCE replaces the standard constraint. This index is defined in
+`apps/api/src/db/migrations/manual/unique-stock-levels.sql` and must be applied
+after the initial Prisma migration. Prisma schema carries a comment referencing
+this file.
+
+**Stock movements are explicit:** Every change to `stock_levels` produces a
+`stock_movements` record with `movement_type`, optional `reason`, and optional
+reference to an external document. This replaces the simpler `stock_history`
+append-only approach and enables full audit trails.
+
+**Stock movements retention is plan-limited with user control:** Movements are
+retained up to a maximum of 1 year regardless of plan. Within that window, the
+plan determines how far back the UI exposes data (Trial: 7 days, Starter: 30 days,
+Growth: 1 year, Enterprise: 1 year). After 1 year, the system prompts the tenant
+to choose: delete or aggregate to daily summaries. No data is deleted automatically
+without explicit tenant confirmation.
+
+**MHD/expiry logic runs through the Rule Engine:** No hardcoded expiry logic.
+The rule engine supports condition types `days_until_expiry` and
+`stock_type_transition`, enabling tenants to configure their own expiry alerts
+and auto-reclassification rules.
+
+**Rules have a DB-level check constraint for valid condition combinations:**
+To prevent invalid rule configurations (e.g. a `stock_level` rule without an
+operator), a CHECK constraint enforces that `operator` and `threshold` are
+non-null when `condition_type = 'stock_level'`, and `days_threshold` is non-null
+when `condition_type = 'days_until_expiry'`. Defined in
+`apps/api/src/db/migrations/manual/rules-check-constraint.sql`.
+
+**Batch-agnostic stock is a first-class concept:** A product with
+`batch_tracking = true` can still have stock records with `batch_id = NULL`.
+This is intentional and common in practice — for example, `available` stock
+that has already been deducted by orders at the fulfiller level, but where the
+physical batch assignment has not yet happened. This is not a data error.
+
+To distinguish intentional batch-agnostic stock from missing data, a
+`variant_location_config` table stores per-variant-per-location settings:
+- `batch_required`: whether batch_id must be present for this stock type at
+  this location. If false, NULL batch_id is accepted silently.
+- `export_strategy`: how to handle batch-agnostic stock when writing back to
+  an ERP or shop system. Options: `skip` (exclude from export) or `dummy`
+  (inject placeholder batch data).
+- `dummy_batch_number`: static batch number to use when strategy is `dummy`.
+- `dummy_expiry_offset_days`: expiry date = today + N days, used when strategy
+  is `dummy` and no real expiry is known.
+
+This allows tenants to configure per integration how ambiguous stock is handled
+on export, without polluting the core stock data with fake values.
+
 ### Table Overview
 
 ```sql
@@ -247,7 +334,7 @@ tenants
   id UUID PK
   name TEXT NOT NULL
   slug TEXT UNIQUE NOT NULL
-  plan TEXT NOT NULL DEFAULT 'trial'
+  plan TEXT NOT NULL DEFAULT 'trial'   -- trial | starter | growth | enterprise
   plan_status TEXT NOT NULL DEFAULT 'active'
   stripe_customer_id TEXT
   stripe_subscription_id TEXT
@@ -258,75 +345,150 @@ tenants
 
 -- Users (linked to Supabase Auth)
 users
-  id UUID PK
+  id UUID PK                           -- matches Supabase Auth user ID
   tenant_id UUID FK -> tenants
   email TEXT NOT NULL
   full_name TEXT
-  role TEXT NOT NULL DEFAULT 'user'  -- admin | user | viewer
+  role TEXT NOT NULL DEFAULT 'user'    -- admin | user | viewer
   created_at TIMESTAMPTZ
   updated_at TIMESTAMPTZ
 
--- Products / SKUs
+-- Stock type definitions (system defaults + tenant-custom types)
+stock_type_definitions
+  id UUID PK
+  tenant_id UUID FK -> tenants (nullable — null = system default)
+  key TEXT NOT NULL                    -- 'available' | 'physical' | 'reserved' | ...
+  label TEXT NOT NULL                  -- display name
+  description TEXT
+  is_system BOOLEAN NOT NULL DEFAULT false
+  color TEXT                           -- hex color for UI display
+  sort_order INT NOT NULL DEFAULT 0
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+  UNIQUE(tenant_id, key)
+
+-- Products (master data, no SKU here — SKU lives on variants)
 products
   id UUID PK
   tenant_id UUID FK -> tenants
-  sku TEXT NOT NULL
   name TEXT NOT NULL
   description TEXT
-  barcode TEXT
-  unit TEXT DEFAULT 'piece'
+  category TEXT
+  unit TEXT DEFAULT 'piece'            -- piece | kg | liter | etc.
+  batch_tracking BOOLEAN NOT NULL DEFAULT false
   metadata JSONB DEFAULT '{}'
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+  deleted_at TIMESTAMPTZ
+
+-- Product variants (SKU level — size, color, etc.)
+product_variants
+  id UUID PK
+  tenant_id UUID FK -> tenants
+  product_id UUID FK -> products
+  sku TEXT NOT NULL
+  name TEXT                            -- e.g. "Red / XL"
+  barcode TEXT
+  attributes JSONB DEFAULT '{}'        -- {color: "red", size: "XL"}
+  is_active BOOLEAN NOT NULL DEFAULT true
   created_at TIMESTAMPTZ
   updated_at TIMESTAMPTZ
   deleted_at TIMESTAMPTZ
   UNIQUE(tenant_id, sku)
 
--- Warehouse locations
+-- Product bundles (which variants make up a bundle)
+product_bundles
+  id UUID PK
+  tenant_id UUID FK -> tenants
+  bundle_variant_id UUID FK -> product_variants  -- the bundle SKU itself
+  component_variant_id UUID FK -> product_variants
+  quantity NUMERIC(12,3) NOT NULL
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+
+-- Batches / lots (for MHD and lot tracking)
+batches
+  id UUID PK
+  tenant_id UUID FK -> tenants
+  product_id UUID FK -> products
+  batch_number TEXT NOT NULL
+  expiry_date DATE
+  manufactured_date DATE
+  metadata JSONB DEFAULT '{}'
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+  UNIQUE(tenant_id, product_id, batch_number)
+
+-- Warehouse locations (fulfiller / own warehouse / virtual)
 locations
   id UUID PK
   tenant_id UUID FK -> tenants
   name TEXT NOT NULL
-  type TEXT NOT NULL                 -- fulfiller | own_warehouse | virtual
+  type TEXT NOT NULL                   -- fulfiller | own_warehouse | virtual
   integration_id UUID FK -> integrations (nullable)
+  bin_tracking_enabled BOOLEAN NOT NULL DEFAULT false
   address JSONB DEFAULT '{}'
   created_at TIMESTAMPTZ
   updated_at TIMESTAMPTZ
   deleted_at TIMESTAMPTZ
 
--- Stock quantities (core of the system)
+-- Storage locations / bins / shelves within a location
+storage_locations
+  id UUID PK
+  tenant_id UUID FK -> tenants
+  location_id UUID FK -> locations
+  name TEXT NOT NULL                   -- e.g. "A-01-03" or "Shelf B"
+  type TEXT NOT NULL DEFAULT 'bin'     -- bin | shelf | zone | collection
+  track_inventory BOOLEAN NOT NULL DEFAULT true
+  metadata JSONB DEFAULT '{}'
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+  deleted_at TIMESTAMPTZ
+
+-- Stock levels (current quantities — the heart of the system)
 stock_levels
   id UUID PK
   tenant_id UUID FK -> tenants
-  product_id UUID FK -> products
+  variant_id UUID FK -> product_variants
   location_id UUID FK -> locations
-  stock_type TEXT NOT NULL           -- available | reserved | blocked | in_transit | damaged
+  storage_location_id UUID FK -> storage_locations (nullable)
+  batch_id UUID FK -> batches (nullable)
+  stock_type TEXT NOT NULL             -- references stock_type_definitions.key
   quantity NUMERIC(12,3) NOT NULL DEFAULT 0
   last_synced_at TIMESTAMPTZ
-  source TEXT
+  source TEXT                          -- 'manual' | 'shopify' | 'hive' | etc.
   created_at TIMESTAMPTZ
   updated_at TIMESTAMPTZ
-  UNIQUE(tenant_id, product_id, location_id, stock_type)
+  UNIQUE(tenant_id, variant_id, location_id, storage_location_id, batch_id, stock_type)
 
--- Stock history (append-only, for charts and auditing)
-stock_history
+-- Stock movements (every change to stock_levels — full audit trail)
+stock_movements
   id UUID PK
   tenant_id UUID FK -> tenants
-  product_id UUID FK -> products
+  variant_id UUID FK -> product_variants
   location_id UUID FK -> locations
+  storage_location_id UUID FK -> storage_locations (nullable)
+  batch_id UUID FK -> batches (nullable)
   stock_type TEXT NOT NULL
-  quantity NUMERIC(12,3) NOT NULL
-  delta NUMERIC(12,3)
-  reason TEXT                        -- 'sync' | 'manual' | 'webhook' | 'adjustment'
-  created_at TIMESTAMPTZ
+  quantity_before NUMERIC(12,3) NOT NULL
+  quantity_after NUMERIC(12,3) NOT NULL
+  delta NUMERIC(12,3) NOT NULL
+  movement_type TEXT NOT NULL          -- inbound | outbound | correction | transfer | return | disposal | sync
+  reason TEXT                          -- optional free text
+  reference_type TEXT                  -- 'order' | 'shipment' | 'adjustment' | null
+  reference_id TEXT                    -- external document ID (optional)
+  source TEXT                          -- 'manual' | 'shopify' | 'hive' | 'rule_engine' | etc.
+  created_by UUID FK -> users (nullable)
+  created_at TIMESTAMPTZ               -- append-only, no updated_at
 
 -- Integrations (shop/ERP/WMS connections)
 integrations
   id UUID PK
   tenant_id UUID FK -> tenants
-  type TEXT NOT NULL                 -- shopify | woocommerce | xentral | hive | byrd | zenfulfillment
+  type TEXT NOT NULL                   -- shopify | woocommerce | xentral | hive | byrd | zenfulfillment
   name TEXT NOT NULL
-  status TEXT NOT NULL DEFAULT 'pending'
-  credentials JSONB NOT NULL DEFAULT '{}'  -- AES-256 encrypted
+  status TEXT NOT NULL DEFAULT 'pending' -- pending | active | error | paused
+  credentials JSONB NOT NULL DEFAULT '{}' -- AES-256 encrypted
   config JSONB NOT NULL DEFAULT '{}'
   last_sync_at TIMESTAMPTZ
   last_error TEXT
@@ -342,11 +504,17 @@ rules
   name TEXT NOT NULL
   description TEXT
   is_active BOOLEAN NOT NULL DEFAULT true
-  product_filter JSONB DEFAULT '{}'
-  location_filter JSONB DEFAULT '{}'
-  stock_type TEXT NOT NULL
-  operator TEXT NOT NULL             -- lt | lte | gt | gte | eq
-  threshold NUMERIC(12,3) NOT NULL
+  -- Filters
+  variant_filter JSONB DEFAULT '{}'    -- null = all variants, or {sku: [...]}
+  location_filter JSONB DEFAULT '{}'   -- null = all locations
+  batch_filter JSONB DEFAULT '{}'      -- null = all batches
+  -- Condition
+  condition_type TEXT NOT NULL         -- stock_level | days_until_expiry | stock_type_transition
+  stock_type TEXT                      -- for stock_level conditions
+  operator TEXT                        -- lt | lte | gt | gte | eq
+  threshold NUMERIC(12,3)              -- for stock_level conditions
+  days_threshold INT                   -- for days_until_expiry conditions
+  -- Escalation
   cooldown_minutes INT DEFAULT 60
   last_triggered_at TIMESTAMPTZ
   created_at TIMESTAMPTZ
@@ -360,6 +528,8 @@ rule_actions
   rule_id UUID FK -> rules
   channel_id UUID FK -> notification_channels
   message_template TEXT
+  -- For stock_type_transition rules: auto-reclassify stock
+  transition_to_stock_type TEXT        -- nullable — if set, auto-move stock to this type
   created_at TIMESTAMPTZ
   updated_at TIMESTAMPTZ
 
@@ -368,7 +538,7 @@ notification_channels
   id UUID PK
   tenant_id UUID FK -> tenants
   name TEXT NOT NULL
-  type TEXT NOT NULL                 -- email | slack | webhook | sms | in_app
+  type TEXT NOT NULL                   -- email | slack | webhook | sms | in_app
   config JSONB NOT NULL DEFAULT '{}'
   is_active BOOLEAN NOT NULL DEFAULT true
   created_at TIMESTAMPTZ
@@ -380,14 +550,31 @@ alerts
   id UUID PK
   tenant_id UUID FK -> tenants
   rule_id UUID FK -> rules
-  product_id UUID FK -> products
+  variant_id UUID FK -> product_variants
   location_id UUID FK -> locations
-  triggered_quantity NUMERIC(12,3)
+  batch_id UUID FK -> batches (nullable)
+  triggered_value NUMERIC(12,3)        -- quantity or days_until_expiry
   threshold NUMERIC(12,3)
-  status TEXT NOT NULL DEFAULT 'sent' -- sent | acknowledged | resolved
+  status TEXT NOT NULL DEFAULT 'sent'  -- sent | acknowledged | resolved
   acknowledged_by UUID FK -> users (nullable)
   acknowledged_at TIMESTAMPTZ
   created_at TIMESTAMPTZ
+
+-- Per-variant-per-location configuration (batch export strategy etc.)
+variant_location_config
+  id UUID PK
+  tenant_id UUID FK -> tenants
+  variant_id UUID FK -> product_variants
+  location_id UUID FK -> locations
+  -- Batch handling
+  batch_required BOOLEAN NOT NULL DEFAULT false  -- if false, NULL batch_id is valid even when product has batch_tracking=true
+  -- Export strategy for batch-agnostic stock (batch_id = NULL on a batchable product)
+  export_strategy TEXT NOT NULL DEFAULT 'skip'   -- skip | dummy
+  dummy_batch_number TEXT                        -- used when export_strategy = 'dummy'
+  dummy_expiry_offset_days INT                   -- expiry = today + N days, when export_strategy = 'dummy'
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+  UNIQUE(tenant_id, variant_id, location_id)
 
 -- Notification deliveries (one per channel per alert)
 notification_deliveries
@@ -408,7 +595,7 @@ notification_deliveries
 ### Conventions
 
 - REST API, JSON, camelCase for all fields
-- Base URL: `https://api.stocknify.io/v1`
+- Base URL: `https://api.stocknify.app/v1`
 - Authentication: `Authorization: Bearer <supabase-jwt>`
 - All responses use the following envelope format:
 
@@ -442,9 +629,9 @@ POST   /locations
 PATCH  /locations/:id
 DELETE /locations/:id
 GET    /stock
-GET    /stock/:productId
+GET    /stock/:variantId
 PUT    /stock
-GET    /stock/history
+GET    /stock/movements
 GET    /integrations
 POST   /integrations
 GET    /integrations/:id
@@ -484,8 +671,11 @@ POST   /webhooks/stripe
 interface StockData {
   sku: string;
   locationName: string;
-  stockType: 'available' | 'reserved' | 'blocked' | 'in_transit' | 'damaged';
+  stockType: string;           // references stock_type_definitions.key
   quantity: number;
+  batchNumber?: string;
+  expiryDate?: string;         // ISO date string
+  storageLocation?: string;    // bin/shelf name, optional
 }
 
 interface AbstractConnector {
@@ -518,36 +708,69 @@ interface AbstractConnector {
 
 - Pull sync every N minutes (configurable, default: 15 min) via BullMQ
 - Push sync via webhooks where available for immediate updates
-- Conflict resolution: newer timestamp always wins; all changes logged in `stock_history`
+- Conflict resolution: newer timestamp always wins; all changes logged in `stock_movements`
 
 ---
 
 ## 8. Rule Engine
 
+### Condition Types
+
+The rule engine supports three condition types, making it extensible beyond simple
+stock thresholds:
+
+| Condition Type | Triggered By | Example Use Case |
+|----------------|-------------|-----------------|
+| `stock_level` | Any stock update | Alert when available stock < 10 |
+| `days_until_expiry` | Scheduled daily job | Alert when batch expires in < 30 days |
+| `stock_type_transition` | Any stock update | Auto-move stock to `expired` when MHD passed |
+
 ### Evaluation Logic
 
 ```
-1. Stock update arrives (via sync or webhook)
-2. `evaluate-rules` job pushed to queue (with productId + locationId)
-3. Job loads all active rules matching this product/location
-4. For each rule: check condition against current stock
+1. Stock update arrives (via sync, webhook, or manual adjustment)
+2. `evaluate-rules` job pushed to queue (with variantId + locationId + batchId?)
+3. Job loads all active rules matching this variant/location/batch
+4. For each rule: evaluate condition based on condition_type
 5. If condition met AND cooldown passed:
    a. Create alert in `alerts` table
-   b. Create `send-notification` job for each rule_action
+   b. For each rule_action:
+      — Create `send-notification` job if channel_id is set
+      — Execute stock type transition if transition_to_stock_type is set
    c. Update `last_triggered_at` on the rule
+
+Separately, a scheduled daily job evaluates all `days_until_expiry` rules
+against all active batches with expiry_date set.
 ```
 
 ### Condition Evaluation
 
 ```typescript
-function evaluateRule(rule: Rule, stockLevel: number): boolean {
-  switch (rule.operator) {
-    case 'lt':  return stockLevel < rule.threshold;
-    case 'lte': return stockLevel <= rule.threshold;
-    case 'gt':  return stockLevel > rule.threshold;
-    case 'gte': return stockLevel >= rule.threshold;
-    case 'eq':  return stockLevel === rule.threshold;
+function evaluateRule(rule: Rule, context: RuleContext): boolean {
+  switch (rule.condition_type) {
+    case 'stock_level':
+      return evaluateStockLevel(rule, context.quantity);
+    case 'days_until_expiry':
+      return evaluateDaysUntilExpiry(rule, context.expiryDate);
+    case 'stock_type_transition':
+      return evaluateTransition(rule, context);
   }
+}
+
+function evaluateStockLevel(rule: Rule, quantity: number): boolean {
+  switch (rule.operator) {
+    case 'lt':  return quantity < rule.threshold;
+    case 'lte': return quantity <= rule.threshold;
+    case 'gt':  return quantity > rule.threshold;
+    case 'gte': return quantity >= rule.threshold;
+    case 'eq':  return quantity === rule.threshold;
+  }
+}
+
+function evaluateDaysUntilExpiry(rule: Rule, expiryDate: Date | null): boolean {
+  if (!expiryDate) return false;
+  const daysUntil = differenceInDays(expiryDate, new Date());
+  return daysUntil <= rule.days_threshold;
 }
 ```
 
@@ -568,9 +791,11 @@ function evaluateRule(rule: Rule, stockLevel: number): boolean {
 ### Message Template Variables
 
 ```
-{{product.name}}    {{product.sku}}     {{location.name}}
-{{stock.quantity}}  {{stock.type}}      {{rule.name}}
-{{rule.threshold}}  {{alert.url}}
+{{product.name}}           {{product.sku}}            {{variant.name}}
+{{variant.sku}}            {{location.name}}          {{storage_location.name}}
+{{stock.quantity}}         {{stock.type}}             {{batch.number}}
+{{batch.expiry_date}}      {{batch.days_until_expiry}} {{rule.name}}
+{{rule.threshold}}         {{alert.url}}
 ```
 
 ---
@@ -645,7 +870,7 @@ Plan limits enforced server-side via middleware. No client-side-only gating.
 ```bash
 NODE_ENV=development|production
 PORT=3001
-API_URL=https://api.stocknify.io
+API_URL=https://api.stocknify.app
 DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
 SUPABASE_URL=https://xxx.supabase.co
@@ -656,7 +881,7 @@ CREDENTIALS_ENCRYPTION_KEY=...
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 RESEND_API_KEY=re_...
-FROM_EMAIL=alerts@stocknify.io
+FROM_EMAIL=alerts@stocknify.app
 SENTRY_DSN=https://...
 # Phase 2
 TWILIO_ACCOUNT_SID=...
@@ -669,7 +894,7 @@ TWILIO_PHONE_NUMBER=+1...
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-NEXT_PUBLIC_API_URL=https://api.stocknify.io
+NEXT_PUBLIC_API_URL=https://api.stocknify.app
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
 NEXT_PUBLIC_SENTRY_DSN=https://...
 ```
@@ -681,8 +906,8 @@ NEXT_PUBLIC_SENTRY_DSN=https://...
 | Environment | Frontend | Backend | Purpose |
 |-------------|----------|---------|---------|
 | Local | localhost:3000 | localhost:3001 | Development |
-| Staging | staging.stocknify.io | api-staging.stocknify.io | QA, preview |
-| Production | app.stocknify.io | api.stocknify.io | Live |
+| Staging | staging.stocknify.app | api-staging.stocknify.app | QA, preview |
+| Production | app.stocknify.app | api.stocknify.app | Live |
 
 **Frontend:** Vercel — auto-deploy on push to `main`, preview URLs for PRs.
 
@@ -709,5 +934,5 @@ NEXT_PUBLIC_SENTRY_DSN=https://...
 
 ---
 
-*Last updated: 2026-04-14*
-*Version: 0.1.0 — Initial Project Definition*
+*Last updated: 2026-04-15*
+*Version: 0.3.0 — Finalized architecture decisions: transparent variants, deferred bundle logic, COALESCE unique index, retention policy with user control, DB-level rule check constraints*

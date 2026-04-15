@@ -1,24 +1,12 @@
-// Stocknify — Prisma Schema
+// Stocknify — Prisma Schema v2
 // Multi-tenant, shared database with Row-Level Security (RLS).
 //
-// RLS setup (run once after initial migration):
-//   ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE stock_levels ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE stock_history ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE integrations ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE rules ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE rule_actions ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE notification_channels ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
-//   ALTER TABLE notification_deliveries ENABLE ROW LEVEL SECURITY;
-//
-// For each of the above, add an isolation policy:
-//   CREATE POLICY tenant_isolation ON <table>
-//     USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
-//
-// Prisma uses the DATABASE_URL (pooler) for queries and DIRECT_URL for migrations.
+// After the initial Prisma migration, apply these manual SQL files in order
+// using the Supabase SQL editor (direct connection, not pooler):
+//   1. apps/api/src/db/sql/unique-stock-levels.sql
+//   2. apps/api/src/db/sql/rules-check-constraint.sql
+//   3. apps/api/src/db/sql/rls-policies.sql
+//   4. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
 
 generator client {
   provider = "prisma-client-js"
@@ -37,33 +25,41 @@ model Tenant {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                 String    @db.Text
   slug                 String    @unique @db.VarChar(63)
-  plan                 String    @default("trial") @db.Text
+  plan                 String    @default("trial") @map("plan") @db.Text
   planStatus           String    @default("active") @map("plan_status") @db.Text
   stripeCustomerId     String?   @map("stripe_customer_id") @db.Text
   stripeSubscriptionId String?   @map("stripe_subscription_id") @db.Text
   trialEndsAt          DateTime? @map("trial_ends_at") @db.Timestamptz
+  // Bundle business logic deferred to Phase 3 — guarded by this flag
+  bundleTracking       Boolean   @default(false) @map("bundle_tracking")
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  users                 User[]
-  products              Product[]
-  locations             Location[]
-  stockLevels           StockLevel[]
-  stockHistory          StockHistory[]
-  integrations          Integration[]
-  rules                 Rule[]
-  ruleActions           RuleAction[]
-  notificationChannels  NotificationChannel[]
-  alerts                Alert[]
+  users                  User[]
+  stockTypeDefinitions   StockTypeDefinition[]
+  products               Product[]
+  productVariants        ProductVariant[]
+  productBundles         ProductBundle[]
+  batches                Batch[]
+  locations              Location[]
+  storageLocations       StorageLocation[]
+  stockLevels            StockLevel[]
+  stockMovements         StockMovement[]
+  integrations           Integration[]
+  rules                  Rule[]
+  ruleActions            RuleAction[]
+  notificationChannels   NotificationChannel[]
+  alerts                 Alert[]
+  variantLocationConfigs VariantLocationConfig[]
   notificationDeliveries NotificationDelivery[]
 
   @@map("tenants")
 }
 
 // ---------------------------------------------------------------------------
-// Users — linked to Supabase Auth via id (UUID from auth.users)
+// Users — linked to Supabase Auth via id (UUID matches auth.users)
 // ---------------------------------------------------------------------------
 model User {
   id        String   @id @db.Uuid
@@ -75,131 +71,285 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  tenant             Tenant  @relation(fields: [tenantId], references: [id])
-  acknowledgedAlerts Alert[] @relation("AcknowledgedBy")
+  tenant             Tenant          @relation(fields: [tenantId], references: [id])
+  acknowledgedAlerts Alert[]         @relation("AcknowledgedAlerts")
+  createdMovements   StockMovement[] @relation("CreatedBy")
 
   @@index([tenantId])
   @@map("users")
 }
 
 // ---------------------------------------------------------------------------
-// Products — SKUs managed by the merchant
+// StockTypeDefinition — system defaults + tenant-custom stock types
+// tenant_id IS NULL for system defaults; stock type is a free-text string
+// validated against this table at runtime — not a TypeScript enum.
 // ---------------------------------------------------------------------------
-model Product {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String    @map("tenant_id") @db.Uuid
-  sku         String    @db.Text
-  name        String    @db.Text
-  description String?   @db.Text
-  barcode     String?   @db.Text
-  unit        String    @default("piece") @db.Text
-  metadata    Json      @default("{}") @db.JsonB
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+model StockTypeDefinition {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String?  @map("tenant_id") @db.Uuid // null = system default
+  key         String   @db.Text
+  label       String   @db.Text
+  description String?  @db.Text
+  isSystem    Boolean  @default(false) @map("is_system")
+  color       String?  @db.Text // hex color for UI display
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  tenant       Tenant         @relation(fields: [tenantId], references: [id])
-  stockLevels  StockLevel[]
-  stockHistory StockHistory[]
-  alerts       Alert[]
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
 
-  @@unique([tenantId, sku])
+  // Standard unique: enforces uniqueness per tenant but not across system defaults
+  // (PostgreSQL treats NULL as distinct — safe for system records seeded once)
+  @@unique([tenantId, key])
   @@index([tenantId])
-  @@map("products")
+  @@map("stock_type_definitions")
 }
 
 // ---------------------------------------------------------------------------
-// Locations — warehouse or fulfiller sites
+// Product — master data record; SKU lives on ProductVariant
+// A simple product always has exactly one auto-created default variant.
 // ---------------------------------------------------------------------------
-model Location {
+model Product {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String    @map("tenant_id") @db.Uuid
   name          String    @db.Text
-  type          String    @db.Text // fulfiller | own_warehouse | virtual
-  integrationId String?   @map("integration_id") @db.Uuid
-  address       Json      @default("{}") @db.JsonB
+  description   String?   @db.Text
+  category      String?   @db.Text
+  unit          String    @default("piece") @db.Text // piece | kg | liter | etc.
+  batchTracking Boolean   @default(false) @map("batch_tracking")
+  metadata      Json      @default("{}") @db.JsonB
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  integration  Integration?  @relation(fields: [integrationId], references: [id])
-  stockLevels  StockLevel[]
-  stockHistory StockHistory[]
-  alerts       Alert[]
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  variants ProductVariant[]
+  batches  Batch[]
+
+  @@index([tenantId])
+  @@map("products")
+}
+
+// ---------------------------------------------------------------------------
+// ProductVariant — SKU level (size, color, etc.)
+// Every product has at least one variant (auto-created for simple products).
+// ---------------------------------------------------------------------------
+model ProductVariant {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  productId  String    @map("product_id") @db.Uuid
+  sku        String    @db.Text
+  name       String?   @db.Text // e.g. "Red / XL" — null for single-variant products
+  barcode    String?   @db.Text
+  attributes Json      @default("{}") @db.JsonB // {color: "red", size: "XL"}
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  bundleVariantOf        ProductBundle[]        @relation("BundleVariant")
+  componentOf            ProductBundle[]        @relation("ComponentVariant")
+  stockLevels            StockLevel[]
+  stockMovements         StockMovement[]
+  alerts                 Alert[]
+  variantLocationConfigs VariantLocationConfig[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@map("product_variants")
+}
+
+// ---------------------------------------------------------------------------
+// ProductBundle — which variants make up a bundle and in what quantity
+// Bundle business logic is deferred to Phase 3. Controlled by tenants.bundleTracking flag.
+// ---------------------------------------------------------------------------
+model ProductBundle {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  bundleVariantId    String   @map("bundle_variant_id") @db.Uuid
+  componentVariantId String   @map("component_variant_id") @db.Uuid
+  quantity           Decimal  @db.Decimal(12, 3)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  bundleVariant    ProductVariant @relation("BundleVariant", fields: [bundleVariantId], references: [id])
+  componentVariant ProductVariant @relation("ComponentVariant", fields: [componentVariantId], references: [id])
+
+  @@index([tenantId])
+  @@map("product_bundles")
+}
+
+// ---------------------------------------------------------------------------
+// Batch — lot / MHD tracking record, linked to a product
+// ---------------------------------------------------------------------------
+model Batch {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  productId        String    @map("product_id") @db.Uuid
+  batchNumber      String    @map("batch_number") @db.Text
+  expiryDate       DateTime? @map("expiry_date") @db.Date
+  manufacturedDate DateTime? @map("manufactured_date") @db.Date
+  metadata         Json      @default("{}") @db.JsonB
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  product        Product         @relation(fields: [productId], references: [id])
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+  alerts         Alert[]
+
+  @@unique([tenantId, productId, batchNumber])
+  @@index([tenantId])
+  @@map("batches")
+}
+
+// ---------------------------------------------------------------------------
+// Location — fulfiller / own warehouse / virtual site
+// ---------------------------------------------------------------------------
+model Location {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  name               String    @db.Text
+  type               String    @db.Text // fulfiller | own_warehouse | virtual
+  integrationId      String?   @map("integration_id") @db.Uuid
+  binTrackingEnabled Boolean   @default(false) @map("bin_tracking_enabled")
+  address            Json      @default("{}") @db.JsonB
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  integration            Integration?            @relation(fields: [integrationId], references: [id])
+  storageLocations       StorageLocation[]
+  stockLevels            StockLevel[]
+  stockMovements         StockMovement[]
+  alerts                 Alert[]
+  variantLocationConfigs VariantLocationConfig[]
 
   @@index([tenantId])
   @@map("locations")
 }
 
 // ---------------------------------------------------------------------------
-// StockLevel — current stock quantities (upserted on every sync)
+// StorageLocation — bin / shelf / zone within a Location
 // ---------------------------------------------------------------------------
-model StockLevel {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String    @map("tenant_id") @db.Uuid
-  productId    String    @map("product_id") @db.Uuid
-  locationId   String    @map("location_id") @db.Uuid
-  stockType    String    @map("stock_type") @db.Text // available | reserved | blocked | in_transit | damaged
-  quantity     Decimal   @default(0) @db.Decimal(12, 3)
-  lastSyncedAt DateTime? @map("last_synced_at") @db.Timestamptz
-  source       String?   @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+model StorageLocation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  name           String    @db.Text // e.g. "A-01-03" or "Shelf B"
+  type           String    @default("bin") @db.Text // bin | shelf | zone | collection
+  trackInventory Boolean   @default(true) @map("track_inventory")
+  metadata       Json      @default("{}") @db.JsonB
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  product  Product  @relation(fields: [productId], references: [id])
-  location Location @relation(fields: [locationId], references: [id])
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  location       Location        @relation(fields: [locationId], references: [id])
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
 
-  @@unique([tenantId, productId, locationId, stockType])
   @@index([tenantId])
+  @@map("storage_locations")
+}
+
+// ---------------------------------------------------------------------------
+// StockLevel — current quantity per variant/location/storage/batch/type
+// NOTE: Uniqueness is enforced by a custom COALESCE index.
+// See apps/api/src/db/sql/unique-stock-levels.sql
+// ---------------------------------------------------------------------------
+model StockLevel {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  variantId         String    @map("variant_id") @db.Uuid
+  locationId        String    @map("location_id") @db.Uuid
+  storageLocationId String?   @map("storage_location_id") @db.Uuid
+  batchId           String?   @map("batch_id") @db.Uuid
+  stockType         String    @map("stock_type") @db.Text // references stock_type_definitions.key
+  quantity          Decimal   @default(0) @db.Decimal(12, 3)
+  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamptz
+  source            String?   @db.Text // 'manual' | 'shopify' | 'hive' | etc.
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  variant         ProductVariant   @relation(fields: [variantId], references: [id])
+  location        Location         @relation(fields: [locationId], references: [id])
+  storageLocation StorageLocation? @relation(fields: [storageLocationId], references: [id])
+  batch           Batch?           @relation(fields: [batchId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, variantId])
   @@map("stock_levels")
 }
 
 // ---------------------------------------------------------------------------
-// StockHistory — append-only audit log (never updated, never deleted)
+// StockMovement — append-only audit record for every stock change
+// Replaces stock_history. No updated_at — records are never mutated.
 // ---------------------------------------------------------------------------
-model StockHistory {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  productId  String   @map("product_id") @db.Uuid
-  locationId String   @map("location_id") @db.Uuid
-  stockType  String   @map("stock_type") @db.Text
-  quantity   Decimal  @db.Decimal(12, 3)
-  delta      Decimal? @db.Decimal(12, 3)
-  reason     String?  @db.Text // sync | manual | webhook | adjustment
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+model StockMovement {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  variantId         String   @map("variant_id") @db.Uuid
+  locationId        String   @map("location_id") @db.Uuid
+  storageLocationId String?  @map("storage_location_id") @db.Uuid
+  batchId           String?  @map("batch_id") @db.Uuid
+  stockType         String   @map("stock_type") @db.Text
+  quantityBefore    Decimal  @map("quantity_before") @db.Decimal(12, 3)
+  quantityAfter     Decimal  @map("quantity_after") @db.Decimal(12, 3)
+  delta             Decimal  @db.Decimal(12, 3)
+  movementType      String   @map("movement_type") @db.Text // inbound | outbound | correction | transfer | return | disposal | sync
+  reason            String?  @db.Text
+  referenceType     String?  @map("reference_type") @db.Text // 'order' | 'shipment' | 'adjustment'
+  referenceId       String?  @map("reference_id") @db.Text // external document ID
+  source            String?  @db.Text // 'manual' | 'shopify' | 'hive' | 'rule_engine' | etc.
+  createdBy         String?  @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  product  Product  @relation(fields: [productId], references: [id])
-  location Location @relation(fields: [locationId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  variant         ProductVariant   @relation(fields: [variantId], references: [id])
+  location        Location         @relation(fields: [locationId], references: [id])
+  storageLocation StorageLocation? @relation(fields: [storageLocationId], references: [id])
+  batch           Batch?           @relation(fields: [batchId], references: [id])
+  createdByUser   User?            @relation("CreatedBy", fields: [createdBy], references: [id])
 
   @@index([tenantId])
-  @@index([tenantId, productId])
-  @@map("stock_history")
+  @@index([tenantId, variantId])
+  @@map("stock_movements")
 }
 
 // ---------------------------------------------------------------------------
-// Integration — shop / ERP / WMS connectors
+// Integration — shop / ERP / WMS connector
 // ---------------------------------------------------------------------------
 model Integration {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId              String    @map("tenant_id") @db.Uuid
-  type                  String    @db.Text // shopify | woocommerce | xentral | hive | byrd | zenfulfillment
-  name                  String    @db.Text
-  status                String    @default("pending") @db.Text
-  credentials           Json      @default("{}") @db.JsonB // AES-256-GCM encrypted value stored here
-  config                Json      @default("{}") @db.JsonB
-  lastSyncAt            DateTime? @map("last_sync_at") @db.Timestamptz
-  lastError             String?   @map("last_error") @db.Text
-  syncIntervalMinutes   Int       @default(15) @map("sync_interval_minutes")
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt             DateTime? @map("deleted_at") @db.Timestamptz
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  type                String    @db.Text // shopify | woocommerce | xentral | hive | byrd | zenfulfillment
+  name                String    @db.Text
+  status              String    @default("pending") @db.Text // pending | active | error | paused
+  credentials         Json      @default("{}") @db.JsonB // AES-256-GCM encrypted
+  config              Json      @default("{}") @db.JsonB
+  lastSyncAt          DateTime? @map("last_sync_at") @db.Timestamptz
+  lastError           String?   @map("last_error") @db.Text
+  syncIntervalMinutes Int       @default(15) @map("sync_interval_minutes")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
   tenant    Tenant     @relation(fields: [tenantId], references: [id])
@@ -210,7 +360,9 @@ model Integration {
 }
 
 // ---------------------------------------------------------------------------
-// Rule — configurable threshold alert
+// Rule — configurable alert condition
+// NOTE: Condition combination validity is enforced by a check constraint.
+// See apps/api/src/db/sql/rules-check-constraint.sql
 // ---------------------------------------------------------------------------
 model Rule {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -218,11 +370,17 @@ model Rule {
   name            String    @db.Text
   description     String?   @db.Text
   isActive        Boolean   @default(true) @map("is_active")
-  productFilter   Json      @default("{}") @map("product_filter") @db.JsonB
+  // Filters (null = match all)
+  variantFilter   Json      @default("{}") @map("variant_filter") @db.JsonB
   locationFilter  Json      @default("{}") @map("location_filter") @db.JsonB
-  stockType       String    @map("stock_type") @db.Text
-  operator        String    @db.Text // lt | lte | gt | gte | eq
-  threshold       Decimal   @db.Decimal(12, 3)
+  batchFilter     Json      @default("{}") @map("batch_filter") @db.JsonB
+  // Condition — field requirements depend on conditionType (enforced by check constraint)
+  conditionType   String    @map("condition_type") @db.Text // stock_level | days_until_expiry | stock_type_transition
+  stockType       String?   @map("stock_type") @db.Text // required for stock_level
+  operator        String?   @db.Text // lt | lte | gt | gte | eq — required for stock_level
+  threshold       Decimal?  @db.Decimal(12, 3) // required for stock_level
+  daysThreshold   Int?      @map("days_threshold") // required for days_until_expiry
+  // Escalation
   cooldownMinutes Int       @default(60) @map("cooldown_minutes")
   lastTriggeredAt DateTime? @map("last_triggered_at") @db.Timestamptz
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
@@ -239,16 +397,18 @@ model Rule {
 }
 
 // ---------------------------------------------------------------------------
-// RuleAction — which channel to notify when the rule fires
+// RuleAction — what to do when a rule fires
 // ---------------------------------------------------------------------------
 model RuleAction {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String   @map("tenant_id") @db.Uuid
-  ruleId          String   @map("rule_id") @db.Uuid
-  channelId       String   @map("channel_id") @db.Uuid
-  messageTemplate String?  @map("message_template") @db.Text
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  ruleId                String   @map("rule_id") @db.Uuid
+  channelId             String   @map("channel_id") @db.Uuid
+  messageTemplate       String?  @map("message_template") @db.Text
+  // For stock_type_transition rules: auto-reclassify stock to this type
+  transitionToStockType String?  @map("transition_to_stock_type") @db.Text
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   tenant  Tenant              @relation(fields: [tenantId], references: [id])
@@ -275,8 +435,8 @@ model NotificationChannel {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
-  ruleActions           RuleAction[]
+  tenant                 Tenant                 @relation(fields: [tenantId], references: [id])
+  ruleActions            RuleAction[]
   notificationDeliveries NotificationDelivery[]
 
   @@index([tenantId])
@@ -287,29 +447,58 @@ model NotificationChannel {
 // Alert — a rule that fired at a specific moment
 // ---------------------------------------------------------------------------
 model Alert {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId            String    @map("tenant_id") @db.Uuid
-  ruleId              String    @map("rule_id") @db.Uuid
-  productId           String    @map("product_id") @db.Uuid
-  locationId          String    @map("location_id") @db.Uuid
-  triggeredQuantity   Decimal?  @map("triggered_quantity") @db.Decimal(12, 3)
-  threshold           Decimal?  @db.Decimal(12, 3)
-  status              String    @default("sent") @db.Text // sent | acknowledged | resolved
-  acknowledgedBy      String?   @map("acknowledged_by") @db.Uuid
-  acknowledgedAt      DateTime? @map("acknowledged_at") @db.Timestamptz
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  ruleId          String    @map("rule_id") @db.Uuid
+  variantId       String    @map("variant_id") @db.Uuid
+  locationId      String    @map("location_id") @db.Uuid
+  batchId         String?   @map("batch_id") @db.Uuid
+  triggeredValue  Decimal?  @map("triggered_value") @db.Decimal(12, 3) // quantity or days_until_expiry
+  threshold       Decimal?  @db.Decimal(12, 3)
+  status          String    @default("sent") @db.Text // sent | acknowledged | resolved
+  acknowledgedBy  String?   @map("acknowledged_by") @db.Uuid
+  acknowledgedAt  DateTime? @map("acknowledged_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
   tenant                 Tenant                 @relation(fields: [tenantId], references: [id])
   rule                   Rule                   @relation(fields: [ruleId], references: [id])
-  product                Product                @relation(fields: [productId], references: [id])
+  variant                ProductVariant         @relation(fields: [variantId], references: [id])
   location               Location               @relation(fields: [locationId], references: [id])
-  acknowledgedByUser     User?                  @relation("AcknowledgedBy", fields: [acknowledgedBy], references: [id])
+  batch                  Batch?                 @relation(fields: [batchId], references: [id])
+  acknowledgedByUser     User?                  @relation("AcknowledgedAlerts", fields: [acknowledgedBy], references: [id])
   notificationDeliveries NotificationDelivery[]
 
   @@index([tenantId])
   @@index([tenantId, ruleId])
   @@map("alerts")
+}
+
+// ---------------------------------------------------------------------------
+// VariantLocationConfig — per-variant-per-location export strategy for batch-agnostic stock
+// ---------------------------------------------------------------------------
+model VariantLocationConfig {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  variantId             String   @map("variant_id") @db.Uuid
+  locationId            String   @map("location_id") @db.Uuid
+  // If false, NULL batch_id is valid even when product has batch_tracking = true
+  batchRequired         Boolean  @default(false) @map("batch_required")
+  // How to handle batch-agnostic stock on export: skip | dummy
+  exportStrategy        String   @default("skip") @map("export_strategy") @db.Text
+  dummyBatchNumber      String?  @map("dummy_batch_number") @db.Text
+  dummyExpiryOffsetDays Int?     @map("dummy_expiry_offset_days")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  variant  ProductVariant @relation(fields: [variantId], references: [id])
+  location Location       @relation(fields: [locationId], references: [id])
+
+  @@unique([tenantId, variantId, locationId])
+  @@index([tenantId])
+  @@map("variant_location_config")
 }
 
 // ---------------------------------------------------------------------------

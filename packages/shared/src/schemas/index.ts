@@ -2,16 +2,18 @@ import { z } from 'zod'
 
 import {
   ALERT_STATUSES,
+  CONDITION_TYPES,
   DELIVERY_STATUSES,
+  EXPORT_STRATEGIES,
   INTEGRATION_STATUSES,
   INTEGRATION_TYPES,
   LOCATION_TYPES,
+  MOVEMENT_TYPES,
   NOTIFICATION_CHANNEL_TYPES,
   PLANS,
   PLAN_STATUSES,
   RULE_OPERATORS,
-  STOCK_CHANGE_REASONS,
-  STOCK_TYPES,
+  STORAGE_LOCATION_TYPES,
   USER_ROLES,
 } from '../constants/index.js'
 
@@ -21,6 +23,10 @@ import {
 
 export const uuidSchema = z.string().uuid()
 export const isoDateSchema = z.string().datetime()
+// ISO date only (YYYY-MM-DD) — used for expiry/manufactured dates
+export const isoDateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a date in YYYY-MM-DD format')
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -29,22 +35,28 @@ export const paginationSchema = z.object({
   sortDir: z.enum(['asc', 'desc']).optional(),
 })
 
+// Stock type is a free-text string validated against stock_type_definitions.key
+// at runtime. Use this wherever stock type appears in API validation.
+export const stockTypeKeySchema = z.string().min(1).max(50)
+
 // ---------------------------------------------------------------------------
-// Enum schemas (derived from constants to keep them in sync)
+// Enum schemas
 // ---------------------------------------------------------------------------
 
-export const stockTypeSchema = z.enum(STOCK_TYPES)
 export const integrationTypeSchema = z.enum(INTEGRATION_TYPES)
 export const notificationChannelTypeSchema = z.enum(NOTIFICATION_CHANNEL_TYPES)
 export const ruleOperatorSchema = z.enum(RULE_OPERATORS)
+export const conditionTypeSchema = z.enum(CONDITION_TYPES)
 export const planSchema = z.enum(PLANS)
 export const planStatusSchema = z.enum(PLAN_STATUSES)
 export const userRoleSchema = z.enum(USER_ROLES)
 export const integrationStatusSchema = z.enum(INTEGRATION_STATUSES)
 export const alertStatusSchema = z.enum(ALERT_STATUSES)
 export const deliveryStatusSchema = z.enum(DELIVERY_STATUSES)
-export const stockChangeReasonSchema = z.enum(STOCK_CHANGE_REASONS)
 export const locationTypeSchema = z.enum(LOCATION_TYPES)
+export const movementTypeSchema = z.enum(MOVEMENT_TYPES)
+export const storageLocationTypeSchema = z.enum(STORAGE_LOCATION_TYPES)
+export const exportStrategySchema = z.enum(EXPORT_STRATEGIES)
 
 // ---------------------------------------------------------------------------
 // Domain schemas
@@ -63,6 +75,7 @@ export const tenantSchema = z.object({
   stripeCustomerId: z.string().nullable(),
   stripeSubscriptionId: z.string().nullable(),
   trialEndsAt: isoDateSchema.nullable(),
+  bundleTracking: z.boolean(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   deletedAt: isoDateSchema.nullable(),
@@ -78,18 +91,67 @@ export const userSchema = z.object({
   updatedAt: isoDateSchema,
 })
 
+export const stockTypeDefinitionSchema = z.object({
+  id: uuidSchema,
+  tenantId: uuidSchema.nullable(),
+  key: stockTypeKeySchema,
+  label: z.string().min(1).max(100),
+  description: z.string().nullable(),
+  isSystem: z.boolean(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
+  sortOrder: z.number().int().nonnegative(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+})
+
 export const productSchema = z.object({
   id: uuidSchema,
   tenantId: uuidSchema,
-  sku: z.string().min(1).max(255),
   name: z.string().min(1).max(500),
   description: z.string().nullable(),
-  barcode: z.string().nullable(),
+  category: z.string().nullable(),
   unit: z.string().default('piece'),
+  batchTracking: z.boolean(),
   metadata: z.record(z.unknown()).default({}),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   deletedAt: isoDateSchema.nullable(),
+})
+
+export const productVariantSchema = z.object({
+  id: uuidSchema,
+  tenantId: uuidSchema,
+  productId: uuidSchema,
+  sku: z.string().min(1).max(255),
+  name: z.string().nullable(),
+  barcode: z.string().nullable(),
+  attributes: z.record(z.unknown()).default({}),
+  isActive: z.boolean(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+  deletedAt: isoDateSchema.nullable(),
+})
+
+export const productBundleSchema = z.object({
+  id: uuidSchema,
+  tenantId: uuidSchema,
+  bundleVariantId: uuidSchema,
+  componentVariantId: uuidSchema,
+  quantity: z.number().positive(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+})
+
+export const batchSchema = z.object({
+  id: uuidSchema,
+  tenantId: uuidSchema,
+  productId: uuidSchema,
+  batchNumber: z.string().min(1).max(255),
+  expiryDate: isoDateOnlySchema.nullable(),
+  manufacturedDate: isoDateOnlySchema.nullable(),
+  metadata: z.record(z.unknown()).default({}),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
 })
 
 export const locationSchema = z.object({
@@ -98,7 +160,21 @@ export const locationSchema = z.object({
   name: z.string().min(1).max(255),
   type: locationTypeSchema,
   integrationId: uuidSchema.nullable(),
+  binTrackingEnabled: z.boolean(),
   address: z.record(z.unknown()).default({}),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+  deletedAt: isoDateSchema.nullable(),
+})
+
+export const storageLocationSchema = z.object({
+  id: uuidSchema,
+  tenantId: uuidSchema,
+  locationId: uuidSchema,
+  name: z.string().min(1).max(255),
+  type: storageLocationTypeSchema,
+  trackInventory: z.boolean(),
+  metadata: z.record(z.unknown()).default({}),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   deletedAt: isoDateSchema.nullable(),
@@ -107,9 +183,11 @@ export const locationSchema = z.object({
 export const stockLevelSchema = z.object({
   id: uuidSchema,
   tenantId: uuidSchema,
-  productId: uuidSchema,
+  variantId: uuidSchema,
   locationId: uuidSchema,
-  stockType: stockTypeSchema,
+  storageLocationId: uuidSchema.nullable(),
+  batchId: uuidSchema.nullable(),
+  stockType: stockTypeKeySchema,
   quantity: z.number(),
   lastSyncedAt: isoDateSchema.nullable(),
   source: z.string().nullable(),
@@ -117,15 +195,23 @@ export const stockLevelSchema = z.object({
   updatedAt: isoDateSchema,
 })
 
-export const stockHistorySchema = z.object({
+export const stockMovementSchema = z.object({
   id: uuidSchema,
   tenantId: uuidSchema,
-  productId: uuidSchema,
+  variantId: uuidSchema,
   locationId: uuidSchema,
-  stockType: stockTypeSchema,
-  quantity: z.number(),
-  delta: z.number().nullable(),
-  reason: stockChangeReasonSchema.nullable(),
+  storageLocationId: uuidSchema.nullable(),
+  batchId: uuidSchema.nullable(),
+  stockType: stockTypeKeySchema,
+  quantityBefore: z.number(),
+  quantityAfter: z.number(),
+  delta: z.number(),
+  movementType: movementTypeSchema,
+  reason: z.string().nullable(),
+  referenceType: z.string().nullable(),
+  referenceId: z.string().nullable(),
+  source: z.string().nullable(),
+  createdBy: uuidSchema.nullable(),
   createdAt: isoDateSchema,
 })
 
@@ -151,11 +237,14 @@ export const ruleSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().nullable(),
   isActive: z.boolean().default(true),
-  productFilter: z.record(z.unknown()).default({}),
+  variantFilter: z.record(z.unknown()).default({}),
   locationFilter: z.record(z.unknown()).default({}),
-  stockType: stockTypeSchema,
-  operator: ruleOperatorSchema,
-  threshold: z.number(),
+  batchFilter: z.record(z.unknown()).default({}),
+  conditionType: conditionTypeSchema,
+  stockType: stockTypeKeySchema.nullable(),
+  operator: ruleOperatorSchema.nullable(),
+  threshold: z.number().nullable(),
+  daysThreshold: z.number().int().nonnegative().nullable(),
   cooldownMinutes: z.number().int().nonnegative().default(60),
   lastTriggeredAt: isoDateSchema.nullable(),
   createdAt: isoDateSchema,
@@ -169,6 +258,7 @@ export const ruleActionSchema = z.object({
   ruleId: uuidSchema,
   channelId: uuidSchema,
   messageTemplate: z.string().nullable(),
+  transitionToStockType: stockTypeKeySchema.nullable(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
 })
@@ -231,14 +321,28 @@ export const alertSchema = z.object({
   id: uuidSchema,
   tenantId: uuidSchema,
   ruleId: uuidSchema,
-  productId: uuidSchema,
+  variantId: uuidSchema,
   locationId: uuidSchema,
-  triggeredQuantity: z.number().nullable(),
+  batchId: uuidSchema.nullable(),
+  triggeredValue: z.number().nullable(),
   threshold: z.number().nullable(),
   status: alertStatusSchema,
   acknowledgedBy: uuidSchema.nullable(),
   acknowledgedAt: isoDateSchema.nullable(),
   createdAt: isoDateSchema,
+})
+
+export const variantLocationConfigSchema = z.object({
+  id: uuidSchema,
+  tenantId: uuidSchema,
+  variantId: uuidSchema,
+  locationId: uuidSchema,
+  batchRequired: z.boolean().default(false),
+  exportStrategy: exportStrategySchema.default('skip'),
+  dummyBatchNumber: z.string().nullable(),
+  dummyExpiryOffsetDays: z.number().int().nonnegative().nullable(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
 })
 
 export const notificationDeliverySchema = z.object({
@@ -257,24 +361,57 @@ export const notificationDeliverySchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const createProductSchema = z.object({
-  sku: z.string().min(1).max(255),
   name: z.string().min(1).max(500),
   description: z.string().optional(),
-  barcode: z.string().optional(),
+  category: z.string().optional(),
   unit: z.string().default('piece'),
+  batchTracking: z.boolean().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 
 export const updateProductSchema = createProductSchema.partial()
 
+export const createProductVariantSchema = z.object({
+  productId: uuidSchema,
+  sku: z.string().min(1).max(255),
+  name: z.string().optional(),
+  barcode: z.string().optional(),
+  attributes: z.record(z.unknown()).optional(),
+})
+
+export const updateProductVariantSchema = createProductVariantSchema.omit({ productId: true }).partial()
+
+export const createBatchSchema = z.object({
+  productId: uuidSchema,
+  batchNumber: z.string().min(1).max(255),
+  expiryDate: isoDateOnlySchema.optional(),
+  manufacturedDate: isoDateOnlySchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
+})
+
+export const updateBatchSchema = createBatchSchema.omit({ productId: true }).partial()
+
 export const createLocationSchema = z.object({
   name: z.string().min(1).max(255),
   type: locationTypeSchema,
   integrationId: uuidSchema.optional(),
+  binTrackingEnabled: z.boolean().optional(),
   address: z.record(z.unknown()).optional(),
 })
 
 export const updateLocationSchema = createLocationSchema.partial()
+
+export const createStorageLocationSchema = z.object({
+  locationId: uuidSchema,
+  name: z.string().min(1).max(255),
+  type: storageLocationTypeSchema.optional(),
+  trackInventory: z.boolean().optional(),
+  metadata: z.record(z.unknown()).optional(),
+})
+
+export const updateStorageLocationSchema = createStorageLocationSchema
+  .omit({ locationId: true })
+  .partial()
 
 export const createIntegrationSchema = z.object({
   type: integrationTypeSchema,
@@ -286,27 +423,73 @@ export const createIntegrationSchema = z.object({
 
 export const updateIntegrationSchema = createIntegrationSchema.partial()
 
-export const createRuleSchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().optional(),
-  isActive: z.boolean().optional(),
-  productFilter: z.record(z.unknown()).optional(),
-  locationFilter: z.record(z.unknown()).optional(),
-  stockType: stockTypeSchema,
-  operator: ruleOperatorSchema,
-  threshold: z.number(),
-  cooldownMinutes: z.number().int().nonnegative().optional(),
-  actions: z
-    .array(
-      z.object({
-        channelId: uuidSchema,
-        messageTemplate: z.string().optional(),
-      }),
-    )
-    .optional(),
-})
-
-export const updateRuleSchema = createRuleSchema.partial()
+export const createRuleSchema = z.discriminatedUnion('conditionType', [
+  // stock_level rule — requires stockType, operator, threshold
+  z.object({
+    conditionType: z.literal('stock_level'),
+    name: z.string().min(1).max(255),
+    description: z.string().optional(),
+    isActive: z.boolean().optional(),
+    variantFilter: z.record(z.unknown()).optional(),
+    locationFilter: z.record(z.unknown()).optional(),
+    batchFilter: z.record(z.unknown()).optional(),
+    stockType: stockTypeKeySchema,
+    operator: ruleOperatorSchema,
+    threshold: z.number(),
+    cooldownMinutes: z.number().int().nonnegative().optional(),
+    actions: z
+      .array(
+        z.object({
+          channelId: uuidSchema,
+          messageTemplate: z.string().optional(),
+          transitionToStockType: stockTypeKeySchema.optional(),
+        }),
+      )
+      .optional(),
+  }),
+  // days_until_expiry rule — requires daysThreshold
+  z.object({
+    conditionType: z.literal('days_until_expiry'),
+    name: z.string().min(1).max(255),
+    description: z.string().optional(),
+    isActive: z.boolean().optional(),
+    variantFilter: z.record(z.unknown()).optional(),
+    locationFilter: z.record(z.unknown()).optional(),
+    batchFilter: z.record(z.unknown()).optional(),
+    daysThreshold: z.number().int().nonnegative(),
+    cooldownMinutes: z.number().int().nonnegative().optional(),
+    actions: z
+      .array(
+        z.object({
+          channelId: uuidSchema,
+          messageTemplate: z.string().optional(),
+          transitionToStockType: stockTypeKeySchema.optional(),
+        }),
+      )
+      .optional(),
+  }),
+  // stock_type_transition rule — no threshold required
+  z.object({
+    conditionType: z.literal('stock_type_transition'),
+    name: z.string().min(1).max(255),
+    description: z.string().optional(),
+    isActive: z.boolean().optional(),
+    variantFilter: z.record(z.unknown()).optional(),
+    locationFilter: z.record(z.unknown()).optional(),
+    batchFilter: z.record(z.unknown()).optional(),
+    stockType: stockTypeKeySchema.optional(),
+    cooldownMinutes: z.number().int().nonnegative().optional(),
+    actions: z
+      .array(
+        z.object({
+          channelId: uuidSchema,
+          messageTemplate: z.string().optional(),
+          transitionToStockType: stockTypeKeySchema,
+        }),
+      )
+      .optional(),
+  }),
+])
 
 export const createNotificationChannelSchema = z.object({
   name: z.string().min(1).max(255),
@@ -318,12 +501,27 @@ export const createNotificationChannelSchema = z.object({
 export const updateNotificationChannelSchema = createNotificationChannelSchema.partial()
 
 export const upsertStockLevelSchema = z.object({
-  productId: uuidSchema,
+  variantId: uuidSchema,
   locationId: uuidSchema,
-  stockType: stockTypeSchema,
+  storageLocationId: uuidSchema.optional(),
+  batchId: uuidSchema.optional(),
+  stockType: stockTypeKeySchema,
   quantity: z.number().nonnegative(),
   source: z.string().optional(),
 })
+
+export const createVariantLocationConfigSchema = z.object({
+  variantId: uuidSchema,
+  locationId: uuidSchema,
+  batchRequired: z.boolean().optional(),
+  exportStrategy: exportStrategySchema.optional(),
+  dummyBatchNumber: z.string().optional(),
+  dummyExpiryOffsetDays: z.number().int().nonnegative().optional(),
+})
+
+export const updateVariantLocationConfigSchema = createVariantLocationConfigSchema
+  .omit({ variantId: true, locationId: true })
+  .partial()
 
 export const inviteUserSchema = z.object({
   email: z.string().email(),
@@ -345,22 +543,41 @@ export const updateTenantSchema = z.object({
     .optional(),
 })
 
+export const createStockTypeDefinitionSchema = z.object({
+  key: stockTypeKeySchema,
+  label: z.string().min(1).max(100),
+  description: z.string().optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
+  sortOrder: z.number().int().nonnegative().optional(),
+})
+
 // ---------------------------------------------------------------------------
-// Inferred types from schemas (useful for form validation on the frontend)
+// Inferred types from mutation schemas
 // ---------------------------------------------------------------------------
 
 export type CreateProductInput = z.infer<typeof createProductSchema>
 export type UpdateProductInput = z.infer<typeof updateProductSchema>
+export type CreateProductVariantInput = z.infer<typeof createProductVariantSchema>
+export type UpdateProductVariantInput = z.infer<typeof updateProductVariantSchema>
+export type CreateBatchInput = z.infer<typeof createBatchSchema>
+export type UpdateBatchInput = z.infer<typeof updateBatchSchema>
 export type CreateLocationInput = z.infer<typeof createLocationSchema>
 export type UpdateLocationInput = z.infer<typeof updateLocationSchema>
+export type CreateStorageLocationInput = z.infer<typeof createStorageLocationSchema>
+export type UpdateStorageLocationInput = z.infer<typeof updateStorageLocationSchema>
 export type CreateIntegrationInput = z.infer<typeof createIntegrationSchema>
 export type UpdateIntegrationInput = z.infer<typeof updateIntegrationSchema>
 export type CreateRuleInput = z.infer<typeof createRuleSchema>
-export type UpdateRuleInput = z.infer<typeof updateRuleSchema>
 export type CreateNotificationChannelInput = z.infer<typeof createNotificationChannelSchema>
 export type UpdateNotificationChannelInput = z.infer<typeof updateNotificationChannelSchema>
 export type UpsertStockLevelInput = z.infer<typeof upsertStockLevelSchema>
+export type CreateVariantLocationConfigInput = z.infer<typeof createVariantLocationConfigSchema>
+export type UpdateVariantLocationConfigInput = z.infer<typeof updateVariantLocationConfigSchema>
 export type InviteUserInput = z.infer<typeof inviteUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>
+export type CreateStockTypeDefinitionInput = z.infer<typeof createStockTypeDefinitionSchema>
 export type PaginationParams = z.infer<typeof paginationSchema>

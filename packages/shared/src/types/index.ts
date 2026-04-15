@@ -1,15 +1,17 @@
 import type {
   AlertStatus,
+  ConditionType,
   DeliveryStatus,
+  ExportStrategy,
   IntegrationStatus,
   IntegrationType,
   LocationType,
+  MovementType,
   NotificationChannelType,
   Plan,
   PlanStatus,
   RuleOperator,
-  StockChangeReason,
-  StockType,
+  StorageLocationType,
   UserRole,
 } from '../constants/index.js'
 
@@ -26,6 +28,7 @@ export interface Tenant {
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   trialEndsAt: string | null
+  bundleTracking: boolean
   createdAt: string
   updatedAt: string
   deletedAt: string | null
@@ -41,18 +44,72 @@ export interface User {
   updatedAt: string
 }
 
+export interface StockTypeDefinition {
+  id: string
+  tenantId: string | null // null = system default
+  key: string
+  label: string
+  description: string | null
+  isSystem: boolean
+  color: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+// Product — master data record. SKU lives on ProductVariant.
+// A simple product always has exactly one auto-created default variant.
 export interface Product {
   id: string
   tenantId: string
-  sku: string
   name: string
   description: string | null
-  barcode: string | null
+  category: string | null
   unit: string
+  batchTracking: boolean
   metadata: Record<string, unknown>
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+}
+
+// ProductVariant — SKU level (size, color, etc.)
+export interface ProductVariant {
+  id: string
+  tenantId: string
+  productId: string
+  sku: string
+  name: string | null // null for single-variant products
+  barcode: string | null
+  attributes: Record<string, unknown>
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+// ProductBundle — which variants make up a bundle and in what quantity.
+// Business logic deferred to Phase 3; controlled by tenants.bundleTracking.
+export interface ProductBundle {
+  id: string
+  tenantId: string
+  bundleVariantId: string
+  componentVariantId: string
+  quantity: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Batch {
+  id: string
+  tenantId: string
+  productId: string
+  batchNumber: string
+  expiryDate: string | null // ISO date string (YYYY-MM-DD)
+  manufacturedDate: string | null // ISO date string
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Location {
@@ -61,18 +118,35 @@ export interface Location {
   name: string
   type: LocationType
   integrationId: string | null
+  binTrackingEnabled: boolean
   address: Record<string, unknown>
   createdAt: string
   updatedAt: string
   deletedAt: string | null
 }
 
+export interface StorageLocation {
+  id: string
+  tenantId: string
+  locationId: string
+  name: string
+  type: StorageLocationType
+  trackInventory: boolean
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+// StockLevel — current quantity. Uniqueness enforced by COALESCE index in DB.
 export interface StockLevel {
   id: string
   tenantId: string
-  productId: string
+  variantId: string
   locationId: string
-  stockType: StockType
+  storageLocationId: string | null
+  batchId: string | null
+  stockType: string // references stock_type_definitions.key
   quantity: number
   lastSyncedAt: string | null
   source: string | null
@@ -80,15 +154,24 @@ export interface StockLevel {
   updatedAt: string
 }
 
-export interface StockHistory {
+// StockMovement — append-only audit record for every stock change
+export interface StockMovement {
   id: string
   tenantId: string
-  productId: string
+  variantId: string
   locationId: string
-  stockType: StockType
-  quantity: number
-  delta: number | null
-  reason: StockChangeReason | null
+  storageLocationId: string | null
+  batchId: string | null
+  stockType: string
+  quantityBefore: number
+  quantityAfter: number
+  delta: number
+  movementType: MovementType
+  reason: string | null
+  referenceType: string | null
+  referenceId: string | null
+  source: string | null
+  createdBy: string | null
   createdAt: string
 }
 
@@ -115,11 +198,14 @@ export interface Rule {
   name: string
   description: string | null
   isActive: boolean
-  productFilter: Record<string, unknown>
+  variantFilter: Record<string, unknown>
   locationFilter: Record<string, unknown>
-  stockType: StockType
-  operator: RuleOperator
-  threshold: number
+  batchFilter: Record<string, unknown>
+  conditionType: ConditionType
+  stockType: string | null // required for stock_level condition
+  operator: RuleOperator | null // required for stock_level condition
+  threshold: number | null // required for stock_level condition
+  daysThreshold: number | null // required for days_until_expiry condition
   cooldownMinutes: number
   lastTriggeredAt: string | null
   createdAt: string
@@ -133,6 +219,8 @@ export interface RuleAction {
   ruleId: string
   channelId: string
   messageTemplate: string | null
+  // For stock_type_transition rules: auto-reclassify stock to this type
+  transitionToStockType: string | null
   createdAt: string
   updatedAt: string
 }
@@ -153,14 +241,28 @@ export interface Alert {
   id: string
   tenantId: string
   ruleId: string
-  productId: string
+  variantId: string
   locationId: string
-  triggeredQuantity: number | null
+  batchId: string | null
+  triggeredValue: number | null // quantity or days_until_expiry
   threshold: number | null
   status: AlertStatus
   acknowledgedBy: string | null
   acknowledgedAt: string | null
   createdAt: string
+}
+
+export interface VariantLocationConfig {
+  id: string
+  tenantId: string
+  variantId: string
+  locationId: string
+  batchRequired: boolean
+  exportStrategy: ExportStrategy
+  dummyBatchNumber: string | null
+  dummyExpiryOffsetDays: number | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface NotificationDelivery {
@@ -239,14 +341,19 @@ export interface ApiErrorResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Integration connector interface (shared between API and connector packages)
+// Integration connector interface
 // ---------------------------------------------------------------------------
 
+// StockData returned by connector.fetchStockLevels() — stock type is a string
+// validated against stock_type_definitions.key at runtime, not a fixed enum.
 export interface StockData {
   sku: string
   locationName: string
-  stockType: StockType
+  stockType: string
   quantity: number
+  batchNumber?: string
+  expiryDate?: string // ISO date string (YYYY-MM-DD)
+  storageLocation?: string // bin/shelf name
 }
 
 export interface AbstractConnector {
@@ -259,4 +366,3 @@ export interface AbstractConnector {
   fetchProducts?(): Promise<Array<{ sku: string; name: string }>>
   parseWebhook?(payload: unknown, signature: string): Promise<StockData[] | null>
 }
-
