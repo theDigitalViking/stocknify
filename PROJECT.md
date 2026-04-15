@@ -918,13 +918,92 @@ NEXT_PUBLIC_SENTRY_DSN=https://...
 
 ---
 
-## 14. Known Constraints & Open Decisions
+## 14. Internationalisation (i18n)
+
+### Supported Locales
+
+- `en` — English (default, fallback)
+- `de` — German
+- Future: `fr`, `it`, `es` (architecture must support adding new locales without schema changes)
+
+### Library
+
+**`next-intl`** — built specifically for Next.js App Router, supports Server Components
+natively, minimal overhead. Do not use `i18next` or `react-i18next`.
+
+### Locale Detection & Storage
+
+1. **Auto-detect** from `Accept-Language` header in Next.js middleware on first visit
+2. **Fallback** to `en` if browser language is not supported
+3. **User preference** stored as `locale` column on the `users` table (VARCHAR(10), e.g. `'en'`, `'de'`)
+4. Stored preference takes priority over browser detection on subsequent visits
+5. User can change locale in Settings → Account — updates via `PATCH /users/:id`
+
+### URL Structure
+
+Locale is **not** in the URL path. Routing stays clean (`/stock`, `/rules`, etc.).
+The locale is resolved server-side from the user's stored preference or browser header.
+This avoids breaking links when a user switches language.
+
+### Translation Files
+
+Stored in `apps/web/messages/` — one JSON file per locale:
+
+```
+apps/web/messages/
+  en.json
+  de.json
+```
+
+All UI strings go through `next-intl` — no hardcoded English strings in components.
+Use namespaced keys: `{ "stock": { "title": "Inventory" }, "rules": { "title": "Rules" } }`
+
+### Notification Templates (i18n)
+
+Default notification message templates are stored per locale in a
+`notification_templates` table. When a rule fires, the system selects the template
+matching the tenant's primary locale (defaulting to `en`).
+
+Users can override any default template or create custom templates.
+The `{{variable}}` substitution system applies to all templates regardless of locale.
+
+```sql
+-- notification_templates table (add to schema)
+notification_templates
+  id UUID PK
+  tenant_id UUID FK -> tenants (nullable — null = system default)
+  rule_action_id UUID FK -> rule_actions (nullable — null = applies to all)
+  locale VARCHAR(10) NOT NULL    -- 'en' | 'de' | 'fr' | 'it' | 'es'
+  channel_type TEXT NOT NULL     -- email | slack | webhook | sms | in_app
+  subject TEXT                   -- for email only
+  body TEXT NOT NULL             -- with {{variable}} placeholders
+  is_system BOOLEAN NOT NULL DEFAULT false
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+  UNIQUE(tenant_id, locale, channel_type, rule_action_id)
+```
+
+System defaults are seeded for `en` and `de` at startup.
+
+### users Table Addition
+
+Add `locale VARCHAR(10) NOT NULL DEFAULT 'en'` to the `users` table.
+This requires a new Prisma migration.
+
+---
+
+## 15. Known Constraints & Open Decisions
 
 ### Open
 - [ ] White-label offering for fulfillers?
 - [ ] Magento connector priority?
 - [ ] Stock history aggregation strategy for older data?
 - [ ] Public API + API keys for enterprise customers (Phase 2)
+- [ ] Add `deletedAt TIMESTAMPTZ` to `users` table (currently hard-deleted)
+- [ ] Add `deletedAt TIMESTAMPTZ` to `stock_type_definitions` table (currently hard-deleted)
+- [ ] GET /stock: replace in-memory grouping with DB-level pagination at scale (current cap: 10k rows, TODO comment in code)
+- [x] Configure Supabase webhook: Database → Webhooks → auth-user-created → POST /auth/webhook ✅
+- [ ] Redis Rate-Limiting wieder auf Redis umstellen (aktuell in-memory) sobald Upstash-URL verifiziert
 
 ### Intentional MVP Constraints
 - EUR only (no multi-currency)
