@@ -48,5 +48,8 @@ coverage/
 # Docker
 *.dockerignore
 
+# Prompts (AI coding agent prompts — not for version control)
+prompts/
+
 # Misc
 .cache/

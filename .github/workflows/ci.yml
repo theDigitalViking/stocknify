@@ -24,8 +24,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,5 +49,5 @@ jobs:
           # Provide stub values so @t3-oss/env-nextjs doesn't fail during build
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
-          NEXT_PUBLIC_API_URL: https://api.stocknify.io
+          NEXT_PUBLIC_API_URL: https://api.stocknify.app
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder

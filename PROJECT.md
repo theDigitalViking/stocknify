@@ -2,6 +2,7 @@
 
 > This document is the single source of truth for all development decisions.
 > Every coding agent session starts with this document as context.
+> For frontend work, also read DESIGN_SYSTEM.md before writing any UI code.
 
 ---
 
