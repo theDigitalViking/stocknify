@@ -7,6 +7,11 @@ import { config } from '../config.js'
 export const redis = new Redis(config.REDIS_URL, {
   maxRetriesPerRequest: null, // Required by BullMQ
   enableReadyCheck: false,
+  lazyConnect: true,          // Don't connect immediately on startup
+  retryStrategy: (times) => {
+    // Exponential backoff, max 30s between retries
+    return Math.min(times * 1000, 30000)
+  },
 })
 
 redis.on('error', (err: Error) => {

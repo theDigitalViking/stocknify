@@ -18,7 +18,7 @@ export async function registerPlugins(app: FastifyInstance): Promise<void> {
   await app.register(cors, {
     origin:
       config.NODE_ENV === 'production'
-        ? ['https://app.stocknify.io', 'https://staging.stocknify.io']
+        ? ['https://app.stocknify.app', 'https://staging.stocknify.app']
         : true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
@@ -30,6 +30,7 @@ export async function registerPlugins(app: FastifyInstance): Promise<void> {
     max: 100,
     timeWindow: '1 minute',
     redis,
+    allowList: ['/v1/health'],
     keyGenerator: (request) => {
       // Prefer tenant-level limiting once authenticated; fall back to IP
       const tenantId = (request as { tenantId?: string }).tenantId
