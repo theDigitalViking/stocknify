@@ -10,7 +10,8 @@
       "Bash(/opt/homebrew/Cellar/node@20/20.19.0_1/lib/node_modules/corepack/shims/pnpm --version)",
       "Bash(git add:*)",
       "Bash(git commit -m 'feat: finalized schema v2 — variants, batches, storage locations, stock movements:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)"
     ]
   }
 }
