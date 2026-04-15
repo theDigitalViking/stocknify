@@ -6,7 +6,6 @@ import sensible from '@fastify/sensible'
 import type { FastifyInstance } from 'fastify'
 
 import { config } from '../config.js'
-import { redis } from '../jobs/queue.js'
 
 export async function registerPlugins(app: FastifyInstance): Promise<void> {
   // Security headers
@@ -24,15 +23,14 @@ export async function registerPlugins(app: FastifyInstance): Promise<void> {
     credentials: true,
   })
 
-  // Rate limiting — 100 req/min per IP (auth routes get stricter limits in their handler)
+  // Rate limiting — 100 req/min per IP
+  // NOTE: Using in-memory store for now; switch to Redis once connection is stable
   await app.register(rateLimit, {
     global: true,
     max: 100,
     timeWindow: '1 minute',
-    redis,
-    allowList: ['/v1/health'],
+    allowList: (request) => request.url === '/v1/health',
     keyGenerator: (request) => {
-      // Prefer tenant-level limiting once authenticated; fall back to IP
       const tenantId = (request as { tenantId?: string }).tenantId
       return tenantId ?? (request.ip || 'unknown')
     },
