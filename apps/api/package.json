@@ -13,6 +13,9 @@
     "prisma": "prisma",
     "db:generate": "prisma generate --schema src/db/schema.prisma",
     "db:migrate": "prisma migrate dev --schema src/db/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema src/db/schema.prisma",
+    "db:migrate:manual": "tsx src/db/run-manual-migrations.ts",
+    "db:migrate:all": "pnpm db:deploy && pnpm db:migrate:manual",
     "db:studio": "prisma studio --schema src/db/schema.prisma"
   },
   "dependencies": {
@@ -26,10 +29,12 @@
     "bullmq": "^5.12.0",
     "fastify": "^4.28.0",
     "ioredis": "^5.4.1",
+    "pg": "^8.12.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.0",
     "prisma": "^5.16.0",
     "tsx": "^4.16.0",
     "typescript": "^5.5.0",

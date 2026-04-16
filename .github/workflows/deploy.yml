@@ -129,3 +129,9 @@ jobs:
         env:
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           # Production env vars are loaded from .env on the server by Kamal
+
+      - name: Run manual SQL migrations
+        run: |
+          pnpm --filter api db:migrate:manual
+        env:
+          DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
