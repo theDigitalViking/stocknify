@@ -16,3 +16,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_notif_tpl_tenant_global
 CREATE UNIQUE INDEX IF NOT EXISTS uq_notif_tpl_tenant_rule
   ON notification_templates (tenant_id, rule_action_id, locale, channel_type)
   WHERE tenant_id IS NOT NULL AND rule_action_id IS NOT NULL;
+
+-- Forbid the (tenant_id IS NULL, rule_action_id IS NOT NULL) combination.
+-- System-level templates (tenant_id IS NULL) are always global — they cannot
+-- be scoped to a specific rule action. This closes the uncovered uniqueness bucket.
+ALTER TABLE notification_templates
+  ADD CONSTRAINT check_system_template_no_rule_action
+  CHECK (tenant_id IS NOT NULL OR rule_action_id IS NULL);

@@ -17,11 +17,11 @@ ALTER TABLE integration_schedules
   ADD CONSTRAINT check_schedule_weekly
     CHECK (
       schedule_type != 'weekly'
-      OR (time_of_day IS NOT NULL AND weekdays IS NOT NULL AND array_length(weekdays, 1) > 0)
+      OR (time_of_day IS NOT NULL AND weekdays IS NOT NULL AND COALESCE(array_length(weekdays, 1), 0) > 0)
     ),
   ADD CONSTRAINT check_schedule_weekdays_domain
     CHECK (
       weekdays IS NULL OR weekdays <@ ARRAY[1,2,3,4,5,6,7]::integer[]
     ),
   ADD CONSTRAINT check_schedule_cron_not_empty
-    CHECK (cron_expression != '');
+    CHECK (LENGTH(BTRIM(cron_expression)) > 0);
