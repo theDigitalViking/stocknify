@@ -53,44 +53,36 @@ END $$;
 
 ALTER TABLE notification_templates ENABLE ROW LEVEL SECURITY;
 
--- SELECT: tenants can read system defaults (tenant_id IS NULL) and their own templates
+-- Clean up older per-verb policies if present (previous schema v3 iteration)
 DROP POLICY IF EXISTS notification_templates_select ON notification_templates;
-CREATE POLICY notification_templates_select ON notification_templates
-  FOR SELECT
-  USING (
-    tenant_id IS NULL
-    OR tenant_id = current_setting('app.current_tenant_id')::uuid
-  );
-
--- INSERT: tenants can only insert their own custom templates (never system defaults)
 DROP POLICY IF EXISTS notification_templates_insert ON notification_templates;
-CREATE POLICY notification_templates_insert ON notification_templates
-  FOR INSERT
-  WITH CHECK (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
-    AND is_system = false
-  );
-
--- UPDATE: tenants can only update their own non-system templates
 DROP POLICY IF EXISTS notification_templates_update ON notification_templates;
-CREATE POLICY notification_templates_update ON notification_templates
-  FOR UPDATE
+DROP POLICY IF EXISTS notification_templates_delete ON notification_templates;
+
+-- Single FOR ALL policy:
+--   USING  — tenants read system defaults (tenant_id IS NULL) and their own rows
+--   WITH CHECK — tenants can only create/update their own non-system rows, and
+--                rule_action_id (if set) must belong to the same tenant
+DROP POLICY IF EXISTS tenant_write_notification_templates ON notification_templates;
+CREATE POLICY tenant_write_notification_templates ON notification_templates
+  FOR ALL
   USING (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
-    AND is_system = false
+    tenant_id IS NULL  -- system defaults readable by all
+    OR tenant_id = current_setting('app.current_tenant_id', true)::uuid
   )
   WITH CHECK (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
-    AND is_system = false
-  );
-
--- DELETE: tenants can only delete their own non-system templates
-DROP POLICY IF EXISTS notification_templates_delete ON notification_templates;
-CREATE POLICY notification_templates_delete ON notification_templates
-  FOR DELETE
-  USING (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
-    AND is_system = false
+    -- Cannot create/update system defaults via application queries
+    is_system = false
+    AND tenant_id = current_setting('app.current_tenant_id', true)::uuid
+    -- rule_action_id must belong to same tenant (or be NULL)
+    AND (
+      rule_action_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM rule_actions
+        WHERE id = rule_action_id
+          AND tenant_id = current_setting('app.current_tenant_id', true)::uuid
+      )
+    )
   );
 
 -- ---------------------------------------------------------------------------
@@ -115,14 +107,18 @@ CREATE POLICY partners_admin_only ON partners
 
 ALTER TABLE partner_users ENABLE ROW LEVEL SECURITY;
 
+-- Clean up older policy name if present
 DROP POLICY IF EXISTS partner_users_tenant_isolation ON partner_users;
-CREATE POLICY partner_users_tenant_isolation ON partner_users
+DROP POLICY IF EXISTS partner_users_write ON partner_users;
+CREATE POLICY partner_users_write ON partner_users
+  FOR ALL
   USING (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
-    OR current_setting('app.admin_context', true) = 'true'
+    current_setting('app.admin_context', true) = 'true'
+    OR tenant_id = current_setting('app.current_tenant_id', true)::uuid
   )
   WITH CHECK (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
+    current_setting('app.admin_context', true) = 'true'
+    OR tenant_id = current_setting('app.current_tenant_id', true)::uuid
   );
 
 COMMIT;

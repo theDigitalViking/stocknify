@@ -7,8 +7,11 @@
 //   2. apps/api/src/db/sql/unique-stock-levels.sql
 //   3. apps/api/src/db/sql/rules-check-constraint.sql
 //   4. apps/api/src/db/sql/rls-policies.sql
-//   5. apps/api/src/db/sql/rls-policies-v3.sql        ← new in v3
-//   6. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
+//   5. apps/api/src/db/sql/rls-policies-v3.sql
+//   6. apps/api/src/db/sql/unique-notification-templates.sql
+//   7. apps/api/src/db/sql/schedule-check-constraints.sql
+//   8. apps/api/src/db/sql/attribute-value-tenant-guard.sql
+//   9. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
 
 generator client {
   provider = "prisma-client-js"
@@ -634,9 +637,9 @@ model ExternalReference {
   integration Integration @relation(fields: [integrationId], references: [id])
 
   // Forward lookup: our ID → external ID (one external ID per resource per integration)
-  @@unique([tenantId, integrationId, resourceType, resourceId])
-  // Reverse lookup index: external ID → our ID (for matching on sync)
-  @@index([tenantId, integrationId, resourceType, externalId])
+  @@unique([tenantId, integrationId, resourceType, resourceId], map: "external_references_forward_key")
+  // Reverse lookup: external ID → our ID (unique — one internal resource per external ID)
+  @@unique([tenantId, integrationId, resourceType, externalId], map: "external_references_reverse_key")
   @@index([tenantId])
   @@map("external_references")
 }
@@ -703,6 +706,8 @@ model IntegrationAttributeDefinition {
   values      IntegrationAttributeValue[]
 
   @@unique([tenantId, integrationId, resourceType, key])
+  // Composite unique enables composite FK from integration_attribute_values
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("integration_attribute_definitions")
 }
@@ -714,7 +719,6 @@ model IntegrationAttributeValue {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId     String   @map("tenant_id") @db.Uuid
   definitionId String   @map("definition_id") @db.Uuid
-  resourceType String   @map("resource_type") @db.Text // must match definition.resourceType
   resourceId   String   @map("resource_id") @db.Uuid   // our internal ID
   value        String?  @db.Text // always stored as text; type comes from definition
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -724,7 +728,9 @@ model IntegrationAttributeValue {
   tenant     Tenant                         @relation(fields: [tenantId], references: [id])
   definition IntegrationAttributeDefinition @relation(fields: [definitionId], references: [id])
 
-  @@unique([tenantId, definitionId, resourceType, resourceId])
+  // NOTE: Cross-tenant guard enforced in apps/api/src/db/sql/attribute-value-tenant-guard.sql
+  // resource_type is derived from definition.resource_type at query time (not duplicated here)
+  @@unique([tenantId, definitionId, resourceId])
   @@index([tenantId])
   @@map("integration_attribute_values")
 }
@@ -762,6 +768,8 @@ model CsvMappingTemplate {
 // User-friendly schedule fields are stored alongside the computed cron expression
 // so the UI can correctly reconstruct the form when editing.
 // ---------------------------------------------------------------------------
+// NOTE: CHECK constraints enforced in apps/api/src/db/sql/schedule-check-constraints.sql
+// cron_expression must always be derived server-side — never accepted from client input
 model IntegrationSchedule {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String    @map("tenant_id") @db.Uuid
@@ -822,7 +830,10 @@ model NotificationTemplate {
   tenant     Tenant?     @relation(fields: [tenantId], references: [id])
   ruleAction RuleAction? @relation(fields: [ruleActionId], references: [id])
 
-  @@unique([tenantId, locale, channelType, ruleActionId])
+  // NOTE: Uniqueness enforced by partial indexes — see:
+  // apps/api/src/db/sql/unique-notification-templates.sql
+  // Cannot use @@unique here because tenantId and ruleActionId are nullable
+  // and PostgreSQL treats NULLs as distinct in standard UNIQUE constraints.
   @@index([tenantId])
   @@map("notification_templates")
 }
