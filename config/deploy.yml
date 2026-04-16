@@ -21,8 +21,7 @@ builder:
 
 registry:
   server: ghcr.io
-  username:
-    - KAMAL_REGISTRY_USERNAME
+  username: thedigitalviking
   password:
     - KAMAL_REGISTRY_PASSWORD
 
