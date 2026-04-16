@@ -20,6 +20,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_notif_tpl_tenant_rule
 -- Forbid the (tenant_id IS NULL, rule_action_id IS NOT NULL) combination.
 -- System-level templates (tenant_id IS NULL) are always global — they cannot
 -- be scoped to a specific rule action. This closes the uncovered uniqueness bucket.
-ALTER TABLE notification_templates
-  ADD CONSTRAINT check_system_template_no_rule_action
-  CHECK (tenant_id IS NOT NULL OR rule_action_id IS NULL);
+-- Idempotent via pg_constraint lookup.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'check_system_template_no_rule_action'
+      AND conrelid = 'notification_templates'::regclass
+  ) THEN
+    ALTER TABLE notification_templates
+      ADD CONSTRAINT check_system_template_no_rule_action
+      CHECK (tenant_id IS NOT NULL OR rule_action_id IS NULL);
+  END IF;
+END;
+$$;
