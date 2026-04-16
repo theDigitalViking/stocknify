@@ -1,8 +1,7 @@
--- Enforce that required fields are present for each schedule_type.
--- Prevents drifted state between UI fields and cron_expression.
--- Idempotent: safe to re-run on a DB that already has (old or new) constraints.
+-- Atomic drop + re-add of all schedule CHECK constraints.
+-- Wrapped in a transaction so partial failure leaves the table unchanged.
+BEGIN;
 
--- Drop all constraints first (idempotent — IF EXISTS prevents errors)
 ALTER TABLE integration_schedules
   DROP CONSTRAINT IF EXISTS check_schedule_interval_minutes,
   DROP CONSTRAINT IF EXISTS check_schedule_interval_hours,
@@ -11,7 +10,6 @@ ALTER TABLE integration_schedules
   DROP CONSTRAINT IF EXISTS check_schedule_weekdays_domain,
   DROP CONSTRAINT IF EXISTS check_schedule_cron_not_empty;
 
--- Re-add with corrected logic
 ALTER TABLE integration_schedules
   ADD CONSTRAINT check_schedule_interval_minutes
     CHECK (schedule_type != 'interval_minutes' OR interval_value IS NOT NULL),
@@ -32,3 +30,5 @@ ALTER TABLE integration_schedules
     CHECK (weekdays IS NULL OR weekdays <@ ARRAY[1,2,3,4,5,6,7]::integer[]),
   ADD CONSTRAINT check_schedule_cron_not_empty
     CHECK (LENGTH(BTRIM(cron_expression)) > 0);
+
+COMMIT;
