@@ -1,4 +1,4 @@
-// Stocknify — Prisma Schema v2
+// Stocknify — Prisma Schema v3
 // Multi-tenant, shared database with Row-Level Security (RLS).
 //
 // After the initial Prisma migration, apply these manual SQL files in order
@@ -7,7 +7,8 @@
 //   2. apps/api/src/db/sql/unique-stock-levels.sql
 //   3. apps/api/src/db/sql/rules-check-constraint.sql
 //   4. apps/api/src/db/sql/rls-policies.sql
-//   5. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
+//   5. apps/api/src/db/sql/rls-policies-v3.sql        ← new in v3
+//   6. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
 
 generator client {
   provider = "prisma-client-js"
@@ -33,6 +34,12 @@ model Tenant {
   trialEndsAt          DateTime? @map("trial_ends_at") @db.Timestamptz
   // Bundle business logic deferred to Phase 3 — guarded by this flag
   bundleTracking       Boolean   @default(false) @map("bundle_tracking")
+  // Partner / Reseller relationship
+  partnerId            String?   @map("partner_id") @db.Uuid
+  billingMode          String    @default("direct") @map("billing_mode") @db.Text // 'direct' | 'via_partner'
+  discountPercent      Int       @default(0) @map("discount_percent")
+  referralCode         String?   @map("referral_code") @db.Text // code used at self-signup
+  onboardingSource     String    @default("self_signup") @map("onboarding_source") @db.Text // 'self_signup' | 'partner_invite' | 'referral'
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
@@ -54,7 +61,16 @@ model Tenant {
   notificationChannels   NotificationChannel[]
   alerts                 Alert[]
   variantLocationConfigs VariantLocationConfig[]
-  notificationDeliveries NotificationDelivery[]
+  notificationDeliveries          NotificationDelivery[]
+  partner                         Partner?                          @relation(fields: [partnerId], references: [id])
+  partnerUsers                    PartnerUser[]
+  externalReferences              ExternalReference[]
+  integrationCredentials          IntegrationCredential[]
+  integrationAttributeDefinitions IntegrationAttributeDefinition[]
+  integrationAttributeValues      IntegrationAttributeValue[]
+  csvMappingTemplates             CsvMappingTemplate[]
+  integrationSchedules            IntegrationSchedule[]
+  notificationTemplates           NotificationTemplate[]
 
   @@map("tenants")
 }
@@ -68,6 +84,7 @@ model User {
   email     String   @db.Text
   fullName  String?  @map("full_name") @db.Text
   role      String   @default("user") @db.Text // admin | user | viewer
+  locale    String   @default("en") @db.VarChar(10)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -75,6 +92,7 @@ model User {
   tenant             Tenant          @relation(fields: [tenantId], references: [id])
   acknowledgedAlerts Alert[]         @relation("AcknowledgedAlerts")
   createdMovements   StockMovement[] @relation("CreatedBy")
+  partnerUsers       PartnerUser[]
 
   @@index([tenantId])
   @@map("users")
@@ -350,13 +368,20 @@ model Integration {
   lastSyncAt          DateTime? @map("last_sync_at") @db.Timestamptz
   lastError           String?   @map("last_error") @db.Text
   syncIntervalMinutes Int       @default(15) @map("sync_interval_minutes")
+  // Product matching direction: which system is the source of truth for products
+  syncDirection       String    @default("shop_to_fulfiller") @map("sync_direction") @db.Text // 'shop_to_fulfiller' | 'fulfiller_to_shop'
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  locations Location[]
+  tenant               Tenant                           @relation(fields: [tenantId], references: [id])
+  locations            Location[]
+  // Note: named 'storedCredentials' to avoid conflict with the `credentials` JSON field above
+  storedCredentials    IntegrationCredential[]
+  schedules            IntegrationSchedule[]
+  externalReferences   ExternalReference[]
+  attributeDefinitions IntegrationAttributeDefinition[]
 
   @@index([tenantId])
   @@map("integrations")
@@ -414,9 +439,10 @@ model RuleAction {
   updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  tenant  Tenant              @relation(fields: [tenantId], references: [id])
-  rule    Rule                @relation(fields: [ruleId], references: [id])
-  channel NotificationChannel @relation(fields: [channelId], references: [id])
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  rule                  Rule                   @relation(fields: [ruleId], references: [id])
+  channel               NotificationChannel    @relation(fields: [channelId], references: [id])
+  notificationTemplates NotificationTemplate[]
 
   @@index([tenantId])
   @@index([ruleId])
@@ -525,4 +551,278 @@ model NotificationDelivery {
   @@index([tenantId])
   @@index([alertId])
   @@map("notification_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// Partner — reseller, affiliate, agency, fulfiller, or any entity that
+// brings tenants to Stocknify. Two billing modes can coexist per partner.
+// ---------------------------------------------------------------------------
+model Partner {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String    @db.Text
+  slug         String    @unique @db.VarChar(63)
+  type         String    @default("other") @db.Text // 'fulfiller' | 'erp' | 'agency' | 'freelancer' | 'merchant' | 'other'
+  contactName  String?   @map("contact_name") @db.Text
+  contactEmail String    @map("contact_email") @db.Text
+  status       String    @default("active") @db.Text // 'active' | 'suspended' | 'churned'
+  referralCode String    @unique @map("referral_code") @db.Text // unique code for bottom-up self-signup
+  // Default billing behavior (can be overridden per tenant)
+  defaultBillingMode         String @default("direct_pays") @map("default_billing_mode") @db.Text // 'partner_pays' | 'direct_pays'
+  // Discount defaults — separate rates for each billing mode
+  partnerPaysDiscountPercent Int    @default(0) @map("partner_pays_discount_percent")
+  directPaysDiscountPercent  Int    @default(0) @map("direct_pays_discount_percent")
+  // Default plan for partner customers (never trial or starter)
+  defaultPlan String @default("growth") @map("default_plan") @db.Text
+  // Stripe entities
+  stripeCustomerId          String? @map("stripe_customer_id") @db.Text          // for partner_pays aggregated billing
+  stripeCouponIdPartnerPays String? @map("stripe_coupon_id_partner_pays") @db.Text // Stripe coupon when partner bills customers
+  stripeCouponIdDirectPays  String? @map("stripe_coupon_id_direct_pays") @db.Text  // Stripe coupon when merchant pays directly (affiliate)
+  // Internal notes — never shown to partner
+  contractNotes String?  @map("contract_notes") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  tenants      Tenant[]
+  partnerUsers PartnerUser[]
+
+  @@map("partners")
+}
+
+// ---------------------------------------------------------------------------
+// PartnerUser — who can access the partner dashboard
+// ---------------------------------------------------------------------------
+model PartnerUser {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partnerId String   @map("partner_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  role      String   @default("viewer") @db.Text // 'admin' | 'viewer'
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  partner Partner @relation(fields: [partnerId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+
+  @@unique([partnerId, userId])
+  @@index([partnerId])
+  @@index([tenantId])
+  @@map("partner_users")
+}
+
+// ---------------------------------------------------------------------------
+// ExternalReference — stores external system IDs for any internal resource.
+// Polymorphic: resource_type identifies which model resource_id refers to.
+// Two indexes: forward lookup (internal → external) and reverse (external → internal).
+// ---------------------------------------------------------------------------
+model ExternalReference {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  integrationId String   @map("integration_id") @db.Uuid
+  // Polymorphic resource reference
+  resourceType  String   @map("resource_type") @db.Text // 'product_variant' | 'location' | 'storage_location' | 'batch'
+  resourceId    String   @map("resource_id") @db.Uuid   // our internal ID
+  externalId    String   @map("external_id") @db.Text   // ID in the external system
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  integration Integration @relation(fields: [integrationId], references: [id])
+
+  // Forward lookup: our ID → external ID (one external ID per resource per integration)
+  @@unique([tenantId, integrationId, resourceType, resourceId])
+  // Reverse lookup index: external ID → our ID (for matching on sync)
+  @@index([tenantId, integrationId, resourceType, externalId])
+  @@index([tenantId])
+  @@map("external_references")
+}
+
+// ---------------------------------------------------------------------------
+// IntegrationCredential — stores credentials for any integration.
+// Multiple credentials per integration are supported (e.g. API key + SFTP).
+// All sensitive fields are encrypted AES-256-GCM before storage.
+// ---------------------------------------------------------------------------
+model IntegrationCredential {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  integrationId  String    @map("integration_id") @db.Uuid
+  credentialType String    @map("credential_type") @db.Text // 'api_key' | 'sftp' | 'ftp' | 'oauth' | 'webhook' | 'basic_auth'
+  name           String    @db.Text // e.g. "Hive Production API", "Xentral SFTP Export"
+  // Credential fields — all AES-256-GCM encrypted at rest
+  host           String?   @db.Text // SFTP/FTP host
+  port           Int?               // SFTP: 22, FTP: 21
+  username       String?   @db.Text
+  password       String?   @db.Text
+  token          String?   @db.Text // API token / bearer token
+  secret         String?   @db.Text // webhook secret / API secret
+  remotePath     String?   @map("remote_path") @db.Text // SFTP/FTP directory path
+  additionalAttributes Json @default("{}") @map("additional_attributes") @db.JsonB
+  isActive       Boolean   @default(true) @map("is_active")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  integration Integration @relation(fields: [integrationId], references: [id])
+  schedules   IntegrationSchedule[]
+
+  @@index([tenantId])
+  @@index([tenantId, integrationId])
+  @@map("integration_credentials")
+}
+
+// ---------------------------------------------------------------------------
+// IntegrationAttributeDefinition — defines user-visible attributes for a
+// specific integration + resource type combination.
+// Separate from external_references (which are technical IDs).
+// ---------------------------------------------------------------------------
+model IntegrationAttributeDefinition {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  integrationId String   @map("integration_id") @db.Uuid
+  resourceType  String   @map("resource_type") @db.Text // 'product_variant' | 'location' | 'storage_location'
+  key           String   @db.Text // e.g. 'temperature_class', 'customs_tariff_number'
+  label         String   @db.Text // display name shown in UI
+  dataType      String   @map("data_type") @db.Text // 'text' | 'number' | 'boolean' | 'select'
+  options       Json?    @db.JsonB // for dataType = 'select': ["chilled", "frozen"]
+  isRequired    Boolean  @default(false) @map("is_required")
+  validationRegex String? @map("validation_regex") @db.Text
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  integration Integration @relation(fields: [integrationId], references: [id])
+  values      IntegrationAttributeValue[]
+
+  @@unique([tenantId, integrationId, resourceType, key])
+  @@index([tenantId])
+  @@map("integration_attribute_definitions")
+}
+
+// ---------------------------------------------------------------------------
+// IntegrationAttributeValue — the actual value for a specific resource
+// ---------------------------------------------------------------------------
+model IntegrationAttributeValue {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  definitionId String   @map("definition_id") @db.Uuid
+  resourceType String   @map("resource_type") @db.Text // must match definition.resourceType
+  resourceId   String   @map("resource_id") @db.Uuid   // our internal ID
+  value        String?  @db.Text // always stored as text; type comes from definition
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant     Tenant                         @relation(fields: [tenantId], references: [id])
+  definition IntegrationAttributeDefinition @relation(fields: [definitionId], references: [id])
+
+  @@unique([tenantId, definitionId, resourceType, resourceId])
+  @@index([tenantId])
+  @@map("integration_attribute_values")
+}
+
+// ---------------------------------------------------------------------------
+// CsvMappingTemplate — reusable column mapping for CSV import/export.
+// column_mappings format: [{csvColumn: "Artikel-Nr", field: "sku", required: true}]
+// ---------------------------------------------------------------------------
+model CsvMappingTemplate {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  name          String    @db.Text // e.g. "Xentral Stock Export"
+  direction     String    @db.Text // 'import' | 'export'
+  resourceType  String    @map("resource_type") @db.Text // 'products' | 'stock' | 'locations'
+  delimiter     String    @default(",") @db.VarChar(1) // ',' | ';' | tab
+  encoding      String    @default("utf-8") @db.Text
+  hasHeaderRow  Boolean   @default(true) @map("has_header_row")
+  columnMappings Json     @map("column_mappings") @db.JsonB
+  defaultValues  Json     @default("{}") @map("default_values") @db.JsonB // static values for unmapped required fields
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  schedules IntegrationSchedule[]
+
+  @@index([tenantId])
+  @@map("csv_mapping_templates")
+}
+
+// ---------------------------------------------------------------------------
+// IntegrationSchedule — automated import/export schedule for any integration.
+// Applies to all integration types, not just CSV.
+// User-friendly schedule fields are stored alongside the computed cron expression
+// so the UI can correctly reconstruct the form when editing.
+// ---------------------------------------------------------------------------
+model IntegrationSchedule {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  integrationId String    @map("integration_id") @db.Uuid
+  name          String    @db.Text // e.g. "Daily stock import at 06:00"
+  resourceType  String    @map("resource_type") @db.Text // 'products' | 'stock' | 'locations' | 'storage_locations'
+  direction     String    @db.Text // 'import' | 'export'
+  isActive      Boolean   @default(true) @map("is_active")
+  // User-friendly schedule configuration (used to rebuild the UI form)
+  scheduleType  String    @map("schedule_type") @db.Text // 'interval_minutes' | 'interval_hours' | 'daily' | 'weekly'
+  intervalValue Int?      @map("interval_value") // for interval_minutes/hours: e.g. 15 or 4
+  timeOfDay     String?   @map("time_of_day") @db.VarChar(5) // for daily/weekly: "06:30" (HH:MM)
+  weekdays      Int[]     @map("weekdays") // for weekly: [1,3,5] = Mon,Wed,Fri (ISO: 1=Mon, 7=Sun)
+  // Computed cron expression (generated from above fields, never entered by user)
+  cronExpression String   @map("cron_expression") @db.Text // e.g. "30 6 * * 1,3,5"
+  // Optional: link to CSV mapping template (for CSV integrations)
+  csvMappingTemplateId String? @map("csv_mapping_template_id") @db.Uuid
+  // Optional: which credentials to use for this schedule
+  credentialId  String?   @map("credential_id") @db.Uuid
+  // Execution history
+  lastRunAt     DateTime? @map("last_run_at") @db.Timestamptz
+  lastRunStatus String?   @map("last_run_status") @db.Text // 'success' | 'partial' | 'failed'
+  lastRunError  String?   @map("last_run_error") @db.Text
+  nextRunAt     DateTime? @map("next_run_at") @db.Timestamptz // computed from cronExpression
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  tenant             Tenant                 @relation(fields: [tenantId], references: [id])
+  integration        Integration            @relation(fields: [integrationId], references: [id])
+  csvMappingTemplate CsvMappingTemplate?    @relation(fields: [csvMappingTemplateId], references: [id])
+  credential         IntegrationCredential? @relation(fields: [credentialId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, integrationId])
+  @@map("integration_schedules")
+}
+
+// ---------------------------------------------------------------------------
+// NotificationTemplate — locale-aware message templates for rule actions.
+// System defaults (tenantId = null) are seeded at startup for 'en' and 'de'.
+// Tenants can override system defaults or create their own templates.
+// ---------------------------------------------------------------------------
+model NotificationTemplate {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String?  @map("tenant_id") @db.Uuid // null = system default
+  ruleActionId String?  @map("rule_action_id") @db.Uuid // null = global default for channel+locale
+  locale       String   @db.VarChar(10) // 'en' | 'de' | 'fr' | 'it' | 'es'
+  channelType  String   @map("channel_type") @db.Text // 'email' | 'slack' | 'webhook' | 'sms' | 'in_app'
+  subject      String?  @db.Text // email subject only
+  body         String   @db.Text // {{variable}} placeholders
+  isSystem     Boolean  @default(false) @map("is_system")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant     Tenant?     @relation(fields: [tenantId], references: [id])
+  ruleAction RuleAction? @relation(fields: [ruleActionId], references: [id])
+
+  @@unique([tenantId, locale, channelType, ruleActionId])
+  @@index([tenantId])
+  @@map("notification_templates")
 }
