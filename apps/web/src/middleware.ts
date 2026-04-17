@@ -1,14 +1,10 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
-import createIntlMiddleware from 'next-intl/middleware'
-
-import { routing } from '@/i18n/routing'
-
-const intlMiddleware = createIntlMiddleware(routing)
 
 // Protects all (dashboard) routes by verifying the Supabase session.
 // If no valid session exists, the user is redirected to /login.
-// next-intl middleware runs after auth so locale cookies are preserved on redirects.
+// next-intl is configured with localePrefix: 'never' and resolves locale
+// server-side via getRequestConfig — no middleware needed for locale handling.
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request })
 
@@ -36,6 +32,15 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
+
+  // Root route: redirect based on auth state
+  if (pathname === '/') {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    return NextResponse.redirect(new URL('/stock', request.url))
+  }
+
   const isDashboardRoute =
     pathname.startsWith('/stock') ||
     pathname.startsWith('/products') ||
@@ -51,26 +56,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(loginUrl)
   }
 
+  // Redirect authenticated users away from auth pages
   if (user && (pathname === '/login' || pathname === '/register')) {
     return NextResponse.redirect(new URL('/stock', request.url))
   }
 
-  // Root route: redirect to stock (before intl middleware to avoid 404)
-  if (pathname === '/') {
-    if (!user) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-    return NextResponse.redirect(new URL('/stock', request.url))
-  }
-
-  // Delegate to next-intl so locale detection cookies are set on the response.
-  // With `localePrefix: 'never'` this never rewrites the URL.
-  const intlResponse = intlMiddleware(request)
-  // Preserve Supabase's refreshed session cookies on top of the intl response.
-  for (const cookie of response.cookies.getAll()) {
-    intlResponse.cookies.set(cookie)
-  }
-  return intlResponse
+  return response
 }
 
 export const config = {
