@@ -104,15 +104,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * Scenario 3 (non-create event): silently ignored.
    */
   app.post('/auth/webhook', async (request, reply) => {
-    // TEMPORARY DEBUG — remove after reading the incoming headers once.
-    app.log.info(
-      {
-        headers: request.headers,
-        rawBodyPreview: (request.rawBody ?? '').slice(0, 200),
-      },
-      'WEBHOOK_DEBUG_HEADERS',
-    )
-
     // --- Signature verification (static shared secret, timing-safe compare) ---
     const signature = request.headers['x-supabase-signature']
     if (typeof signature !== 'string' || !signature) {
