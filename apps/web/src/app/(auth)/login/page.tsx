@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -13,14 +14,16 @@ import { Label } from '@/components/ui/label'
 import { signIn } from '@/lib/auth'
 
 const loginSchema = z.object({
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  email: z.string().email('emailInvalid'),
+  password: z.string().min(8, 'passwordMin'),
 })
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
 export default function LoginPage(): JSX.Element {
   const router = useRouter()
+  const t = useTranslations('auth')
+  const tErrors = useTranslations('auth.validation')
   const [serverError, setServerError] = useState<string | null>(null)
 
   const {
@@ -44,22 +47,24 @@ export default function LoginPage(): JSX.Element {
 
   return (
     <div className="bg-background rounded-md border border-border p-6 max-w-sm w-full">
-      <h2 className="text-base font-semibold mb-4">Sign in</h2>
+      <h2 className="text-base font-semibold mb-4">{t('signIn')}</h2>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
         <div>
           <Label htmlFor="email" className="mb-1 block">
-            Email
+            {t('email')}
           </Label>
           <Input id="email" type="email" autoComplete="email" {...register('email')} />
           {errors.email ? (
-            <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {tErrors(errors.email.message as 'emailInvalid')}
+            </p>
           ) : null}
         </div>
 
         <div>
           <Label htmlFor="password" className="mb-1 block">
-            Password
+            {t('password')}
           </Label>
           <Input
             id="password"
@@ -68,7 +73,9 @@ export default function LoginPage(): JSX.Element {
             {...register('password')}
           />
           {errors.password ? (
-            <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {tErrors(errors.password.message as 'passwordMin')}
+            </p>
           ) : null}
         </div>
 
@@ -79,14 +86,14 @@ export default function LoginPage(): JSX.Element {
         ) : null}
 
         <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
+          {isSubmitting ? t('signingIn') : t('signIn')}
         </Button>
       </form>
 
       <p className="text-sm text-muted-foreground text-center mt-6">
-        Don&apos;t have an account?{' '}
+        {t('noAccount')}{' '}
         <Link href="/register" className="text-brand-700 font-medium hover:underline">
-          Create one
+          {t('createOne')}
         </Link>
       </p>
     </div>

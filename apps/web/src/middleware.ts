@@ -1,8 +1,14 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
+import createIntlMiddleware from 'next-intl/middleware'
+
+import { routing } from '@/i18n/routing'
+
+const intlMiddleware = createIntlMiddleware(routing)
 
 // Protects all (dashboard) routes by verifying the Supabase session.
 // If no valid session exists, the user is redirected to /login.
+// next-intl middleware runs after auth so locale cookies are preserved on redirects.
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request })
 
@@ -45,12 +51,18 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Redirect authenticated users away from auth pages
   if (user && (pathname === '/login' || pathname === '/register')) {
     return NextResponse.redirect(new URL('/stock', request.url))
   }
 
-  return response
+  // Delegate to next-intl so locale detection cookies are set on the response.
+  // With `localePrefix: 'never'` this never rewrites the URL.
+  const intlResponse = intlMiddleware(request)
+  // Preserve Supabase's refreshed session cookies on top of the intl response.
+  for (const cookie of response.cookies.getAll()) {
+    intlResponse.cookies.set(cookie)
+  }
+  return intlResponse
 }
 
 export const config = {

@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,8 @@ interface ManualAdjustDialogProps {
 }
 
 export function ManualAdjustDialog({ row, open, onOpenChange }: ManualAdjustDialogProps): JSX.Element {
+  const t = useTranslations('stock.adjust')
+  const tCommon = useTranslations('common')
   const { data: stockTypes = [] } = useStockTypes()
   const upsert = useUpsertStock()
   const [quantities, setQuantities] = useState<Record<string, string>>({})
@@ -67,11 +70,14 @@ export function ManualAdjustDialog({ row, open, onOpenChange }: ManualAdjustDial
           reason: reason || undefined,
         })
       }
-      toast({ title: 'Stock updated', description: `${String(changes.length)} quantity change(s) saved.` })
+      toast({
+        title: t('updated'),
+        description: t('updatedDescription', { count: changes.length }),
+      })
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update stock'
-      toast({ title: 'Update failed', description: message, variant: 'destructive' })
+      const message = err instanceof Error ? err.message : t('updateFailedGeneric')
+      toast({ title: t('updateFailed'), description: message, variant: 'destructive' })
     }
   }
 
@@ -79,7 +85,7 @@ export function ManualAdjustDialog({ row, open, onOpenChange }: ManualAdjustDial
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Adjust stock — {row?.productName ?? ''}</DialogTitle>
+          <DialogTitle>{t('title', { productName: row?.productName ?? '' })}</DialogTitle>
           <DialogDescription>
             SKU {row?.sku ?? ''} · {row?.locationName ?? ''}
           </DialogDescription>
@@ -92,7 +98,7 @@ export function ManualAdjustDialog({ row, open, onOpenChange }: ManualAdjustDial
               <div key={st.key} className="flex items-center gap-3">
                 <div className="w-32 text-sm">{st.label}</div>
                 <div className="w-24 text-xs text-muted-foreground tabular-nums">
-                  was {current.toLocaleString('de-DE')}
+                  {t('was', { value: current.toLocaleString('de-DE') })}
                 </div>
                 <Input
                   type="number"
@@ -108,23 +114,36 @@ export function ManualAdjustDialog({ row, open, onOpenChange }: ManualAdjustDial
 
           <div>
             <Label htmlFor="reason" className="mb-1 block">
-              Reason (optional)
+              {t('reason')}
             </Label>
             <Textarea
               id="reason"
               value={reason}
-              onChange={(e) => { setReason(e.target.value) }}
-              placeholder="Why is this adjustment being made?"
+              onChange={(e) => {
+                setReason(e.target.value)
+              }}
+              placeholder={t('reasonPlaceholder')}
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => { onOpenChange(false) }} disabled={upsert.isPending}>
-            Cancel
+          <Button
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false)
+            }}
+            disabled={upsert.isPending}
+          >
+            {tCommon('cancel')}
           </Button>
-          <Button onClick={() => { void handleSubmit() }} disabled={upsert.isPending}>
-            {upsert.isPending ? 'Saving…' : 'Save changes'}
+          <Button
+            onClick={() => {
+              void handleSubmit()
+            }}
+            disabled={upsert.isPending}
+          >
+            {upsert.isPending ? tCommon('saving') : t('submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

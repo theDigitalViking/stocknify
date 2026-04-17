@@ -531,6 +531,7 @@ export const inviteUserSchema = z.object({
 export const updateUserSchema = z.object({
   fullName: z.string().optional(),
   role: userRoleSchema.optional(),
+  locale: z.string().min(2).max(10).optional(),
 })
 
 export const updateTenantSchema = z.object({

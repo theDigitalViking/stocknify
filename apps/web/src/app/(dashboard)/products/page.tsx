@@ -1,8 +1,10 @@
 'use client'
 
 import { formatDistanceToNow } from 'date-fns'
+import { de as deLocale } from 'date-fns/locale'
 import { CheckCircle2, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useLocale, useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { AddProductDialog } from '@/components/products/add-product-dialog'
@@ -15,6 +17,10 @@ import { Input } from '@/components/ui/input'
 import { useProducts, type ProductWithCount } from '@/lib/api/use-products'
 
 export default function ProductsPage(): JSX.Element {
+  const t = useTranslations('products')
+  const locale = useLocale()
+  const dateLocale = locale === 'de' ? deLocale : undefined
+
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [toEdit, setToEdit] = useState<ProductWithCount | null>(null)
@@ -26,7 +32,7 @@ export default function ProductsPage(): JSX.Element {
 
   const columns: ColumnDef<ProductWithCount>[] = [
     {
-      header: 'Product',
+      header: t('columns.name'),
       accessor: (row) => (
         <Link href={`/products/${row.id}`} className="text-foreground hover:underline">
           {row.name}
@@ -34,7 +40,7 @@ export default function ProductsPage(): JSX.Element {
       ),
     },
     {
-      header: 'SKU',
+      header: t('columns.sku'),
       accessor: (row) => {
         const sku = row.variants[0]?.sku
         return sku ? (
@@ -45,7 +51,7 @@ export default function ProductsPage(): JSX.Element {
       },
     },
     {
-      header: 'EAN / Barcode',
+      header: t('columns.barcode'),
       accessor: (row) => {
         const barcode = row.variants[0]?.barcode
         return barcode ? (
@@ -56,7 +62,7 @@ export default function ProductsPage(): JSX.Element {
       },
     },
     {
-      header: 'Batch',
+      header: t('columns.batch'),
       accessor: (row) =>
         row.batchTracking ? (
           <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -64,12 +70,15 @@ export default function ProductsPage(): JSX.Element {
           <span className="text-xs text-muted-foreground">—</span>
         ),
     },
-    { header: 'Unit', accessor: 'unit' },
+    { header: t('columns.unit'), accessor: 'unit' },
     {
-      header: 'Created',
+      header: t('columns.created'),
       accessor: (row) => (
         <span className="text-xs text-muted-foreground">
-          {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+          {formatDistanceToNow(new Date(row.createdAt), {
+            addSuffix: true,
+            ...(dateLocale ? { locale: dateLocale } : {}),
+          })}
         </span>
       ),
     },
@@ -81,7 +90,7 @@ export default function ProductsPage(): JSX.Element {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            aria-label={`Edit ${row.name}`}
+            aria-label={`${t('form.editTitle')}: ${row.name}`}
             onClick={() => {
               setToEdit(row)
             }}
@@ -92,7 +101,7 @@ export default function ProductsPage(): JSX.Element {
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-            aria-label={`Delete ${row.name}`}
+            aria-label={`${t('deleteConfirm.confirm')}: ${row.name}`}
             onClick={() => {
               setToDelete(row)
             }}
@@ -107,7 +116,7 @@ export default function ProductsPage(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="Products">
+      <PageHeader title={t('title')}>
         <Button
           size="sm"
           onClick={() => {
@@ -115,13 +124,13 @@ export default function ProductsPage(): JSX.Element {
           }}
         >
           <Plus className="h-4 w-4" />
-          Add product
+          {t('addProduct')}
         </Button>
       </PageHeader>
 
       <div className="px-6 py-3 border-b border-border flex items-center gap-3">
         <Input
-          placeholder="Search by name or SKU…"
+          placeholder={t('searchPlaceholder')}
           className="h-8 w-64"
           value={search}
           onChange={(e) => {
@@ -135,8 +144,8 @@ export default function ProductsPage(): JSX.Element {
         data={products}
         isLoading={isLoading}
         emptyIcon={Package}
-        emptyTitle="No products yet"
-        emptyDescription="Create your first product or connect an integration to import them."
+        emptyTitle={t('empty.title')}
+        emptyDescription={t('empty.description')}
         rowKey={(row) => row.id}
       />
 

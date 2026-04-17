@@ -37,6 +37,7 @@ export interface UpdateUserInput {
   id: string
   role?: string
   fullName?: string
+  locale?: string
 }
 
 export function useUpdateUser(): UseMutationResult<User, Error, UpdateUserInput> {

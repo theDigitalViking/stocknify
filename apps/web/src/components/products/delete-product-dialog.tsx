@@ -1,5 +1,7 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,17 +27,19 @@ export function DeleteProductDialog({
   open,
   onOpenChange,
 }: DeleteProductDialogProps): JSX.Element {
+  const t = useTranslations('products.deleteConfirm')
+  const tCommon = useTranslations('common')
   const del = useDeleteProduct()
 
   async function handleConfirm(): Promise<void> {
     if (!productId) return
     try {
       await del.mutateAsync(productId)
-      toast({ title: 'Product deleted', description: productName ?? '' })
+      toast({ title: t('deleted'), description: productName ?? '' })
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete product'
-      toast({ title: 'Delete failed', description: message, variant: 'destructive' })
+      const message = err instanceof Error ? err.message : t('deleteFailedGeneric')
+      toast({ title: t('deleteFailed'), description: message, variant: 'destructive' })
     }
   }
 
@@ -43,18 +47,27 @@ export function DeleteProductDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Delete product?</DialogTitle>
-          <DialogDescription>
-            This will soft-delete{productName ? ` "${productName}"` : ' this product'} and hide it
-            from inventory. Stock data is preserved.
-          </DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description', { name: productName ?? '' })}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { onOpenChange(false) }} disabled={del.isPending}>
-            Cancel
+          <Button
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false)
+            }}
+            disabled={del.isPending}
+          >
+            {tCommon('cancel')}
           </Button>
-          <Button variant="destructive" onClick={() => { void handleConfirm() }} disabled={del.isPending}>
-            {del.isPending ? 'Deleting…' : 'Delete'}
+          <Button
+            variant="destructive"
+            onClick={() => {
+              void handleConfirm()
+            }}
+            disabled={del.isPending}
+          >
+            {del.isPending ? tCommon('deleting') : t('confirm')}
           </Button>
         </DialogFooter>
       </DialogContent>

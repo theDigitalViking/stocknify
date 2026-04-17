@@ -1,0 +1,206 @@
+{
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "loading": "Wird geladen\u2026",
+    "noResults": "Keine Treffer",
+    "search": "Suchen\u2026",
+    "actions": "Aktionen",
+    "required": "Pflichtfeld",
+    "confirm": "Bestätigen",
+    "back": "Zurück",
+    "continue": "Weiter",
+    "skip": "Vorerst überspringen",
+    "close": "Schließen",
+    "export": "Exportieren",
+    "addNew": "Neu anlegen",
+    "viewAll": "Alle ansehen",
+    "saving": "Wird gespeichert\u2026",
+    "deleting": "Wird gelöscht\u2026",
+    "saveChanges": "Änderungen speichern"
+  },
+  "nav": {
+    "stock": "Bestand",
+    "products": "Produkte",
+    "rules": "Regeln",
+    "integrations": "Integrationen",
+    "notifications": "Benachrichtigungen",
+    "settings": "Einstellungen",
+    "signOut": "Abmelden"
+  },
+  "auth": {
+    "signIn": "Anmelden",
+    "signUp": "Konto erstellen",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "confirmPassword": "Passwort bestätigen",
+    "noAccount": "Noch kein Konto?",
+    "hasAccount": "Bereits ein Konto?",
+    "createOne": "Jetzt erstellen",
+    "checkInbox": "Bitte prüfen Sie Ihr Postfach",
+    "confirmationSent": "Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Klicken Sie auf den Link, um Ihr Konto zu aktivieren.",
+    "signingIn": "Wird angemeldet\u2026",
+    "creatingAccount": "Konto wird erstellt\u2026",
+    "validation": {
+      "emailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
+      "passwordMin": "Das Passwort muss mindestens 8 Zeichen lang sein",
+      "confirmPassword": "Bitte bestätigen Sie Ihr Passwort",
+      "passwordsMatch": "Die Passwörter stimmen nicht überein"
+    }
+  },
+  "onboarding": {
+    "step1Title": "Unternehmen einrichten",
+    "step1Description": "Erzählen Sie uns das Wichtigste. Sie können diese Angaben später in den Einstellungen ändern.",
+    "step2Title": "Integration verbinden",
+    "step2Description": "Wählen Sie den Shop oder Fulfiller, dessen Bestand Stocknify auslesen soll. Weitere Integrationen können Sie später hinzufügen.",
+    "step3Title": "Alles bereit!",
+    "step3Description": "Ihr Stocknify-Konto ist eingerichtet. Werfen wir einen Blick auf Ihren Bestand.",
+    "companyName": "Firmenname",
+    "companyNamePlaceholder": "Muster Handels GmbH",
+    "slug": "URL-Kürzel",
+    "slugPlaceholder": "muster-handel",
+    "slugHelp": "stocknify.app/{slug}",
+    "goToDashboard": "Zum Dashboard",
+    "integrationSaved": "Integration gespeichert, die Synchronisierung startet in Kürze.",
+    "connectButton": "Verbinden",
+    "connectTitle": "{name} verbinden",
+    "credentialLabel": "API-Schlüssel oder Webhook-URL",
+    "credentialPlaceholder": "Hier einfügen",
+    "credentialHelp": "Wir verwenden diese temporären Zugangsdaten nur zum Testen der Verbindung. OAuth-Flüsse folgen in einem späteren Update.",
+    "saved": "Gespeichert",
+    "skipForNow": "Vorerst überspringen",
+    "stepperCompany": "Unternehmen",
+    "stepperIntegration": "Integration",
+    "stepperDone": "Fertig",
+    "couldNotSave": "Konnte nicht gespeichert werden"
+  },
+  "stock": {
+    "title": "Bestand",
+    "addProduct": "Produkt hinzufügen",
+    "export": "Exportieren",
+    "searchPlaceholder": "SKU oder Produktname suchen\u2026",
+    "filterStockType": "Bestandsart",
+    "filterLocation": "Lagerort",
+    "typesCount": "{count, plural, one {# Art} other {# Arten}}",
+    "locationsCount": "{count, plural, one {# Lagerort} other {# Lagerorte}}",
+    "clearFilters": "Zurücksetzen",
+    "manualAdjust": "Manuell anpassen",
+    "viewMovements": "Bewegungen anzeigen",
+    "columns": {
+      "sku": "SKU",
+      "product": "Produkt",
+      "location": "Lagerort",
+      "stockType": "Bestandsart",
+      "quantity": "Menge",
+      "lastSynced": "Zuletzt synchronisiert"
+    },
+    "empty": {
+      "title": "Noch kein Bestand",
+      "description": "Verbinden Sie eine Integration, um Bestandsdaten zu synchronisieren."
+    },
+    "adjust": {
+      "title": "Bestand anpassen \u2014 {productName}",
+      "reason": "Grund (optional)",
+      "reasonPlaceholder": "Warum wird diese Anpassung vorgenommen?",
+      "was": "vorher {value}",
+      "submit": "Änderungen speichern",
+      "updated": "Bestand aktualisiert",
+      "updatedDescription": "{count, plural, one {# Mengenänderung gespeichert} other {# Mengenänderungen gespeichert}}",
+      "updateFailed": "Aktualisierung fehlgeschlagen",
+      "updateFailedGeneric": "Bestand konnte nicht aktualisiert werden"
+    }
+  },
+  "products": {
+    "title": "Produkte",
+    "addProduct": "Produkt hinzufügen",
+    "searchPlaceholder": "Nach Name oder SKU suchen\u2026",
+    "columns": {
+      "name": "Produkt",
+      "sku": "SKU",
+      "barcode": "EAN / Barcode",
+      "batch": "Charge",
+      "unit": "Einheit",
+      "created": "Angelegt"
+    },
+    "form": {
+      "addTitle": "Produkt hinzufügen",
+      "editTitle": "Produkt bearbeiten",
+      "name": "Produktname",
+      "namePlaceholder": "z. B. Recycling-Notizbuch A5",
+      "sku": "SKU",
+      "skuPlaceholder": "z. B. NB-A5-RE-01",
+      "barcode": "EAN / Barcode",
+      "barcodePlaceholder": "z. B. 4006381333931",
+      "unit": "Einheit",
+      "category": "Kategorie",
+      "categoryPlaceholder": "Optional",
+      "batchTracking": "Chargen- / MHD-Verfolgung",
+      "batchTrackingHelp": "Bestand je Charge mit Verfallsdatum verfolgen.",
+      "description": "Beschreibung",
+      "descriptionPlaceholder": "Optional",
+      "submitCreate": "Produkt anlegen",
+      "creating": "Wird angelegt\u2026",
+      "nameRequired": "Produktname ist ein Pflichtfeld",
+      "skuRequired": "SKU ist ein Pflichtfeld",
+      "barcodeRequired": "EAN / Barcode ist ein Pflichtfeld",
+      "created": "Produkt angelegt",
+      "updated": "Produkt aktualisiert",
+      "createFailed": "Anlegen fehlgeschlagen",
+      "updateFailed": "Aktualisierung fehlgeschlagen",
+      "createFailedGeneric": "Produkt konnte nicht angelegt werden",
+      "updateFailedGeneric": "Produkt konnte nicht aktualisiert werden"
+    },
+    "units": {
+      "piece": "Stück",
+      "kg": "Kilogramm (kg)",
+      "liter": "Liter",
+      "box": "Karton",
+      "pallet": "Palette"
+    },
+    "empty": {
+      "title": "Noch keine Produkte",
+      "description": "Legen Sie Ihr erstes Produkt an oder verbinden Sie eine Integration zum Import."
+    },
+    "deleteConfirm": {
+      "title": "Produkt löschen?",
+      "description": "Damit wird \u201E{name}\u201C softgelöscht und aus dem Bestand ausgeblendet. Bestandsdaten bleiben erhalten.",
+      "confirm": "Löschen",
+      "deleted": "Produkt gelöscht",
+      "deleteFailed": "Löschen fehlgeschlagen",
+      "deleteFailedGeneric": "Produkt konnte nicht gelöscht werden"
+    }
+  },
+  "locations": {
+    "title": "Lagerorte",
+    "addLocation": "Lagerort hinzufügen",
+    "types": {
+      "fulfiller": "Fulfiller",
+      "own_warehouse": "Eigenes Lager",
+      "virtual": "Virtuell"
+    }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "account": {
+      "title": "Konto",
+      "language": "Sprache",
+      "languageHelp": "Wählen Sie die Sprache der Benutzeroberfläche.",
+      "languageSaved": "Sprache aktualisiert",
+      "languageSaveFailed": "Sprache konnte nicht aktualisiert werden"
+    },
+    "company": {
+      "title": "Unternehmen",
+      "name": "Firmenname",
+      "slug": "URL-Kürzel"
+    }
+  },
+  "errors": {
+    "generic": "Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.",
+    "notFound": "Nicht gefunden.",
+    "unauthorized": "Sie sind nicht berechtigt, diese Aktion auszuführen.",
+    "validation": "Bitte prüfen Sie das Formular auf Fehler.",
+    "authCallbackFailed": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut."
+  }
+}

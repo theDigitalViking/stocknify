@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -13,18 +14,20 @@ import { signUp } from '@/lib/auth'
 
 const registerSchema = z
   .object({
-    email: z.string().email('Enter a valid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
+    email: z.string().email('emailInvalid'),
+    password: z.string().min(8, 'passwordMin'),
+    confirmPassword: z.string().min(1, 'confirmPassword'),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'Passwords do not match',
+    message: 'passwordsMatch',
     path: ['confirmPassword'],
   })
 
 type RegisterFormValues = z.infer<typeof registerSchema>
 
 export default function RegisterPage(): JSX.Element {
+  const t = useTranslations('auth')
+  const tErrors = useTranslations('auth.validation')
   const [serverError, setServerError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
@@ -49,32 +52,32 @@ export default function RegisterPage(): JSX.Element {
   if (success) {
     return (
       <div className="bg-background rounded-md border border-border p-6 text-center max-w-sm w-full">
-        <h2 className="text-base font-semibold mb-2">Check your inbox</h2>
-        <p className="text-sm text-muted-foreground">
-          We sent a confirmation email. Click the link to activate your account.
-        </p>
+        <h2 className="text-base font-semibold mb-2">{t('checkInbox')}</h2>
+        <p className="text-sm text-muted-foreground">{t('confirmationSent')}</p>
       </div>
     )
   }
 
   return (
     <div className="bg-background rounded-md border border-border p-6 max-w-sm w-full">
-      <h2 className="text-base font-semibold mb-4">Create your account</h2>
+      <h2 className="text-base font-semibold mb-4">{t('signUp')}</h2>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
         <div>
           <Label htmlFor="email" className="mb-1 block">
-            Email
+            {t('email')}
           </Label>
           <Input id="email" type="email" autoComplete="email" {...register('email')} />
           {errors.email ? (
-            <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {tErrors(errors.email.message as 'emailInvalid')}
+            </p>
           ) : null}
         </div>
 
         <div>
           <Label htmlFor="password" className="mb-1 block">
-            Password
+            {t('password')}
           </Label>
           <Input
             id="password"
@@ -83,13 +86,15 @@ export default function RegisterPage(): JSX.Element {
             {...register('password')}
           />
           {errors.password ? (
-            <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {tErrors(errors.password.message as 'passwordMin')}
+            </p>
           ) : null}
         </div>
 
         <div>
           <Label htmlFor="confirmPassword" className="mb-1 block">
-            Confirm password
+            {t('confirmPassword')}
           </Label>
           <Input
             id="confirmPassword"
@@ -98,7 +103,9 @@ export default function RegisterPage(): JSX.Element {
             {...register('confirmPassword')}
           />
           {errors.confirmPassword ? (
-            <p className="text-xs text-red-600 mt-1">{errors.confirmPassword.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {tErrors(errors.confirmPassword.message as 'confirmPassword' | 'passwordsMatch')}
+            </p>
           ) : null}
         </div>
 
@@ -109,14 +116,14 @@ export default function RegisterPage(): JSX.Element {
         ) : null}
 
         <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? 'Creating account…' : 'Create account'}
+          {isSubmitting ? t('creatingAccount') : t('signUp')}
         </Button>
       </form>
 
       <p className="text-sm text-muted-foreground text-center mt-6">
-        Already have an account?{' '}
+        {t('hasAccount')}{' '}
         <Link href="/login" className="text-brand-700 font-medium hover:underline">
-          Sign in
+          {t('signIn')}
         </Link>
       </p>
     </div>

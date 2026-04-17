@@ -6,7 +6,7 @@ import {
   inviteUserSchema,
   paginationSchema,
   updateTenantSchema,
-  userRoleSchema,
+  updateUserSchema,
 } from '@stocknify/shared'
 
 // Strip undefined values so Prisma update() is happy under exactOptionalPropertyTypes
@@ -127,7 +127,7 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // PATCH /users/:id — admin only: update role
-  app.patch('/users/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
+  app.patch('/users/:id', async (request, reply) => {
     try {
       const paramsSchema = z.object({ id: z.string().uuid() })
       const params = paramsSchema.safeParse(request.params)
@@ -136,9 +136,20 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
       }
       const { id } = params.data
 
-      const parse = z.object({ role: userRoleSchema }).safeParse(request.body)
+      const parse = updateUserSchema.safeParse(request.body)
       if (!parse.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parse.error.message } })
+      }
+
+      // Authorization: any tenant user may update their own locale/fullName.
+      // Only admins may change role or touch other users' profiles.
+      const isSelf = id === request.userId
+      const touchesRole = parse.data.role !== undefined
+      if (!isSelf && request.userRole !== 'admin') {
+        return reply.code(403).send({ error: { code: 'FORBIDDEN', message: 'Cannot modify another user' } })
+      }
+      if (touchesRole && request.userRole !== 'admin') {
+        return reply.code(403).send({ error: { code: 'FORBIDDEN', message: 'Only admins may change role' } })
       }
 
       const existing = await request.db.user.findFirst({
@@ -150,7 +161,7 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
 
       const user = await request.db.user.update({
         where: { id },
-        data: { role: parse.data.role },
+        data: omitUndefined(parse.data) as unknown as Prisma.UserUpdateInput,
       })
 
       return reply.send({ data: user })

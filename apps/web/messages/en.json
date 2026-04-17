@@ -1,0 +1,206 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading\u2026",
+    "noResults": "No results",
+    "search": "Search\u2026",
+    "actions": "Actions",
+    "required": "Required",
+    "confirm": "Confirm",
+    "back": "Back",
+    "continue": "Continue",
+    "skip": "Skip for now",
+    "close": "Close",
+    "export": "Export",
+    "addNew": "Add new",
+    "viewAll": "View all",
+    "saving": "Saving\u2026",
+    "deleting": "Deleting\u2026",
+    "saveChanges": "Save changes"
+  },
+  "nav": {
+    "stock": "Inventory",
+    "products": "Products",
+    "rules": "Rules",
+    "integrations": "Integrations",
+    "notifications": "Notifications",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "createOne": "Create one",
+    "checkInbox": "Check your inbox",
+    "confirmationSent": "We sent a confirmation email. Click the link to activate your account.",
+    "signingIn": "Signing in\u2026",
+    "creatingAccount": "Creating account\u2026",
+    "validation": {
+      "emailInvalid": "Enter a valid email address",
+      "passwordMin": "Password must be at least 8 characters",
+      "confirmPassword": "Please confirm your password",
+      "passwordsMatch": "Passwords do not match"
+    }
+  },
+  "onboarding": {
+    "step1Title": "Set up your company",
+    "step1Description": "Tell us the basics. You can change these later in Settings.",
+    "step2Title": "Connect an integration",
+    "step2Description": "Pick the shop or fulfiller you want Stocknify to read stock from. You can add more later.",
+    "step3Title": "You're all set!",
+    "step3Description": "Your Stocknify account is ready. Let's take a look at your inventory.",
+    "companyName": "Company name",
+    "companyNamePlaceholder": "Acme Trading GmbH",
+    "slug": "URL slug",
+    "slugPlaceholder": "acme-trading",
+    "slugHelp": "stocknify.app/{slug}",
+    "goToDashboard": "Go to dashboard",
+    "integrationSaved": "Integration saved, sync will begin shortly.",
+    "connectButton": "Connect",
+    "connectTitle": "Connect {name}",
+    "credentialLabel": "API key or webhook URL",
+    "credentialPlaceholder": "Paste here",
+    "credentialHelp": "We'll use this temporary credential to validate the connection. OAuth flows come in a later update.",
+    "saved": "Saved",
+    "skipForNow": "Skip for now",
+    "stepperCompany": "Company",
+    "stepperIntegration": "Integration",
+    "stepperDone": "Done",
+    "couldNotSave": "Could not save"
+  },
+  "stock": {
+    "title": "Inventory",
+    "addProduct": "Add product",
+    "export": "Export",
+    "searchPlaceholder": "Search SKU or product name\u2026",
+    "filterStockType": "Stock type",
+    "filterLocation": "Location",
+    "typesCount": "{count, plural, one {# type} other {# types}}",
+    "locationsCount": "{count, plural, one {# location} other {# locations}}",
+    "clearFilters": "Clear",
+    "manualAdjust": "Manual adjust",
+    "viewMovements": "View movements",
+    "columns": {
+      "sku": "SKU",
+      "product": "Product",
+      "location": "Location",
+      "stockType": "Stock Type",
+      "quantity": "Quantity",
+      "lastSynced": "Last synced"
+    },
+    "empty": {
+      "title": "No inventory yet",
+      "description": "Connect an integration to start syncing stock data."
+    },
+    "adjust": {
+      "title": "Adjust stock \u2014 {productName}",
+      "reason": "Reason (optional)",
+      "reasonPlaceholder": "Why is this adjustment being made?",
+      "was": "was {value}",
+      "submit": "Save changes",
+      "updated": "Stock updated",
+      "updatedDescription": "{count, plural, one {# quantity change saved} other {# quantity changes saved}}",
+      "updateFailed": "Update failed",
+      "updateFailedGeneric": "Failed to update stock"
+    }
+  },
+  "products": {
+    "title": "Products",
+    "addProduct": "Add product",
+    "searchPlaceholder": "Search by name or SKU\u2026",
+    "columns": {
+      "name": "Product",
+      "sku": "SKU",
+      "barcode": "EAN / Barcode",
+      "batch": "Batch",
+      "unit": "Unit",
+      "created": "Created"
+    },
+    "form": {
+      "addTitle": "Add product",
+      "editTitle": "Edit product",
+      "name": "Product name",
+      "namePlaceholder": "e.g. Recycled notebook A5",
+      "sku": "SKU",
+      "skuPlaceholder": "e.g. NB-A5-RE-01",
+      "barcode": "EAN / Barcode",
+      "barcodePlaceholder": "e.g. 4006381333931",
+      "unit": "Unit",
+      "category": "Category",
+      "categoryPlaceholder": "Optional",
+      "batchTracking": "Batch / expiry tracking",
+      "batchTrackingHelp": "Track stock per batch with expiry dates.",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional",
+      "submitCreate": "Create product",
+      "creating": "Creating\u2026",
+      "nameRequired": "Product name is required",
+      "skuRequired": "SKU is required",
+      "barcodeRequired": "EAN / Barcode is required",
+      "created": "Product created",
+      "updated": "Product updated",
+      "createFailed": "Create failed",
+      "updateFailed": "Update failed",
+      "createFailedGeneric": "Failed to create product",
+      "updateFailedGeneric": "Failed to update product"
+    },
+    "units": {
+      "piece": "Piece",
+      "kg": "Kilogram (kg)",
+      "liter": "Liter",
+      "box": "Box",
+      "pallet": "Pallet"
+    },
+    "empty": {
+      "title": "No products yet",
+      "description": "Create your first product or connect an integration to import them."
+    },
+    "deleteConfirm": {
+      "title": "Delete product?",
+      "description": "This will soft-delete \"{name}\" and hide it from inventory. Stock data is preserved.",
+      "confirm": "Delete",
+      "deleted": "Product deleted",
+      "deleteFailed": "Delete failed",
+      "deleteFailedGeneric": "Failed to delete product"
+    }
+  },
+  "locations": {
+    "title": "Locations",
+    "addLocation": "Add location",
+    "types": {
+      "fulfiller": "Fulfiller",
+      "own_warehouse": "Own warehouse",
+      "virtual": "Virtual"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "account": {
+      "title": "Account",
+      "language": "Language",
+      "languageHelp": "Choose the language for the interface.",
+      "languageSaved": "Language updated",
+      "languageSaveFailed": "Could not update language"
+    },
+    "company": {
+      "title": "Company",
+      "name": "Company name",
+      "slug": "URL slug"
+    }
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "notFound": "Not found.",
+    "unauthorized": "You are not authorized to perform this action.",
+    "validation": "Please check the form for errors.",
+    "authCallbackFailed": "Sign-in failed. Please try again."
+  }
+}

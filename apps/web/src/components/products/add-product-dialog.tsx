@@ -1,6 +1,7 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useTranslations } from 'next-intl'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -26,24 +27,19 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
 import { useCreateProduct } from '@/lib/api/use-products'
 
-const UNIT_OPTIONS = [
-  { value: 'piece', label: 'Piece' },
-  { value: 'kg', label: 'Kilogram (kg)' },
-  { value: 'liter', label: 'Liter' },
-  { value: 'box', label: 'Box' },
-  { value: 'pallet', label: 'Pallet' },
-]
+const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
 
 const addProductSchema = z.object({
-  name: z.string().min(1, 'Product name is required').max(500),
-  sku: z.string().min(1, 'SKU is required').max(255),
-  barcode: z.string().min(1, 'EAN / Barcode is required').max(255),
+  name: z.string().min(1, 'nameRequired').max(500),
+  sku: z.string().min(1, 'skuRequired').max(255),
+  barcode: z.string().min(1, 'barcodeRequired').max(255),
   unit: z.string().default('piece'),
   batchTracking: z.boolean().default(false),
   description: z.string().optional(),
 })
 
 type AddProductFormValues = z.infer<typeof addProductSchema>
+type FormError = 'nameRequired' | 'skuRequired' | 'barcodeRequired'
 
 interface AddProductDialogProps {
   open: boolean
@@ -51,6 +47,9 @@ interface AddProductDialogProps {
 }
 
 export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps): JSX.Element {
+  const t = useTranslations('products.form')
+  const tUnits = useTranslations('products.units')
+  const tCommon = useTranslations('common')
   const create = useCreateProduct()
 
   const {
@@ -81,12 +80,12 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
         batchTracking: values.batchTracking,
         description: values.description?.trim() || undefined,
       })
-      toast({ title: 'Product created', description: values.name })
+      toast({ title: t('created'), description: values.name })
       reset()
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create product'
-      toast({ title: 'Create failed', description: message, variant: 'destructive' })
+      const message = err instanceof Error ? err.message : t('createFailedGeneric')
+      toast({ title: t('createFailed'), description: message, variant: 'destructive' })
     }
   }
 
@@ -100,52 +99,52 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add product</DialogTitle>
+          <DialogTitle>{t('addTitle')}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <div>
             <Label htmlFor="product-name" className="mb-1 block">
-              Product name <span className="text-red-500">*</span>
+              {t('name')} <span className="text-red-500">*</span>
             </Label>
-            <Input
-              id="product-name"
-              placeholder="e.g. Recycled notebook A5"
-              {...register('name')}
-            />
-            {errors.name ? <p className="text-xs text-red-600 mt-1">{errors.name.message}</p> : null}
-          </div>
-
-          <div>
-            <Label htmlFor="product-sku" className="mb-1 block">
-              SKU <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="product-sku"
-              placeholder="e.g. NB-A5-RE-01"
-              className="font-mono"
-              {...register('sku')}
-            />
-            {errors.sku ? <p className="text-xs text-red-600 mt-1">{errors.sku.message}</p> : null}
-          </div>
-
-          <div>
-            <Label htmlFor="barcode" className="mb-1 block">
-              EAN / Barcode <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="barcode"
-              placeholder="e.g. 4006381333931"
-              className="font-mono"
-              {...register('barcode')}
-            />
-            {errors.barcode ? (
-              <p className="text-xs text-red-600 mt-1">{errors.barcode.message}</p>
+            <Input id="product-name" placeholder={t('namePlaceholder')} {...register('name')} />
+            {errors.name ? (
+              <p className="text-xs text-red-600 mt-1">{t(errors.name.message as FormError)}</p>
             ) : null}
           </div>
 
           <div>
-            <Label className="mb-1 block">Unit</Label>
+            <Label htmlFor="product-sku" className="mb-1 block">
+              {t('sku')} <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="product-sku"
+              placeholder={t('skuPlaceholder')}
+              className="font-mono"
+              {...register('sku')}
+            />
+            {errors.sku ? (
+              <p className="text-xs text-red-600 mt-1">{t(errors.sku.message as FormError)}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <Label htmlFor="barcode" className="mb-1 block">
+              {t('barcode')} <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="barcode"
+              placeholder={t('barcodePlaceholder')}
+              className="font-mono"
+              {...register('barcode')}
+            />
+            {errors.barcode ? (
+              <p className="text-xs text-red-600 mt-1">{t(errors.barcode.message as FormError)}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <Label className="mb-1 block">{t('unit')}</Label>
             <Controller
               control={control}
               name="unit"
@@ -155,9 +154,9 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {UNIT_OPTIONS.map((u) => (
-                      <SelectItem key={u.value} value={u.value}>
-                        {u.label}
+                    {UNIT_KEYS.map((u) => (
+                      <SelectItem key={u} value={u}>
+                        {tUnits(u)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -168,10 +167,8 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
 
           <div className="flex items-center justify-between">
             <div>
-              <Label className="mb-1 block">Batch / expiry tracking</Label>
-              <p className="text-xs text-muted-foreground">
-                Track stock per batch with expiry dates.
-              </p>
+              <Label className="mb-1 block">{t('batchTracking')}</Label>
+              <p className="text-xs text-muted-foreground">{t('batchTrackingHelp')}</p>
             </div>
             <Controller
               control={control}
@@ -184,11 +181,11 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
 
           <div>
             <Label htmlFor="product-description" className="mb-1 block">
-              Description
+              {t('description')}
             </Label>
             <Textarea
               id="product-description"
-              placeholder="Optional"
+              placeholder={t('descriptionPlaceholder')}
               {...register('description')}
             />
           </div>
@@ -202,10 +199,10 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
               }}
               disabled={isSubmitting}
             >
-              Cancel
+              {tCommon('cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Creating…' : 'Create product'}
+              {isSubmitting ? t('creating') : t('submitCreate')}
             </Button>
           </DialogFooter>
         </form>

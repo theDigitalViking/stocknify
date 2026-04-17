@@ -1,7 +1,9 @@
 'use client'
 
 import { formatDistanceToNow } from 'date-fns'
+import { de as deLocale } from 'date-fns/locale'
 import { MoreHorizontal, Package } from 'lucide-react'
+import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
 
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
@@ -38,13 +40,16 @@ interface FlatStockRow {
 }
 
 export default function StockPage(): JSX.Element {
+  const t = useTranslations('stock')
+  const tCommon = useTranslations('common')
+  const locale = useLocale()
+  const dateLocale = locale === 'de' ? deLocale : undefined
+
   const [search, setSearch] = useState('')
   const [selectedStockTypes, setSelectedStockTypes] = useState<string[]>([])
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [adjustRow, setAdjustRow] = useState<StockRow | null>(null)
 
-  // Search filter still goes to the backend; stock type and location are applied
-  // client-side so multiple values of each can be combined.
   const filters = useMemo(
     () => ({
       search: search || undefined,
@@ -56,8 +61,6 @@ export default function StockPage(): JSX.Element {
   const { data: stockTypes = [] } = useStockTypes()
   const { data: locations = [] } = useLocations()
 
-  // Flatten the API response into one row per (variant, location, stockType),
-  // then apply the multi-select filters in memory.
   const flatRows: FlatStockRow[] = useMemo(() => {
     const all = stockData.flatMap((item) =>
       Object.entries(item.quantities).map(([stockType, quantity]) => ({
@@ -82,17 +85,15 @@ export default function StockPage(): JSX.Element {
     })
   }, [stockData, selectedStockTypes, selectedLocations])
 
-  // Lookup aggregated row by (variant, location) for the manual-adjust dialog,
-  // which edits all stock types for a single (variant, location) together.
   const aggregatedByKey = useMemo(() => {
     const m = new Map<string, StockRow>()
     for (const item of stockData) m.set(`${item.variantId}:${item.locationId}`, item)
     return m
   }, [stockData])
 
-  const stockTypeColorByKey = useMemo(() => {
-    const m = new Map<string, string | null>()
-    for (const st of stockTypes) m.set(st.key, st.color ?? null)
+  const stockTypeByKey = useMemo(() => {
+    const m = new Map<string, { color: string | null; label: string }>()
+    for (const st of stockTypes) m.set(st.key, { color: st.color ?? null, label: st.label })
     return m
   }, [stockTypes])
 
@@ -118,31 +119,37 @@ export default function StockPage(): JSX.Element {
 
   const columns: ColumnDef<FlatStockRow>[] = [
     {
-      header: 'SKU',
+      header: t('columns.sku'),
       accessor: (row) => <span className="font-mono text-xs">{row.sku}</span>,
     },
-    { header: 'Product', accessor: 'productName' },
+    { header: t('columns.product'), accessor: 'productName' },
     {
-      header: 'Location',
+      header: t('columns.location'),
       accessor: (row) => <span className="text-sm">{row.locationName}</span>,
     },
     {
-      header: 'Stock Type',
-      accessor: (row) => (
-        <StockTypeBadge stockType={row.stockType} color={stockTypeColorByKey.get(row.stockType)} />
-      ),
+      header: t('columns.stockType'),
+      accessor: (row) => {
+        const meta = stockTypeByKey.get(row.stockType)
+        return (
+          <StockTypeBadge stockType={row.stockType} color={meta?.color} label={meta?.label} />
+        )
+      },
     },
     {
-      header: 'Quantity',
+      header: t('columns.quantity'),
       accessor: (row) => <QuantityCell quantity={row.quantity} />,
       className: 'text-right tabular-nums',
     },
     {
-      header: 'Last synced',
+      header: t('columns.lastSynced'),
       accessor: (row) =>
         row.lastSyncedAt ? (
           <span className="text-xs text-muted-foreground">
-            {formatDistanceToNow(row.lastSyncedAt, { addSuffix: true })}
+            {formatDistanceToNow(row.lastSyncedAt, {
+              addSuffix: true,
+              ...(dateLocale ? { locale: dateLocale } : {}),
+            })}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
@@ -164,9 +171,9 @@ export default function StockPage(): JSX.Element {
                 if (agg) setAdjustRow(agg)
               }}
             >
-              Manual adjust
+              {t('manualAdjust')}
             </DropdownMenuItem>
-            <DropdownMenuItem disabled>View movements</DropdownMenuItem>
+            <DropdownMenuItem disabled>{t('viewMovements')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -176,36 +183,34 @@ export default function StockPage(): JSX.Element {
 
   const stockTypeFilterLabel =
     selectedStockTypes.length === 0
-      ? 'Stock type'
-      : selectedStockTypes.length === 1
-        ? `${String(selectedStockTypes.length)} type`
-        : `${String(selectedStockTypes.length)} types`
+      ? t('filterStockType')
+      : t('typesCount', { count: selectedStockTypes.length })
 
   const locationFilterLabel = (() => {
-    if (selectedLocations.length === 0) return 'Location'
+    if (selectedLocations.length === 0) return t('filterLocation')
     if (selectedLocations.length === 1) {
       return (
         locations.find((loc) => loc.id === selectedLocations[0])?.name ??
-        '1 location'
+        t('locationsCount', { count: 1 })
       )
     }
-    return `${String(selectedLocations.length)} locations`
+    return t('locationsCount', { count: selectedLocations.length })
   })()
 
   return (
     <div>
-      <PageHeader title="Inventory">
+      <PageHeader title={t('title')}>
         <Button size="sm" variant="outline" disabled>
-          Export
+          {tCommon('export')}
         </Button>
         <Button size="sm" disabled>
-          Add product
+          {t('addProduct')}
         </Button>
       </PageHeader>
 
       <div className="px-6 py-3 border-b border-border flex items-center gap-3">
         <Input
-          placeholder="Search SKU or product name…"
+          placeholder={t('searchPlaceholder')}
           className="h-8 w-64"
           value={search}
           onChange={(e) => {
@@ -220,7 +225,7 @@ export default function StockPage(): JSX.Element {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[220px]">
-            <DropdownMenuLabel>Stock type</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('filterStockType')}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {stockTypes.map((st) => {
               const isChecked = selectedStockTypes.includes(st.key)
@@ -249,7 +254,7 @@ export default function StockPage(): JSX.Element {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[240px]">
-            <DropdownMenuLabel>Location</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('filterLocation')}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {locations.map((loc) => {
               const isChecked = selectedLocations.includes(loc.id)
@@ -272,7 +277,7 @@ export default function StockPage(): JSX.Element {
         </DropdownMenu>
 
         <Button variant="ghost" size="sm" onClick={clearFilters}>
-          Clear
+          {t('clearFilters')}
         </Button>
       </div>
 
@@ -281,8 +286,8 @@ export default function StockPage(): JSX.Element {
         data={flatRows}
         isLoading={isLoading}
         emptyIcon={Package}
-        emptyTitle="No inventory yet"
-        emptyDescription="Connect an integration to start syncing stock data."
+        emptyTitle={t('empty.title')}
+        emptyDescription={t('empty.description')}
         rowKey={(row) => row.id}
       />
 
