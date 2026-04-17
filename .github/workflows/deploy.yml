@@ -123,6 +123,26 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.KAMAL_SSH_KEY }}
 
+      - name: Create Kamal secrets file
+        run: |
+          mkdir -p .kamal
+          cat > .kamal/secrets << EOF
+          KAMAL_REGISTRY_PASSWORD=${{ secrets.GITHUB_TOKEN }}
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          DIRECT_URL=${{ secrets.DATABASE_DIRECT_URL }}
+          SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
+          SUPABASE_WEBHOOK_SECRET=${{ secrets.SUPABASE_WEBHOOK_SECRET }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          CREDENTIALS_ENCRYPTION_KEY=${{ secrets.CREDENTIALS_ENCRYPTION_KEY }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL=alerts@stocknify.app
+          SENTRY_DSN=
+          STRIPE_SECRET_KEY=placeholder
+          STRIPE_WEBHOOK_SECRET=placeholder
+          EOF
+
       - name: Deploy via Kamal
         run: kamal deploy
         working-directory: .
