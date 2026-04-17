@@ -1,11 +1,20 @@
 import crypto from 'node:crypto'
 
-import type { FastifyInstance, FastifyRequest } from 'fastify'
-
 import { type PrismaClient } from '@prisma/client'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import { config } from '../../config.js'
 import { prisma } from '../../middleware/tenant.js'
+
+// Service-role Supabase client for setting app_metadata on auth.users.
+// tenant_id + role in app_metadata end up in the signed JWT claims, which
+// authMiddleware reads on every authenticated request.
+function getSupabaseAdmin(): SupabaseClient {
+  return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -134,6 +143,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const role = user_metadata?.role ?? 'user'
 
     try {
+      // Resolve the final (tenantId, role) pair inside each scenario so we
+      // can mirror them into app_metadata after the Prisma writes complete.
+      let resolvedTenantId: string
+      let resolvedRole: string
+
       if (tenantId) {
         // Scenario 2 — invited user: create users row for the existing tenant.
         // Uses upsert because POST /users/invite may have already created the row
@@ -143,9 +157,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           create: { id, tenantId, email, role },
           update: {},
         })
+        resolvedTenantId = tenantId
+        resolvedRole = role
       } else {
         // Scenario 1 — self-signup: create a new tenant + admin user in one transaction.
-        await prisma.$transaction(async (tx) => {
+        const createdTenantId = await prisma.$transaction(async (tx) => {
           const emailPrefix = (email.split('@')[0] ?? 'user').replace(/[^a-z0-9]/gi, '')
           const displayName =
             emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1) || 'My Company'
@@ -169,7 +185,25 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
             create: { id, tenantId: tenant.id, email, role: 'admin' },
             update: {},
           })
+
+          return tenant.id
         })
+        resolvedTenantId = createdTenantId
+        resolvedRole = 'admin'
+      }
+
+      // Set app_metadata on the Supabase auth user so tenant_id + role
+      // are available in the JWT without a custom JWT hook. Non-fatal —
+      // if this fails the user exists in our DB and can re-login to retry.
+      const supabaseAdmin = getSupabaseAdmin()
+      const { error: metaError } = await supabaseAdmin.auth.admin.updateUserById(id, {
+        app_metadata: {
+          tenant_id: resolvedTenantId,
+          role: resolvedRole,
+        },
+      })
+      if (metaError) {
+        app.log.error(metaError, 'Failed to set app_metadata on user')
       }
 
       return reply.send({ data: { received: true } })

@@ -59,6 +59,9 @@ importers:
       '@stocknify/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@supabase/supabase-js':
+        specifier: ^2.45.0
+        version: 2.103.0
       bullmq:
         specifier: ^5.12.0
         version: 5.73.5
