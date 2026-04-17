@@ -20,7 +20,8 @@ import { tenantMiddleware } from '../../middleware/tenant.js'
 // POST /products requires a SKU for the auto-created default variant
 const createProductBodySchema = z.object({
   name: z.string().min(1).max(500),
-  sku: z.string().min(1).max(255), // for the default variant
+  sku: z.string().min(1).max(255),         // for the default variant
+  barcode: z.string().max(255).optional(),  // EAN/barcode for the default variant
   description: z.string().optional(),
   category: z.string().optional(),
   unit: z.string().default('piece'),
@@ -89,7 +90,7 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       if (!parse.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parse.error.message } })
       }
-      const { sku, name, description, category, unit, batchTracking, metadata } = parse.data
+      const { sku, barcode, name, description, category, unit, batchTracking, metadata } = parse.data
 
       const product = await request.db.$transaction(async (tx) => {
         const created = await tx.product.create({
@@ -108,6 +109,7 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
             tenantId: request.tenantId,
             productId: created.id,
             sku,
+            barcode: barcode ?? null,
             name: null,
             attributes: {} as Prisma.InputJsonObject,
             isActive: true,
