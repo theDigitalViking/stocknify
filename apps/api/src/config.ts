@@ -25,13 +25,13 @@ const envSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'Must be 64 hex characters (32 bytes)'),
 
-  // Stripe
-  STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
-  STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
+  // Stripe (optional until Billing phase ships)
+  STRIPE_SECRET_KEY: z.string().startsWith('sk_').optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
 
-  // Resend
-  RESEND_API_KEY: z.string().startsWith('re_'),
-  FROM_EMAIL: z.string().email().default('alerts@stocknify.io'),
+  // Resend (optional until Email phase ships)
+  RESEND_API_KEY: z.string().startsWith('re_').optional(),
+  FROM_EMAIL: z.string().email().default('alerts@stocknify.app'),
 
   // Sentry (optional — omit in local dev)
   SENTRY_DSN: z.string().url().optional(),
