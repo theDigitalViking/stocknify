@@ -43,6 +43,9 @@ export default function SettingsPage(): JSX.Element {
     setLocale(next)
     try {
       await update.mutateAsync({ id: userId, locale: next })
+      // Mirror the preference into a cookie so i18n/request.ts can resolve
+      // it without instantiating a second Supabase client per render.
+      document.cookie = `stocknify-locale=${next}; path=/; max-age=31536000; SameSite=Lax`
       toast({ title: t('account.languageSaved') })
       // Reload so server-resolved messages reflect the new preference.
       window.location.reload()
