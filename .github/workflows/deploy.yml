@@ -148,8 +148,19 @@ jobs:
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           # Production env vars are loaded from .env on the server by Kamal
 
+      - name: Setup pnpm for migrations
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js for migrations
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies for migrations
+        run: pnpm install --frozen-lockfile
+
       - name: Run manual SQL migrations
-        run: |
-          pnpm --filter api db:migrate:manual
+        run: pnpm --filter api db:migrate:manual
         env:
           DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
