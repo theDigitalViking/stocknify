@@ -2,7 +2,6 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -26,7 +25,6 @@ const registerSchema = z
 type RegisterFormValues = z.infer<typeof registerSchema>
 
 export default function RegisterPage(): JSX.Element {
-  const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
@@ -46,7 +44,6 @@ export default function RegisterPage(): JSX.Element {
       return
     }
     setSuccess(true)
-    setTimeout(() => router.push('/login'), 3000)
   }
 
   if (success) {
