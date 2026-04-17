@@ -573,6 +573,13 @@ model NotificationDelivery {
 // Incident — structured error records from jobs, API handlers, webhooks, etc.
 // Merchants see only their own incidents where is_user_visible = true.
 // Super-admin sees all incidents across all tenants.
+//
+// WRITE TRUST BOUNDARY:
+// Incidents are ONLY created by the system via service_role (BYPASSRLS).
+// Tenant-scoped connections cannot INSERT incidents — enforced by the
+// absence of an INSERT RLS policy (PostgreSQL deny-by-default with RLS).
+// READ/UPDATE for tenants: only is_user_visible = true incidents.
+// READ for super-admin: via service_role BYPASSRLS connection.
 // ---------------------------------------------------------------------------
 model Incident {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -618,8 +625,8 @@ model Incident {
 
   // Relations
   tenant            Tenant       @relation(fields: [tenantId], references: [id])
-  integration       Integration? @relation(fields: [integrationId], references: [id])
-  acknowledgedByUser User?       @relation("AcknowledgedIncidents", fields: [acknowledgedBy], references: [id])
+  integration       Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  acknowledgedByUser User?       @relation("AcknowledgedIncidents", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([tenantId, status])
