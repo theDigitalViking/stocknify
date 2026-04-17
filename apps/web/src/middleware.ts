@@ -1,13 +1,14 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
 
+// Supabase SSR middleware — official recommended pattern:
+// https://supabase.com/docs/guides/auth/server-side/nextjs
+//
+// `supabaseResponse` is re-created inside `setAll` so the freshly mutated
+// request state propagates. Always return `supabaseResponse` so refreshed
+// session cookies reach the browser.
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  // Create a mutable response we can attach cookies to
-  const response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
+  let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env['NEXT_PUBLIC_SUPABASE_URL'] ?? '',
@@ -18,24 +19,23 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
-          // Set on both request and response so session is available downstream
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
+            supabaseResponse.cookies.set(name, value, options),
           )
         },
       },
     },
   )
 
-  // IMPORTANT: always call getUser() — this refreshes the session cookie
+  // IMPORTANT: do not run any code between createServerClient and getUser().
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
 
-  // Root route: redirect based on auth state
   if (pathname === '/') {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
@@ -58,13 +58,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Redirect authenticated users away from auth pages
   if (user && (pathname === '/login' || pathname === '/register')) {
     return NextResponse.redirect(new URL('/stock', request.url))
   }
 
-  // Return the response with refreshed session cookies attached
-  return response
+  // Return the exact supabaseResponse so refreshed session cookies are preserved.
+  return supabaseResponse
 }
 
 export const config = {
