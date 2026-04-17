@@ -22,8 +22,15 @@ interface RootLayoutProps {
 }
 
 export default async function RootLayout({ children }: RootLayoutProps): Promise<JSX.Element> {
-  const locale = await getLocale()
-  const messages = await getMessages()
+  let locale = 'en'
+  let messages: Record<string, unknown> = {}
+
+  try {
+    locale = await getLocale()
+    messages = await getMessages() as Record<string, unknown>
+  } catch {
+    // getLocale/getMessages can fail on the root redirect route — fall back to defaults
+  }
 
   return (
     <html lang={locale} suppressHydrationWarning>
