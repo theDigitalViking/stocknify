@@ -36,6 +36,9 @@ const MANUAL_SQL_FILES = [
   'unique-notification-templates.sql',
   'schedule-check-constraints.sql',
   'attribute-value-tenant-guard.sql',
+  // v4 — applied after schema v4 migration
+  'rls-policies-v4.sql',
+  'incident-check-constraints.sql',
 ];
 
 async function runManualMigrations(): Promise<void> {

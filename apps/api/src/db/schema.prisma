@@ -11,7 +11,9 @@
 //   6. apps/api/src/db/sql/unique-notification-templates.sql
 //   7. apps/api/src/db/sql/schedule-check-constraints.sql
 //   8. apps/api/src/db/sql/attribute-value-tenant-guard.sql
-//   9. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
+//   9. apps/api/src/db/sql/rls-policies-v4.sql
+//  10. apps/api/src/db/sql/incident-check-constraints.sql
+//  11. apps/api/src/db/seed/stock-type-definitions.sql (seed, not migration)
 
 generator client {
   provider = "prisma-client-js"
@@ -74,6 +76,7 @@ model Tenant {
   csvMappingTemplates             CsvMappingTemplate[]
   integrationSchedules            IntegrationSchedule[]
   notificationTemplates           NotificationTemplate[]
+  incidents                       Incident[]
 
   @@map("tenants")
 }
@@ -88,6 +91,8 @@ model User {
   fullName  String?  @map("full_name") @db.Text
   role      String   @default("user") @db.Text // admin | user | viewer
   locale    String   @default("en") @db.VarChar(10)
+  // Super-admin flag — only set directly in DB, no API endpoint to self-promote
+  isSuperAdmin  Boolean   @default(false) @map("is_super_admin")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -96,6 +101,7 @@ model User {
   acknowledgedAlerts Alert[]         @relation("AcknowledgedAlerts")
   createdMovements   StockMovement[] @relation("CreatedBy")
   partnerUsers       PartnerUser[]
+  acknowledgedIncidents Incident[]   @relation("AcknowledgedIncidents")
 
   @@index([tenantId])
   @@map("users")
@@ -373,6 +379,12 @@ model Integration {
   syncIntervalMinutes Int       @default(15) @map("sync_interval_minutes")
   // Product matching direction: which system is the source of truth for products
   syncDirection       String    @default("shop_to_fulfiller") @map("sync_direction") @db.Text // 'shop_to_fulfiller' | 'fulfiller_to_shop'
+  // Health tracking — updated after every sync job
+  healthStatus          String    @default("unknown") @map("health_status") @db.Text
+  // 'healthy' | 'degraded' | 'failing' | 'paused' | 'unknown'
+  lastSuccessfulSyncAt  DateTime? @map("last_successful_sync_at") @db.Timestamptz
+  lastErrorAt           DateTime? @map("last_error_at") @db.Timestamptz
+  consecutiveFailures   Int       @default(0) @map("consecutive_failures")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
@@ -385,6 +397,7 @@ model Integration {
   schedules            IntegrationSchedule[]
   externalReferences   ExternalReference[]
   attributeDefinitions IntegrationAttributeDefinition[]
+  incidents            Incident[]
 
   @@index([tenantId])
   @@map("integrations")
@@ -554,6 +567,64 @@ model NotificationDelivery {
   @@index([tenantId])
   @@index([alertId])
   @@map("notification_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// Incident — structured error records from jobs, API handlers, webhooks, etc.
+// Merchants see only their own incidents where is_user_visible = true.
+// Super-admin sees all incidents across all tenants.
+// ---------------------------------------------------------------------------
+model Incident {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+
+  // Source of the incident
+  sourceType    String    @map("source_type") @db.Text
+  // 'job' | 'api' | 'webhook' | 'rule_engine' | 'system'
+  sourceId      String?   @map("source_id") @db.Text
+  // Job ID, route path, webhook integration ID, etc.
+  integrationId String?   @map("integration_id") @db.Uuid
+
+  // Classification
+  severity      String    @default("error") @map("severity") @db.Text
+  // 'info' | 'warning' | 'error' | 'critical'
+  code          String    @db.Text
+  // machine-readable, e.g. 'SHOPIFY_API_TIMEOUT'
+
+  // Messages — two separate fields for two audiences
+  title         String    @db.Text
+  // short human-readable summary (always set)
+  userMessage   String?   @map("user_message") @db.Text
+  // readable description for the merchant (nullable — some incidents are admin-only)
+  technicalMessage String? @map("technical_message") @db.Text
+  // technical details — only shown to super-admin
+
+  // Visibility
+  isUserVisible Boolean   @default(false) @map("is_user_visible")
+  // true = shown in merchant dashboard
+
+  // Status
+  status        String    @default("open") @map("status") @db.Text
+  // 'open' | 'acknowledged' | 'resolved'
+  acknowledgedBy String?  @map("acknowledged_by") @db.Uuid
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz
+
+  // Additional context (job payload snippet, stack trace, etc.)
+  context       Json      @default("{}") @db.JsonB
+
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant            Tenant       @relation(fields: [tenantId], references: [id])
+  integration       Integration? @relation(fields: [integrationId], references: [id])
+  acknowledgedByUser User?       @relation("AcknowledgedIncidents", fields: [acknowledgedBy], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, integrationId])
+  @@map("incidents")
 }
 
 // ---------------------------------------------------------------------------
