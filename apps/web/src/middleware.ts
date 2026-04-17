@@ -1,12 +1,13 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
 
-// Protects all (dashboard) routes by verifying the Supabase session.
-// If no valid session exists, the user is redirected to /login.
-// next-intl is configured with localePrefix: 'never' and resolves locale
-// server-side via getRequestConfig — no middleware needed for locale handling.
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  let response = NextResponse.next({ request })
+  // Create a mutable response we can attach cookies to
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
   const supabase = createServerClient(
     process.env['NEXT_PUBLIC_SUPABASE_URL'] ?? '',
@@ -17,8 +18,8 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
+          // Set on both request and response so session is available downstream
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           )
@@ -27,6 +28,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     },
   )
 
+  // IMPORTANT: always call getUser() — this refreshes the session cookie
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -61,12 +63,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(new URL('/stock', request.url))
   }
 
+  // Return the response with refreshed session cookies attached
   return response
 }
 
 export const config = {
   matcher: [
-    // Apply to all routes except Next.js internals and static files
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
