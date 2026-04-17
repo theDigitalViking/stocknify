@@ -43,22 +43,6 @@ interface SupabaseWebhookPayload {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Verify the HMAC-SHA256 webhook signature sent by Supabase.
- * Uses timing-safe comparison to prevent timing attacks.
- */
-function verifyWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
-  try {
-    const computed = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex')
-    // Supabase may send "sha256=<hex>" or just "<hex>"
-    const expected = signature.startsWith('sha256=') ? signature.slice(7) : signature
-    if (expected.length !== computed.length) return false
-    return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expected, 'hex'))
-  } catch {
-    return false
-  }
-}
-
 /** Convert an arbitrary string to a URL-safe slug (lowercase, hyphens, max 50 chars). */
 function slugify(text: string): string {
   const slug = text
@@ -93,12 +77,12 @@ async function generateUniqueSlug(base: string, db: PrismaClient): Promise<strin
 // ---------------------------------------------------------------------------
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  // Capture raw body string for HMAC signature verification — scoped to this plugin only.
+  // rawBody capture is kept for possible future HMAC-style webhooks but is
+  // NOT used by the current auth-webhook verification (which is a static
+  // shared secret compared directly, not an HMAC of the body).
   // Fastify requires decorateRequest before any route definitions.
   app.decorateRequest('rawBody', null)
 
-  // Override the JSON content type parser within this plugin scope to also preserve
-  // the raw body string, which is needed to recompute the HMAC.
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
     ;(req as FastifyRequest & { rawBody: string | null }).rawBody = body as string
     try {
@@ -112,21 +96,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * POST /auth/webhook
    *
    * Called by Supabase on auth.users INSERT events. Does NOT use auth + tenant
-   * middleware — authentication is via HMAC-SHA256 signature verification.
+   * middleware — authentication is via a static shared-secret header
+   * (`x-supabase-signature`) configured on the Supabase Database Webhook.
    *
    * Scenario 1 (no tenant_id in user_metadata): self-signup → create tenant + admin user.
    * Scenario 2 (tenant_id present): invited user → create user row in existing tenant.
    * Scenario 3 (non-create event): silently ignored.
    */
   app.post('/auth/webhook', async (request, reply) => {
-    // --- Signature verification ---
+    // --- Signature verification (static shared secret, timing-safe compare) ---
     const signature = request.headers['x-supabase-signature']
     if (typeof signature !== 'string' || !signature) {
       return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Missing webhook signature' } })
     }
 
-    const rawBody = request.rawBody ?? ''
-    if (!verifyWebhookSignature(rawBody, signature, config.SUPABASE_WEBHOOK_SECRET)) {
+    const expected = Buffer.from(config.SUPABASE_WEBHOOK_SECRET, 'utf8')
+    const received = Buffer.from(signature, 'utf8')
+    const isValid =
+      expected.length === received.length && crypto.timingSafeEqual(expected, received)
+
+    if (!isValid) {
       return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Invalid webhook signature' } })
     }
 
