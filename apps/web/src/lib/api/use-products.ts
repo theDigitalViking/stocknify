@@ -38,6 +38,7 @@ export function useProduct(id: string | null): UseQueryResult<ProductWithCount> 
 export interface CreateProductInput {
   name: string
   sku: string
+  barcode?: string
   unit?: string
   batchTracking?: boolean
   description?: string

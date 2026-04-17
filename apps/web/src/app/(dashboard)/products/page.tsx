@@ -1,27 +1,23 @@
 'use client'
 
 import { formatDistanceToNow } from 'date-fns'
-import { CheckCircle2, MoreHorizontal, Package, Plus } from 'lucide-react'
+import { CheckCircle2, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
 import { AddProductDialog } from '@/components/products/add-product-dialog'
 import { DeleteProductDialog } from '@/components/products/delete-product-dialog'
+import { EditProductDialog } from '@/components/products/edit-product-dialog'
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useProducts, type ProductWithCount } from '@/lib/api/use-products'
 
 export default function ProductsPage(): JSX.Element {
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
+  const [toEdit, setToEdit] = useState<ProductWithCount | null>(null)
   const [toDelete, setToDelete] = useState<ProductWithCount | null>(null)
 
   const { data: products = [], isLoading } = useProducts({
@@ -39,26 +35,13 @@ export default function ProductsPage(): JSX.Element {
     },
     {
       header: 'SKU',
-      accessor: (row) =>
-        row._count.variants === 1 ? (
-          <span className="font-mono text-xs text-muted-foreground">
-            {/* Single-variant SKU is not denormalized on Product — leave blank for now */}
-            —
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        ),
+      // TODO: requires default variant SKU in GET /products response
+      accessor: () => <span className="font-mono text-xs text-muted-foreground">—</span>,
     },
     {
-      header: 'Variants',
-      accessor: (row) =>
-        row._count.variants > 1 ? (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-            {row._count.variants}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        ),
+      header: 'EAN / Barcode',
+      // TODO: requires default variant barcode in GET /products response
+      accessor: () => <span className="text-xs text-muted-foreground font-mono">—</span>,
     },
     {
       header: 'Batch',
@@ -81,31 +64,44 @@ export default function ProductsPage(): JSX.Element {
     {
       header: '',
       accessor: (row) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem disabled>Edit</DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-red-600 focus:text-red-600"
-              onSelect={() => { setToDelete(row) }}
-            >
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label={`Edit ${row.name}`}
+            onClick={() => {
+              setToEdit(row)
+            }}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+            aria-label={`Delete ${row.name}`}
+            onClick={() => {
+              setToDelete(row)
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       ),
-      className: 'text-right w-12',
+      className: 'text-right w-20',
     },
   ]
 
   return (
     <div>
       <PageHeader title="Products">
-        <Button size="sm" onClick={() => { setAddOpen(true) }}>
+        <Button
+          size="sm"
+          onClick={() => {
+            setAddOpen(true)
+          }}
+        >
           <Plus className="h-4 w-4" />
           Add product
         </Button>
@@ -116,7 +112,9 @@ export default function ProductsPage(): JSX.Element {
           placeholder="Search by name or SKU…"
           className="h-8 w-64"
           value={search}
-          onChange={(e) => { setSearch(e.target.value) }}
+          onChange={(e) => {
+            setSearch(e.target.value)
+          }}
         />
       </div>
 
@@ -131,11 +129,20 @@ export default function ProductsPage(): JSX.Element {
       />
 
       <AddProductDialog open={addOpen} onOpenChange={setAddOpen} />
+      <EditProductDialog
+        product={toEdit}
+        open={toEdit !== null}
+        onOpenChange={(open) => {
+          if (!open) setToEdit(null)
+        }}
+      />
       <DeleteProductDialog
         productId={toDelete?.id ?? null}
         productName={toDelete?.name ?? null}
         open={toDelete !== null}
-        onOpenChange={(open) => { if (!open) setToDelete(null) }}
+        onOpenChange={(open) => {
+          if (!open) setToDelete(null)
+        }}
       />
     </div>
   )
