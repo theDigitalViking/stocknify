@@ -104,24 +104,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * Scenario 3 (non-create event): silently ignored.
    */
   app.post('/auth/webhook', async (request, reply) => {
-    // TEMPORARY DIAGNOSTIC — REMOVE IMMEDIATELY AFTER READING LOGS.
-    // Signature verification disabled for a single test run to capture
-    // what Supabase actually sends. Restore via prompt's Step 4.
+    // --- Signature verification (static shared secret, timing-safe compare) ---
     const signature = request.headers['x-supabase-signature']
-    const rawBody = request.rawBody ?? ''
-    app.log.info(
-      {
-        signatureHeader: signature,
-        signatureType: typeof signature,
-        signatureLength: typeof signature === 'string' ? signature.length : null,
-        bodyPreview: rawBody.slice(0, 300),
-        allHeaders: Object.keys(request.headers),
-      },
-      'WEBHOOK_DIAG',
-    )
-    // Verification intentionally skipped — restore before merge.
-    void crypto
-    void config
+    if (typeof signature !== 'string' || !signature) {
+      return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Missing webhook signature' } })
+    }
+
+    const expected = Buffer.from(config.SUPABASE_WEBHOOK_SECRET, 'utf8')
+    const received = Buffer.from(signature, 'utf8')
+    const isValid =
+      expected.length === received.length && crypto.timingSafeEqual(expected, received)
+
+    if (!isValid) {
+      return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Invalid webhook signature' } })
+    }
 
     // --- Event routing ---
     const payload = request.body as SupabaseWebhookPayload
