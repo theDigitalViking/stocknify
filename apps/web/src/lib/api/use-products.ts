@@ -1,6 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import type { Product } from '@stocknify/shared'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 
 import { apiFetch, toQueryString } from './client'
 
@@ -14,7 +19,7 @@ export interface ProductFilters {
   perPage?: number
 }
 
-export function useProducts(filters: ProductFilters = {}) {
+export function useProducts(filters: ProductFilters = {}): UseQueryResult<ProductWithCount[]> {
   const query = toQueryString({ ...filters })
   return useQuery<ProductWithCount[]>({
     queryKey: ['products', filters],
@@ -22,7 +27,7 @@ export function useProducts(filters: ProductFilters = {}) {
   })
 }
 
-export function useProduct(id: string | null) {
+export function useProduct(id: string | null): UseQueryResult<ProductWithCount> {
   return useQuery<ProductWithCount>({
     queryKey: ['products', id],
     queryFn: () => apiFetch<ProductWithCount>(`/products/${id as string}`),
@@ -38,7 +43,7 @@ export interface CreateProductInput {
   description?: string
 }
 
-export function useCreateProduct() {
+export function useCreateProduct(): UseMutationResult<Product, Error, CreateProductInput> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateProductInput) =>
@@ -58,7 +63,7 @@ export interface UpdateProductInput {
   batchTracking?: boolean
 }
 
-export function useUpdateProduct() {
+export function useUpdateProduct(): UseMutationResult<Product, Error, UpdateProductInput> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...body }: UpdateProductInput) =>
@@ -70,7 +75,7 @@ export function useUpdateProduct() {
   })
 }
 
-export function useDeleteProduct() {
+export function useDeleteProduct(): UseMutationResult<unknown, Error, string> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiFetch<unknown>(`/products/${id}`, { method: 'DELETE' }),

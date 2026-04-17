@@ -4,10 +4,10 @@ import { formatDistanceToNow } from 'date-fns'
 import { MoreHorizontal, Package } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { ManualAdjustDialog } from '@/components/stock/manual-adjust-dialog'
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { QuantityCell } from '@/components/shared/quantity-cell'
+import { ManualAdjustDialog } from '@/components/stock/manual-adjust-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

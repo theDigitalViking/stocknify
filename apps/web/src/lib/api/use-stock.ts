@@ -1,6 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import type { StockMovement } from '@stocknify/shared'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 
 import { apiFetch, toQueryString } from './client'
 
@@ -24,7 +29,7 @@ export interface StockFilters {
   perPage?: number
 }
 
-export function useStock(filters: StockFilters = {}) {
+export function useStock(filters: StockFilters = {}): UseQueryResult<StockRow[]> {
   const query = toQueryString({ ...filters })
   return useQuery<StockRow[]>({
     queryKey: ['stock', filters],
@@ -42,7 +47,9 @@ export interface StockMovementFilters {
   perPage?: number
 }
 
-export function useStockMovements(filters: StockMovementFilters = {}) {
+export function useStockMovements(
+  filters: StockMovementFilters = {},
+): UseQueryResult<StockMovement[]> {
   const query = toQueryString({ ...filters })
   return useQuery<StockMovement[]>({
     queryKey: ['stock', 'movements', filters],
@@ -60,7 +67,7 @@ export interface UpsertStockInput {
   reason?: string
 }
 
-export function useUpsertStock() {
+export function useUpsertStock(): UseMutationResult<unknown, Error, UpsertStockInput> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: UpsertStockInput) =>

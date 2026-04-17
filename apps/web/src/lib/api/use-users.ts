@@ -1,10 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import type { User } from '@stocknify/shared'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 
 import { apiFetch } from './client'
 
-export function useUsers() {
+export function useUsers(): UseQueryResult<User[]> {
   return useQuery<User[]>({
     queryKey: ['users'],
     queryFn: () => apiFetch<User[]>('/users'),
@@ -17,7 +22,7 @@ export interface InviteUserInput {
   fullName?: string
 }
 
-export function useInviteUser() {
+export function useInviteUser(): UseMutationResult<User, Error, InviteUserInput> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: InviteUserInput) =>
@@ -34,7 +39,7 @@ export interface UpdateUserInput {
   fullName?: string
 }
 
-export function useUpdateUser() {
+export function useUpdateUser(): UseMutationResult<User, Error, UpdateUserInput> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...body }: UpdateUserInput) =>

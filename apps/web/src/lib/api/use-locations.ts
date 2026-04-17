@@ -1,10 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import type { Location } from '@stocknify/shared'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 
 import { apiFetch } from './client'
 
-export function useLocations() {
+export function useLocations(): UseQueryResult<Location[]> {
   return useQuery<Location[]>({
     queryKey: ['locations'],
     queryFn: () => apiFetch<Location[]>('/locations'),
@@ -18,7 +23,7 @@ export interface CreateLocationInput {
   binTrackingEnabled?: boolean
 }
 
-export function useCreateLocation() {
+export function useCreateLocation(): UseMutationResult<Location, Error, CreateLocationInput> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateLocationInput) =>
