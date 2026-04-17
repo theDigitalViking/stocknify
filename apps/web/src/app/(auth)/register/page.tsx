@@ -7,6 +7,9 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { signUp } from '@/lib/auth'
 
 const registerSchema = z
@@ -43,15 +46,14 @@ export default function RegisterPage(): JSX.Element {
       return
     }
     setSuccess(true)
-    // Supabase sends a confirmation email — redirect after a short delay
     setTimeout(() => router.push('/login'), 3000)
   }
 
   if (success) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-border p-8 text-center">
-        <h2 className="text-xl font-semibold mb-3">Check your inbox</h2>
-        <p className="text-muted-foreground">
+      <div className="bg-background rounded-md border border-border p-6 text-center max-w-sm w-full">
+        <h2 className="text-base font-semibold mb-2">Check your inbox</h2>
+        <p className="text-sm text-muted-foreground">
           We sent a confirmation email. Click the link to activate your account.
         </p>
       </div>
@@ -59,76 +61,64 @@ export default function RegisterPage(): JSX.Element {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-border p-8">
-      <h2 className="text-2xl font-semibold mb-6">Create your account</h2>
+    <div className="bg-background rounded-md border border-border p-6 max-w-sm w-full">
+      <h2 className="text-base font-semibold mb-4">Create your account</h2>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium mb-1">
+          <Label htmlFor="email" className="mb-1 block">
             Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            {...register('email')}
-          />
-          {errors.email && (
-            <p className="text-destructive text-xs mt-1">{errors.email.message}</p>
-          )}
+          </Label>
+          <Input id="email" type="email" autoComplete="email" {...register('email')} />
+          {errors.email ? (
+            <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>
+          ) : null}
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium mb-1">
+          <Label htmlFor="password" className="mb-1 block">
             Password
-          </label>
-          <input
+          </Label>
+          <Input
             id="password"
             type="password"
             autoComplete="new-password"
-            className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             {...register('password')}
           />
-          {errors.password && (
-            <p className="text-destructive text-xs mt-1">{errors.password.message}</p>
-          )}
+          {errors.password ? (
+            <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>
+          ) : null}
         </div>
 
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-medium mb-1">
+          <Label htmlFor="confirmPassword" className="mb-1 block">
             Confirm password
-          </label>
-          <input
+          </Label>
+          <Input
             id="confirmPassword"
             type="password"
             autoComplete="new-password"
-            className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             {...register('confirmPassword')}
           />
-          {errors.confirmPassword && (
-            <p className="text-destructive text-xs mt-1">{errors.confirmPassword.message}</p>
-          )}
+          {errors.confirmPassword ? (
+            <p className="text-xs text-red-600 mt-1">{errors.confirmPassword.message}</p>
+          ) : null}
         </div>
 
-        {serverError && (
-          <p className="text-destructive text-sm bg-destructive/10 rounded-md px-3 py-2">
+        {serverError ? (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
             {serverError}
           </p>
-        )}
+        ) : null}
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-medium rounded-md py-2 px-4 transition-colors"
-        >
+        <Button type="submit" disabled={isSubmitting} className="w-full">
           {isSubmitting ? 'Creating account…' : 'Create account'}
-        </button>
+        </Button>
       </form>
 
       <p className="text-sm text-muted-foreground text-center mt-6">
         Already have an account?{' '}
-        <Link href="/login" className="text-brand-600 hover:underline font-medium">
+        <Link href="/login" className="text-brand-700 font-medium hover:underline">
           Sign in
         </Link>
       </p>

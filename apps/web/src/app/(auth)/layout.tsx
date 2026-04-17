@@ -1,3 +1,4 @@
+import { Warehouse } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 interface AuthLayoutProps {
@@ -6,14 +7,12 @@ interface AuthLayoutProps {
 
 export default function AuthLayout({ children }: AuthLayoutProps): JSX.Element {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md px-4">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-brand-600">Stocknify</h1>
-          <p className="text-muted-foreground mt-1">Inventory intelligence for modern merchants</p>
-        </div>
-        {children}
+    <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 px-4">
+      <div className="mb-8 flex items-center gap-2">
+        <Warehouse className="h-5 w-5 text-brand-600" />
+        <span className="text-sm font-semibold">Stocknify</span>
       </div>
+      {children}
     </div>
   )
 }

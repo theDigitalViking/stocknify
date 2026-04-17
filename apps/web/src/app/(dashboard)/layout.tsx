@@ -10,9 +10,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps): JSX
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="container max-w-7xl mx-auto px-6 py-8">{children}</div>
-      </main>
+      <main className="flex-1 overflow-y-auto min-w-0">{children}</main>
     </div>
   )
 }
