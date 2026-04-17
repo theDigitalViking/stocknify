@@ -26,14 +26,19 @@ declare module 'fastify' {
   }
 }
 
+// Supabase Database Webhook envelope (auth.users INSERT/UPDATE/DELETE).
+// See RESULT_LIVE_LOGS.md for the captured payload that motivated this shape.
 interface SupabaseWebhookPayload {
-  type: 'user.created' | 'user.updated' | 'user.deleted' | string
+  type: string // 'INSERT' | 'UPDATE' | 'DELETE'
+  table: string // 'users'
+  schema: string // 'auth'
   record: {
     id: string
     email: string
-    user_metadata?: {
+    role: string // Postgres role (usually '' or 'authenticated') — NOT our app role
+    raw_user_meta_data?: {
       tenant_id?: string
-      role?: string
+      role?: string // our app role (set by the invite flow)
     }
   }
 }
@@ -122,14 +127,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     // --- Event routing ---
     const payload = request.body as SupabaseWebhookPayload
 
-    // Scenario 3: ignore everything except user.created
-    if (payload.type !== 'user.created') {
+    // Only handle new user inserts in the auth schema.
+    if (payload.type !== 'INSERT' || payload.table !== 'users' || payload.schema !== 'auth') {
       return reply.send({ data: { received: true } })
     }
 
-    const { id, email, user_metadata } = payload.record
-    const tenantId = user_metadata?.tenant_id
-    const role = user_metadata?.role ?? 'user'
+    const { id, email, raw_user_meta_data } = payload.record
+    const tenantId = raw_user_meta_data?.tenant_id
+    const role = raw_user_meta_data?.role ?? 'user'
 
     try {
       // Resolve the final (tenantId, role) pair inside each scenario so we
