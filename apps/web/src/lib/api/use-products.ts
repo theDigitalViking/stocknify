@@ -9,8 +9,15 @@ import {
 
 import { apiFetch, toQueryString } from './client'
 
+export interface DefaultVariant {
+  id: string
+  sku: string
+  barcode: string | null
+}
+
 export interface ProductWithCount extends Product {
   _count: { variants: number }
+  variants: DefaultVariant[] // first variant only — `take: 1` in backend
 }
 
 export interface ProductFilters {
@@ -62,6 +69,7 @@ export interface UpdateProductInput {
   category?: string
   unit?: string
   batchTracking?: boolean
+  barcode?: string
 }
 
 export function useUpdateProduct(): UseMutationResult<Product, Error, UpdateProductInput> {

@@ -20,13 +20,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useLocations } from '@/lib/api/use-locations'
 import { useStock, type StockRow } from '@/lib/api/use-stock'
 import { useStockTypes } from '@/lib/api/use-stock-types'
@@ -47,24 +40,24 @@ interface FlatStockRow {
 export default function StockPage(): JSX.Element {
   const [search, setSearch] = useState('')
   const [selectedStockTypes, setSelectedStockTypes] = useState<string[]>([])
-  const [locationId, setLocationId] = useState<string>('all')
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [adjustRow, setAdjustRow] = useState<StockRow | null>(null)
 
+  // Search filter still goes to the backend; stock type and location are applied
+  // client-side so multiple values of each can be combined.
   const filters = useMemo(
     () => ({
       search: search || undefined,
-      locationId: locationId === 'all' ? undefined : locationId,
     }),
-    [search, locationId],
+    [search],
   )
 
   const { data: stockData = [], isLoading } = useStock(filters)
   const { data: stockTypes = [] } = useStockTypes()
   const { data: locations = [] } = useLocations()
 
-  // Flatten the API response into one row per (variant, location, stockType).
-  // Multi-type filter is applied client-side so multiple stock types can be
-  // selected simultaneously (backend supports single stockType filter only).
+  // Flatten the API response into one row per (variant, location, stockType),
+  // then apply the multi-select filters in memory.
   const flatRows: FlatStockRow[] = useMemo(() => {
     const all = stockData.flatMap((item) =>
       Object.entries(item.quantities).map(([stockType, quantity]) => ({
@@ -80,9 +73,14 @@ export default function StockPage(): JSX.Element {
         lastSyncedAt: item.lastSyncedAt ? new Date(item.lastSyncedAt) : null,
       })),
     )
-    if (selectedStockTypes.length === 0) return all
-    return all.filter((row) => selectedStockTypes.includes(row.stockType))
-  }, [stockData, selectedStockTypes])
+    return all.filter((row) => {
+      const matchesStockType =
+        selectedStockTypes.length === 0 || selectedStockTypes.includes(row.stockType)
+      const matchesLocation =
+        selectedLocations.length === 0 || selectedLocations.includes(row.locationId)
+      return matchesStockType && matchesLocation
+    })
+  }, [stockData, selectedStockTypes, selectedLocations])
 
   // Lookup aggregated row by (variant, location) for the manual-adjust dialog,
   // which edits all stock types for a single (variant, location) together.
@@ -105,10 +103,17 @@ export default function StockPage(): JSX.Element {
     })
   }
 
+  function toggleLocation(id: string, checked: boolean): void {
+    setSelectedLocations((prev) => {
+      if (checked) return [...new Set([...prev, id])]
+      return prev.filter((x) => x !== id)
+    })
+  }
+
   function clearFilters(): void {
     setSearch('')
     setSelectedStockTypes([])
-    setLocationId('all')
+    setSelectedLocations([])
   }
 
   const columns: ColumnDef<FlatStockRow>[] = [
@@ -176,6 +181,17 @@ export default function StockPage(): JSX.Element {
         ? `${String(selectedStockTypes.length)} type`
         : `${String(selectedStockTypes.length)} types`
 
+  const locationFilterLabel = (() => {
+    if (selectedLocations.length === 0) return 'Location'
+    if (selectedLocations.length === 1) {
+      return (
+        locations.find((loc) => loc.id === selectedLocations[0])?.name ??
+        '1 location'
+      )
+    }
+    return `${String(selectedLocations.length)} locations`
+  })()
+
   return (
     <div>
       <PageHeader title="Inventory">
@@ -226,19 +242,34 @@ export default function StockPage(): JSX.Element {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Select value={locationId} onValueChange={setLocationId}>
-          <SelectTrigger className="h-8 w-[200px]">
-            <SelectValue placeholder="Location" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All locations</SelectItem>
-            {locations.map((loc) => (
-              <SelectItem key={loc.id} value={loc.id}>
-                {loc.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 w-[200px] justify-between">
+              <span className="truncate">{locationFilterLabel}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[240px]">
+            <DropdownMenuLabel>Location</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {locations.map((loc) => {
+              const isChecked = selectedLocations.includes(loc.id)
+              return (
+                <DropdownMenuCheckboxItem
+                  key={loc.id}
+                  checked={isChecked}
+                  onCheckedChange={(checked) => {
+                    toggleLocation(loc.id, Boolean(checked))
+                  }}
+                  onSelect={(e) => {
+                    e.preventDefault()
+                  }}
+                >
+                  {loc.name}
+                </DropdownMenuCheckboxItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Button variant="ghost" size="sm" onClick={clearFilters}>
           Clear

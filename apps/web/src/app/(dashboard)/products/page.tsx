@@ -35,13 +35,25 @@ export default function ProductsPage(): JSX.Element {
     },
     {
       header: 'SKU',
-      // TODO: requires default variant SKU in GET /products response
-      accessor: () => <span className="font-mono text-xs text-muted-foreground">—</span>,
+      accessor: (row) => {
+        const sku = row.variants[0]?.sku
+        return sku ? (
+          <span className="font-mono text-xs">{sku}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )
+      },
     },
     {
       header: 'EAN / Barcode',
-      // TODO: requires default variant barcode in GET /products response
-      accessor: () => <span className="text-xs text-muted-foreground font-mono">—</span>,
+      accessor: (row) => {
+        const barcode = row.variants[0]?.barcode
+        return barcode ? (
+          <span className="font-mono text-xs">{barcode}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )
+      },
     },
     {
       header: 'Batch',

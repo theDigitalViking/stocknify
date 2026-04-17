@@ -82,10 +82,7 @@ export function EditProductDialog({
     if (product) {
       reset({
         name: product.name,
-        // Barcode is not yet returned by GET /products — user re-enters on edit.
-        // NOTE: The PATCH /products/:id endpoint does not accept barcode either;
-        // edits to this field are discarded silently until the backend is extended.
-        barcode: '',
+        barcode: product.variants[0]?.barcode ?? '',
         unit: product.unit,
         batchTracking: product.batchTracking,
         description: product.description ?? '',
@@ -100,11 +97,11 @@ export function EditProductDialog({
       await update.mutateAsync({
         id: product.id,
         name: values.name.trim(),
+        barcode: values.barcode.trim(),
         unit: values.unit,
         batchTracking: values.batchTracking,
         description: values.description?.trim() || undefined,
         category: values.category?.trim() || undefined,
-        // barcode is intentionally omitted — PATCH /products does not accept it
       })
       toast({ title: 'Product updated', description: values.name })
       onOpenChange(false)
@@ -143,9 +140,6 @@ export function EditProductDialog({
             {errors.barcode ? (
               <p className="text-xs text-red-600 mt-1">{errors.barcode.message}</p>
             ) : null}
-            <p className="text-xs text-muted-foreground mt-1">
-              Barcode changes are not persisted yet — coming in a later update.
-            </p>
           </div>
 
           <div>

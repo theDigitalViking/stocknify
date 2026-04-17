@@ -10,7 +10,6 @@ function omitUndefined<T extends object>(obj: T): T {
 import {
   createProductVariantSchema,
   paginationSchema,
-  updateProductSchema,
   updateProductVariantSchema,
 } from '@stocknify/shared'
 
@@ -31,6 +30,16 @@ const createProductBodySchema = z.object({
 
 const listQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
+})
+
+// PATCH /products body. barcode updates the default variant (not the product).
+const updateProductBodySchema = z.object({
+  name: z.string().min(1).max(500).optional(),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  unit: z.string().optional(),
+  batchTracking: z.boolean().optional(),
+  barcode: z.string().max(255).optional(),
 })
 
 export async function productsRoutes(app: FastifyInstance): Promise<void> {
@@ -71,6 +80,12 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
           include: {
             _count: {
               select: { variants: { where: { isActive: true, deletedAt: null } } },
+            },
+            variants: {
+              where: { isActive: true, deletedAt: null },
+              orderBy: { createdAt: 'asc' },
+              take: 1, // only the default (first) variant for the list view
+              select: { id: true, sku: true, barcode: true },
             },
           },
         }),
@@ -164,7 +179,7 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       }
       const { id } = paramsResult.data
 
-      const parse = updateProductSchema.safeParse(request.body)
+      const parse = updateProductBodySchema.safeParse(request.body)
       if (!parse.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parse.error.message } })
       }
@@ -176,10 +191,26 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } })
       }
 
+      // barcode lives on the default variant, not the product — route it separately.
+      const { barcode, ...productFields } = parse.data
+
       const product = await request.db.product.update({
         where: { id },
-        data: omitUndefined(parse.data) as unknown as Prisma.ProductUpdateInput,
+        data: omitUndefined(productFields) as unknown as Prisma.ProductUpdateInput,
       })
+
+      if (barcode !== undefined) {
+        const defaultVariant = await request.db.productVariant.findFirst({
+          where: { productId: id, tenantId: request.tenantId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        })
+        if (defaultVariant) {
+          await request.db.productVariant.update({
+            where: { id: defaultVariant.id },
+            data: { barcode },
+          })
+        }
+      }
 
       return reply.send({ data: product })
     } catch {
