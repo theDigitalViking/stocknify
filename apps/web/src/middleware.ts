@@ -55,6 +55,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(new URL('/stock', request.url))
   }
 
+  // Root route: redirect to stock (before intl middleware to avoid 404)
+  if (pathname === '/') {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    return NextResponse.redirect(new URL('/stock', request.url))
+  }
+
   // Delegate to next-intl so locale detection cookies are set on the response.
   // With `localePrefix: 'never'` this never rewrites the URL.
   const intlResponse = intlMiddleware(request)
