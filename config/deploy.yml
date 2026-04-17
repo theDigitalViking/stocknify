@@ -29,6 +29,8 @@ env:
   clear:
     PORT: "3001"
     NODE_ENV: production
+    FROM_EMAIL: alerts@stocknify.app
+    SENTRY_DSN: ""
   secret:
     - DATABASE_URL
     - DIRECT_URL
@@ -38,11 +40,7 @@ env:
     - SUPABASE_WEBHOOK_SECRET
     - REDIS_URL
     - CREDENTIALS_ENCRYPTION_KEY
-    - STRIPE_SECRET_KEY
-    - STRIPE_WEBHOOK_SECRET
     - RESEND_API_KEY
-    - FROM_EMAIL
-    - SENTRY_DSN
 
 proxy:
   ssl: true
