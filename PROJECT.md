@@ -263,6 +263,15 @@ flag on the `tenants` table. Phase 3 will implement the full logic.
 tracks its own inventory is configurable per location via `bin_tracking_enabled`.
 `stock_levels` has an optional `storage_location_id`.
 
+**Stock types are integration-driven, not freely configurable:** Stock type definitions
+exist in `stock_type_definitions` as a reference table, but which types actually get
+populated for a given product+location combination depends entirely on the integration.
+A fulfiller API only sends the stock types it supports — Stocknify cannot add types
+that the fulfiller doesn't provide. Exception: CSV imports are unbounded and can carry
+any stock type defined in `stock_type_definitions`, including tenant-custom types.
+This means the Stock page must display rows dynamically based on what data exists,
+not based on a fixed set of columns.
+
 **Stock types are tenant-extensible:** A `stock_type_definitions` table holds
 system defaults plus any custom types a tenant adds. System defaults are:
 `available`, `physical`, `reserved`, `blocked`, `in_transit`, `expired`,
@@ -1648,11 +1657,19 @@ Schritt 6: Fixes implementieren (falls nötig)
   ─ Schreibt RESULT_[NAME]_FIXES.md
 
 Schritt 7: Push + CI
-  ─ Claude Code pusht alle Commits
+  ─ Claude Code pusht NICHT automatisch
+  ─ Du führst den Push manuell aus: git push
+  ─ Erst nach abgeschlossenem Review und deiner Freigabe
   ─ CI läuft durch — muss grün sein
-  ─ Falls Tests vorhanden: müssen grün sein
 
-Schritt 8: Notion aktualisieren
+Schritt 8: Product Review (auf Production)
+  ─ Du schaust dir das Feature auf app.stocknify.app an
+  ─ Feedback kommt zurück zu mir
+  ─ Sofort fixen: klare Bugs, falsche Logik, kaputte UX
+  ─ Backlog: Erweiterungen, Nice-to-haves, neue Ideen
+  ─ Erst nach deinem OK weiter zu Schritt 9
+
+Schritt 9: Notion aktualisieren
   ─ Claude (Chat) liest beide Result-Files
   ─ Trägt Prompt in ⚡ Vibe Coding Prompts Datenbank ein
   ─ Aktualisiert Task-Status im 🗂️ Projektplan
@@ -1673,7 +1690,234 @@ Schritt 8: Notion aktualisieren
 
 ---
 
-## 21. Known Constraints & Open Decisions
+## 22. Job Queue, Incidents, Health & Super-Admin
+
+### 22.1 Job Queue Architecture (BullMQ)
+
+BullMQ ist bereits im Stack. Was hier definiert wird ist die Struktur
+für fehlertolerante Jobs mit strukturiertem Error-Handling.
+
+**Prinzipien:**
+- Jeder Job-Typ ist eine eigene Klasse mit `execute()` Methode
+- Jobs wrappen ihre Arbeit vollständig in try/catch
+- Erwartete Fehler (z.B. API nicht erreichbar) → `AppError` mit lesbarer Meldung
+- Unerwartete Fehler (Exceptions) → Sentry + generischer Incident
+- Retry-Logik: 3 Versuche, exponential backoff (1s → 10s → 100s)
+- Nach 3 Fehlschlägen: Job landet in Dead Letter Queue + Incident wird erstellt
+
+**Job-Typen:**
+
+```typescript
+// Alle Jobs implementieren dieses Interface
+interface BaseJob<T> {
+  readonly name: string;
+  execute(data: T, job: Job): Promise<void>;
+}
+
+// Erwartete Fehler — erzeugen Incidents mit lesbarer Meldung
+class AppError extends Error {
+  constructor(
+    message: string,           // technische Meldung (für Logs)
+    readonly userMessage: string, // lesbare Meldung (für Incident)
+    readonly severity: 'info' | 'warning' | 'error' | 'critical',
+    readonly code: string,      // maschinenlesbar z.B. 'SHOPIFY_API_TIMEOUT'
+  ) { super(message); }
+}
+```
+
+**BullMQ Queue-Konfiguration:**
+```typescript
+// Globale Retry-Strategie
+const defaultJobOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 1000 },
+  removeOnComplete: { count: 100 },   // letzte 100 erfolgreiche Jobs behalten
+  removeOnFail: false,                 // fehlgeschlagene Jobs behalten (für Debugging)
+};
+
+// Queues
+const QUEUES = {
+  SYNC_STOCK:         'sync-stock',
+  EVALUATE_RULES:     'evaluate-rules',
+  SEND_NOTIFICATION:  'send-notification',
+  SCHEDULED_IMPORT:   'scheduled-import',
+  SCHEDULED_EXPORT:   'scheduled-export',
+};
+```
+
+**Job → Incident Flow:**
+```
+Job schlägt fehl
+  → AppError (erwartet): Incident mit userMessage + severity aus Error
+  → Exception (unerwartet): Sentry capture + Incident mit generischer Meldung
+  → Nach 3 Versuchen: Job in Dead Letter Queue, Incident status = 'open'
+  → Zukünftig: Incident kann Notification triggern (via bestehendem Notification System)
+```
+
+---
+
+### 22.2 Incidents
+
+Incidents sind strukturierte Fehlermeldungen die aus Jobs oder App-Code entstehen.
+Sie sind die einzige Fehlerschnittstelle zwischen dem System und dem Merchant.
+
+**Sichtbarkeit:**
+- Merchant sieht nur seine eigenen Incidents
+- Nur Incidents mit `is_user_visible = true` werden im Merchant-Dashboard angezeigt
+- Super-Admin sieht alle Incidents aller Tenants
+
+```sql
+incidents
+  id UUID PK
+  tenant_id UUID FK -> tenants
+  -- Quelle
+  source_type TEXT NOT NULL         -- 'job' | 'api' | 'webhook' | 'rule_engine' | 'system'
+  source_id TEXT                    -- Job-ID, Route, etc.
+  integration_id UUID FK -> integrations (nullable)
+  -- Klassifizierung
+  severity TEXT NOT NULL DEFAULT 'error'  -- 'info' | 'warning' | 'error' | 'critical'
+  code TEXT NOT NULL                -- maschinenlesbar, z.B. 'SHOPIFY_API_TIMEOUT'
+  -- Meldungen
+  title TEXT NOT NULL               -- kurze lesbare Zusammenfassung
+  user_message TEXT                 -- lesbare Beschreibung für den Merchant (nullable)
+  technical_message TEXT            -- technische Details (nur für Admin sichtbar)
+  is_user_visible BOOLEAN NOT NULL DEFAULT false  -- ob Merchant es sieht
+  -- Status
+  status TEXT NOT NULL DEFAULT 'open'  -- 'open' | 'acknowledged' | 'resolved'
+  acknowledged_by UUID FK -> users (nullable)
+  acknowledged_at TIMESTAMPTZ
+  resolved_at TIMESTAMPTZ
+  -- Kontext
+  context JSONB DEFAULT '{}'        -- zusätzliche Daten (job payload, stack trace, etc.)
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+```
+
+**Incident-Typen (Beispiele):**
+
+| Code | Severity | User Message |
+|------|----------|--------------|
+| `SHOPIFY_API_TIMEOUT` | warning | "Shopify konnte nicht erreicht werden. Wir versuchen es erneut." |
+| `CSV_INVALID_COLUMNS` | error | "Die CSV-Datei enthält unbekannte Spalten. Bitte Mapping prüfen." |
+| `SYNC_FAILED_PERMANENTLY` | critical | "Synchronisation dauerhaft fehlgeschlagen. Bitte Integration prüfen." |
+| `INTEGRATION_AUTH_FAILED` | error | "Zugangsdaten ungültig. Bitte Integration neu verbinden." |
+| `UNEXPECTED_ERROR` | error | "Ein unerwarteter Fehler ist aufgetreten. Unser Team wurde informiert." |
+
+**API Endpoints:**
+```
+GET    /incidents                   Alle Incidents des Tenants (paginiert)
+GET    /incidents/:id               Incident Detail
+PATCH  /incidents/:id/acknowledge   Incident als bekannt markieren
+PATCH  /incidents/:id/resolve       Incident als gelöst markieren
+
+# Admin-only
+GET    /admin/incidents             Alle Incidents aller Tenants
+GET    /admin/incidents/:id
+```
+
+**Zukünftig (Phase 4+):** Incidents können Notifications triggern über das
+bestehende Notification-System — z.B. Email wenn ein Incident `critical` ist.
+
+---
+
+### 22.3 Integration Health & Heartbeat
+
+Pro Integration wird nach jedem Sync-Job der Health-Status aktualisiert.
+Der Status ist im Dashboard als Indikator sichtbar.
+
+**Health-Status wird auf der `integrations` Tabelle erweitert:**
+
+```sql
+-- Neue Felder auf integrations (via Migration):
+  health_status TEXT NOT NULL DEFAULT 'unknown'
+    -- 'healthy' | 'degraded' | 'failing' | 'paused' | 'unknown'
+  last_successful_sync_at TIMESTAMPTZ
+  last_error_at TIMESTAMPTZ
+  consecutive_failures INT NOT NULL DEFAULT 0
+```
+
+**Health-Status-Logik:**
+
+```
+nach jedem Sync-Job:
+  Erfolg:
+    → consecutive_failures = 0
+    → last_successful_sync_at = now()
+    → health_status = 'healthy'
+  Fehler:
+    → consecutive_failures += 1
+    → last_error_at = now()
+    → 1-2 Fehler: health_status = 'degraded'
+    → 3+ Fehler: health_status = 'failing'
+    → Incident erstellen (falls noch kein offener Incident für diese Integration)
+```
+
+**API Endpoint:**
+```
+GET /integrations/:id/health    Aktueller Health-Status + letzte Sync-Historie
+```
+
+---
+
+### 22.4 Super-Admin
+
+**Zugang:** `app.stocknify.app/admin` — nur für User mit `is_super_admin = true`
+
+**Schema-Erweiterung auf `users`:**
+```sql
+-- Neues Feld auf users:
+  is_super_admin BOOLEAN NOT NULL DEFAULT false
+```
+
+Nur direkt in der Datenbank setzbar — kein API-Endpoint zum Self-Promote.
+
+**Impersonation (Tenant-Wechsel):**
+- Mechanismus: `X-Impersonate-Tenant-ID` HTTP-Header
+- Nur Super-Admins können diesen Header nutzen
+- Middleware prüft: `if (header present && !isSuperAdmin) → 403`
+- Wenn Header gesetzt: Tenant-Kontext wird auf den angegebenen Tenant gesetzt
+- Komplett transparent — kein Audit Log, kein Hinweis für den Tenant
+- Super-Admin bleibt mit seinem eigenen JWT eingeloggt
+
+```typescript
+// Middleware pseudocode
+async function superAdminMiddleware(request, reply) {
+  const impersonateTenantId = request.headers['x-impersonate-tenant-id'];
+  if (impersonateTenantId) {
+    if (!request.user.isSuperAdmin) {
+      return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+    }
+    // Override tenant context for this request
+    request.tenantId = impersonateTenantId;
+    await db.$executeRaw`SELECT set_config('app.current_tenant_id', ${impersonateTenantId}, true)`;
+  }
+}
+```
+
+**Admin-Dashboard (`/admin`):**
+
+| Bereich | Inhalt |
+|---------|--------|
+| Tenants | Alle Tenants, Plan, Status, Erstelldatum, Suche |
+| Partner | Alle Partner, Kunden-Anzahl, Billing-Mode |
+| Incidents | Alle offenen Incidents, Filter nach Severity/Tenant |
+| Impersonation | Tenant auswählen → als dieser Tenant agieren |
+
+**API Endpoints (Super-Admin only):**
+```
+GET    /admin/tenants              Alle Tenants
+GET    /admin/tenants/:id          Tenant Detail
+PATCH  /admin/tenants/:id          Tenant bearbeiten (Plan, Status)
+GET    /admin/partners             Alle Partner
+POST   /admin/partners             Partner anlegen
+PATCH  /admin/partners/:id         Partner bearbeiten
+GET    /admin/incidents            Alle Incidents
+PATCH  /admin/incidents/:id        Incident verwalten
+```
+
+---
+
+## 23. Known Constraints & Open Decisions
 
 ### Open
 - [ ] PROJECT.md in modulare Docs-Files aufteilen wenn ~100 KB erreicht (aktuell 56 KB)
@@ -1685,7 +1929,7 @@ Schritt 8: Notion aktualisieren
 - [ ] Add `deletedAt TIMESTAMPTZ` to `stock_type_definitions` table (currently hard-deleted)
 - [ ] GET /stock: replace in-memory grouping with DB-level pagination at scale (current cap: 10k rows, TODO comment in code)
 - [x] Configure Supabase webhook: Database → Webhooks → auth-user-created → POST /auth/webhook ✅
-- [ ] Redis Rate-Limiting wieder auf Redis umstellen (aktuell in-memory) sobald Upstash-URL verifiziert
+- [ ] Auth-Middleware: Fallback auf user_metadata ist theoretisch spoofbar — App-Middleware sollte nur app_metadata akzeptieren und Requests ohne authoritative Claims ablehnen. Akzeptabel für MVP weil Auth-Webhook app_metadata immer setzt und PATCH /users nur harmlose Felder (fullName, locale) updaten kann.
 - [ ] unique-notification-templates.sql: wrap in BEGIN/COMMIT für vollständige Atomizität (aktuell 4 unabhängige DDL-Statements)
 - [ ] unique-notification-templates.sql: CREATE UNIQUE INDEX IF NOT EXISTS prüft nur Name, nicht Definition — akzeptabel für MVP single-operator deploy
 - [ ] pg_get_constraintdef string comparison im DO block fragil bei Postgres-Version-Skew — akzeptabel, da Supabase-Version stabil
@@ -1700,5 +1944,5 @@ Schritt 8: Notion aktualisieren
 
 ---
 
-*Last updated: 2026-04-15*
-*Version: 0.3.0 — Finalized architecture decisions: transparent variants, deferred bundle logic, COALESCE unique index, retention policy with user control, DB-level rule check constraints*
+*Last updated: 2026-04-17*
+*Version: 0.5.0 — Schema v3 (Partner, Credentials, Schedules, i18n, External References) + Schema v4 (Incidents, Integration Health, Super-Admin) + CI/CD vollautomatisiert + Job Queue, Incidents, Health & Super-Admin Architektur dokumentiert*

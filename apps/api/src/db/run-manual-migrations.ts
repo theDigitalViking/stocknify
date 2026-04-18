@@ -23,6 +23,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const SQL_DIR = join(__dirname, 'sql');
+const SEED_DIR = join(__dirname, 'seed');
 
 // Order matters — RLS must be applied before constraints that reference policies
 const MANUAL_SQL_FILES = [
@@ -41,6 +42,12 @@ const MANUAL_SQL_FILES = [
   'incident-check-constraints.sql',
 ];
 
+// Idempotent seed files — safe to re-run via ON CONFLICT DO NOTHING
+const SEED_FILES = [
+  'stock-type-definitions.sql',
+  'notification-templates.sql',
+];
+
 async function runManualMigrations(): Promise<void> {
   const client = new Client({
     connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
@@ -52,6 +59,30 @@ async function runManualMigrations(): Promise<void> {
 
   for (const file of MANUAL_SQL_FILES) {
     const filePath = join(SQL_DIR, file);
+    let sql: string;
+
+    try {
+      sql = readFileSync(filePath, 'utf-8');
+    } catch {
+      console.warn(`  SKIP  ${file} (file not found)`);
+      continue;
+    }
+
+    try {
+      await client.query(sql);
+      console.log(`  OK    ${file}`);
+    } catch (err) {
+      console.error(`  FAIL  ${file}`);
+      console.error(err);
+      await client.end();
+      process.exit(1);
+    }
+  }
+
+  console.log('Running idempotent seeds...');
+
+  for (const file of SEED_FILES) {
+    const filePath = join(SEED_DIR, file);
     let sql: string;
 
     try {
