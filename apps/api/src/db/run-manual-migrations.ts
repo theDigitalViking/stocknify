@@ -40,6 +40,8 @@ const MANUAL_SQL_FILES = [
   // v4 — applied after schema v4 migration
   'rls-policies-v4.sql',
   'incident-check-constraints.sql',
+  // v5 — sampleData on csv_mapping_templates
+  'add-sample-data-to-csv-mapping-template.sql',
 ];
 
 // Idempotent seed files — safe to re-run via ON CONFLICT DO NOTHING
