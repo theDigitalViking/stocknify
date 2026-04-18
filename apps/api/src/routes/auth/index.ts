@@ -187,8 +187,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Set app_metadata on the Supabase auth user so tenant_id + role
-      // are available in the JWT without a custom JWT hook. Non-fatal —
-      // if this fails the user exists in our DB and can re-login to retry.
+      // are available in the JWT without a custom JWT hook. If this fails
+      // we must not 200 the webhook — Supabase only retries on non-2xx,
+      // and a missing tenant claim permanently 401s the user otherwise.
       const supabaseAdmin = getSupabaseAdmin()
       const { error: metaError } = await supabaseAdmin.auth.admin.updateUserById(id, {
         app_metadata: {
@@ -197,7 +198,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         },
       })
       if (metaError) {
-        app.log.error(metaError, 'Failed to set app_metadata on user')
+        app.log.error(metaError, 'Failed to set app_metadata on user — returning 500 for Supabase retry')
+        return reply.code(500).send({
+          error: { code: 'INTERNAL_ERROR', message: 'Failed to set app_metadata' },
+        })
       }
 
       return reply.send({ data: { received: true } })
