@@ -1,10 +1,11 @@
 'use client'
 
-import { AlertTriangle, CheckCircle2, ChevronDown, Info, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, Info, Plus, Upload } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
 
 import { CsvFileDropzone } from './csv-file-dropzone'
+import { MappingTemplateDialog } from './mapping-template-dialog'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -36,6 +37,7 @@ export function CsvImportPanel(): JSX.Element {
   const [templateValue, setTemplateValue] = useState<string>(DEFAULT_TEMPLATE_VALUE)
   const [result, setResult] = useState<CsvImportResult | null>(null)
   const [errorsOpen, setErrorsOpen] = useState(false)
+  const [createTemplateOpen, setCreateTemplateOpen] = useState(false)
 
   // Clear selection when switching resource types — templates from the
   // other resource should not stay selected by stale id.
@@ -121,6 +123,25 @@ export function CsvImportPanel(): JSX.Element {
                         {tpl.name}
                       </SelectItem>
                     ))}
+                    <div className="h-px bg-border my-1" />
+                    <div
+                      role="option"
+                      tabIndex={0}
+                      aria-selected={false}
+                      className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-brand-700 hover:bg-accent outline-none"
+                      onClick={() => {
+                        setCreateTemplateOpen(true)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setCreateTemplateOpen(true)
+                        }
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      {t('newTemplate')}
+                    </div>
                   </SelectContent>
                 </Select>
               </div>
@@ -169,6 +190,16 @@ export function CsvImportPanel(): JSX.Element {
           }}
         />
       ) : null}
+
+      <MappingTemplateDialog
+        open={createTemplateOpen}
+        onOpenChange={setCreateTemplateOpen}
+        template={null}
+        onSaved={(saved) => {
+          setTemplateValue(saved.id)
+          setCreateTemplateOpen(false)
+        }}
+      />
     </div>
   )
 }

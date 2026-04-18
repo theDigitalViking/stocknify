@@ -336,17 +336,18 @@ export function MappingTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEdit ? t('editTitle') : t('createTitle')}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs flex-shrink-0">
           <StepBadge active={step === 1} done={step > 1} index={1} label={t('step1')} />
           <div className="flex-1 h-px bg-border" />
           <StepBadge active={step === 2} done={false} index={2} label={t('step2')} />
         </div>
 
+        <div className="flex-1 overflow-y-auto min-h-0 pr-1">
         {step === 1 ? (
           <Step1
             name={name}
@@ -376,8 +377,9 @@ export function MappingTemplateDialog({
             tFields={tFields}
           />
         )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           {step === 2 && !isEdit ? (
             <Button
               type="button"
