@@ -104,9 +104,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * middleware — authentication is via a static shared-secret header
    * (`x-supabase-signature`) configured on the Supabase Database Webhook.
    *
-   * Scenario 1 (no tenant_id in user_metadata): self-signup → create tenant + admin user.
-   * Scenario 2 (tenant_id present): invited user → create user row in existing tenant.
-   * Scenario 3 (non-create event): silently ignored.
+   * Scenario 1 (no tenant_id in raw_user_meta_data): self-signup → create tenant + admin user.
+   * Scenario 2 (tenant_id present in raw_user_meta_data): invited user → create row in existing tenant.
+   * Scenario 3 (non-INSERT event / other table): silently ignored.
    */
   app.post('/auth/webhook', async (request, reply) => {
     // --- Signature verification (static shared secret, timing-safe compare) ---
