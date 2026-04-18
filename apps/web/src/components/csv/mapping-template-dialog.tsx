@@ -37,19 +37,24 @@ import { cn } from '@/lib/utils'
 // The product-import dictionary drives the Step-2 mapping UI. Keep in sync
 // with the backend PRODUCT_IMPORT_FIELDS constant. `csvOnly` means the user
 // can only map the field to a CSV column — a fixed value isn't meaningful
-// (every row has its own name/sku/barcode/description).
+// (every row has its own name/sku/barcode/description). `fieldType` selects
+// the editor for the fixed-value mode.
 const PRODUCT_FIELDS: Array<{
-  key: 'name' | 'sku' | 'barcode' | 'description' | 'unit'
-  labelKey: 'productName' | 'sku' | 'barcode' | 'description' | 'unit'
+  key: 'name' | 'sku' | 'barcode' | 'description' | 'unit' | 'batchTracking'
+  labelKey: 'productName' | 'sku' | 'barcode' | 'description' | 'unit' | 'batchTracking'
   required: boolean
   csvOnly: boolean
+  fieldType: 'text' | 'unit' | 'boolean'
 }> = [
-  { key: 'name', labelKey: 'productName', required: true, csvOnly: true },
-  { key: 'sku', labelKey: 'sku', required: true, csvOnly: true },
-  { key: 'barcode', labelKey: 'barcode', required: true, csvOnly: true },
-  { key: 'description', labelKey: 'description', required: false, csvOnly: true },
-  { key: 'unit', labelKey: 'unit', required: false, csvOnly: false },
+  { key: 'name', labelKey: 'productName', required: true, csvOnly: true, fieldType: 'text' },
+  { key: 'sku', labelKey: 'sku', required: true, csvOnly: true, fieldType: 'text' },
+  { key: 'barcode', labelKey: 'barcode', required: true, csvOnly: true, fieldType: 'text' },
+  { key: 'description', labelKey: 'description', required: false, csvOnly: true, fieldType: 'text' },
+  { key: 'unit', labelKey: 'unit', required: false, csvOnly: false, fieldType: 'unit' },
+  { key: 'batchTracking', labelKey: 'batchTracking', required: false, csvOnly: false, fieldType: 'boolean' },
 ]
+
+const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
 
 const DEFAULT_ENCODING = 'utf-8'
 
@@ -127,18 +132,24 @@ export function MappingTemplateDialog({
   useEffect(() => {
     if (!open) return
     if (template) {
-      // Re-hydrate from an existing template for edit. The sample-row preview
-      // is empty until the user re-uploads a file.
+      // Re-hydrate from an existing template for edit. If the template was
+      // saved with a sample-row snapshot, the preview is immediately
+      // available; otherwise the user has to re-upload a CSV.
       setName(template.name)
       setDelimiter(template.delimiter)
       setEncoding(template.encoding || DEFAULT_ENCODING)
       setHasHeaderRow(template.hasHeaderRow)
-      setHeaders(
-        template.columnMappings
-          .map((m) => m.csvColumn)
-          .filter((c): c is string => typeof c === 'string'),
-      )
-      setSampleRows([])
+      if (template.sampleData) {
+        setHeaders(template.sampleData.headers)
+        setSampleRows(template.sampleData.rows)
+      } else {
+        setHeaders(
+          template.columnMappings
+            .map((m) => m.csvColumn)
+            .filter((c): c is string => typeof c === 'string'),
+        )
+        setSampleRows([])
+      }
       setDetectedDelimiter(null)
       const next: Record<string, FieldConfig> = {}
       for (const f of PRODUCT_FIELDS) {
@@ -300,6 +311,12 @@ export function MappingTemplateDialog({
   async function handleSave(): Promise<void> {
     if (!canSave) return
     const { columnMappings, defaultValues } = buildMappings()
+    // Capture only when this session has fresh preview data — otherwise an
+    // edit-without-reupload would wipe an existing snapshot.
+    const sampleData =
+      headers.length > 0 && sampleRows.length > 0
+        ? { headers, rows: sampleRows.slice(0, 5) }
+        : undefined
     try {
       if (isEdit && template) {
         const saved = await update.mutateAsync({
@@ -310,6 +327,7 @@ export function MappingTemplateDialog({
           hasHeaderRow,
           columnMappings,
           defaultValues,
+          ...(sampleData ? { sampleData } : {}),
         })
         toast({ title: t('saved') })
         onSaved?.(saved)
@@ -323,6 +341,7 @@ export function MappingTemplateDialog({
           hasHeaderRow,
           columnMappings,
           defaultValues,
+          ...(sampleData ? { sampleData } : {}),
         })
         toast({ title: t('created') })
         onSaved?.(saved)
@@ -352,7 +371,7 @@ export function MappingTemplateDialog({
           <StepBadge active={step === 2} done={false} index={2} label={t('step2')} />
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0 px-1">
+        <div className="flex-1 overflow-y-auto min-h-0 px-1 py-1">
         {step === 1 ? (
           <Step1
             name={name}
@@ -725,6 +744,28 @@ function Step2({
                         ))}
                       </SelectContent>
                     </Select>
+                  ) : f.fieldType === 'boolean' ? (
+                    <Select
+                      value={cfg.fixedValue || ''}
+                      onValueChange={(v) => {
+                        onSetFixedValue(f.key, v)
+                      }}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder={t('booleanSelectPlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="true">{t('batchTrackingTrue')}</SelectItem>
+                        <SelectItem value="false">{t('batchTrackingFalse')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : f.fieldType === 'unit' ? (
+                    <UnitSelect
+                      value={cfg.fixedValue}
+                      onChange={(v) => {
+                        onSetFixedValue(f.key, v)
+                      }}
+                    />
                   ) : (
                     <Input
                       className="h-8"
@@ -794,5 +835,30 @@ function Step2({
         </div>
       </div>
     </div>
+  )
+}
+
+function UnitSelect({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}): JSX.Element {
+  const tUnits = useTranslations('products.units')
+  const tDialog = useTranslations('csv.templates.dialog')
+  return (
+    <Select value={value || ''} onValueChange={onChange}>
+      <SelectTrigger className="h-8">
+        <SelectValue placeholder={tDialog('unitSelectPlaceholder')} />
+      </SelectTrigger>
+      <SelectContent>
+        {UNIT_KEYS.map((u) => (
+          <SelectItem key={u} value={u}>
+            {tUnits(u)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

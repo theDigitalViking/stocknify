@@ -30,6 +30,7 @@ const PRODUCT_IMPORT_FIELDS = [
   { key: 'description', label: 'Description', required: false },
   { key: 'category', label: 'Category', required: false },
   { key: 'unit', label: 'Unit', required: false },
+  { key: 'batchTracking', label: 'MHD / Batch tracking', required: false },
 ] as const
 
 type ProductImportField = (typeof PRODUCT_IMPORT_FIELDS)[number]['key']
@@ -42,6 +43,18 @@ const DEFAULT_PRODUCT_HEADERS: Record<string, ProductImportField> = {
   description: 'description',
   category: 'category',
   unit: 'unit',
+  batchTracking: 'batchTracking',
+}
+
+// Coerce CSV-shaped truthy/falsy strings ("true"/"1"/"ja"/"yes" etc.) into a
+// boolean. Returns `undefined` on anything we can't confidently classify so
+// the caller can fall back to defaults instead of guessing.
+function parseBatchTracking(value: string | undefined): boolean | undefined {
+  if (!value) return undefined
+  const lower = value.toLowerCase().trim()
+  if (['true', '1', 'ja', 'yes'].includes(lower)) return true
+  if (['false', '0', 'nein', 'no'].includes(lower)) return false
+  return undefined
 }
 
 // Supported encodings. Any unknown value falls back to utf-8 to prevent
@@ -73,6 +86,11 @@ const columnMappingSchema = z.object({
   defaultValue: z.string().optional(),
 })
 
+const sampleDataSchema = z.object({
+  headers: z.array(z.string()),
+  rows: z.array(z.array(z.string())),
+})
+
 const createMappingSchema = z.object({
   name: z.string().min(1).max(200),
   direction: z.enum(['import', 'export']),
@@ -82,6 +100,7 @@ const createMappingSchema = z.object({
   hasHeaderRow: z.boolean().default(true),
   columnMappings: z.array(columnMappingSchema).min(1),
   defaultValues: z.record(z.string()).default({}),
+  sampleData: sampleDataSchema.optional(),
 })
 
 const updateMappingSchema = createMappingSchema.partial()
@@ -414,6 +433,9 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           hasHeaderRow: parsed.data.hasHeaderRow,
           columnMappings: columnMappings as unknown as Prisma.InputJsonValue,
           defaultValues: defaultValues as unknown as Prisma.InputJsonObject,
+          sampleData: parsed.data.sampleData
+            ? (parsed.data.sampleData as unknown as Prisma.InputJsonObject)
+            : Prisma.DbNull,
         },
       })
       return reply.code(201).send({ data: template })
@@ -497,6 +519,9 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
             : {}),
           ...(parsed.data.defaultValues !== undefined
             ? { defaultValues: parsed.data.defaultValues as unknown as Prisma.InputJsonObject }
+            : {}),
+          ...(parsed.data.sampleData !== undefined
+            ? { sampleData: parsed.data.sampleData as unknown as Prisma.InputJsonObject }
             : {}),
         },
       })
@@ -693,6 +718,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
             ...(extracted.description ? { description: extracted.description } : {}),
             ...(extracted.category ? { category: extracted.category } : {}),
             ...(extracted.unit ? { unit: extracted.unit } : {}),
+            ...(extracted.batchTracking ? { batchTracking: extracted.batchTracking } : {}),
           })
           result[outcome] += 1
         } catch (err) {
@@ -752,12 +778,14 @@ async function upsertProductFromRow(
     description?: string
     category?: string
     unit?: string
+    batchTracking?: string
   },
 ): Promise<'created' | 'updated' | 'skipped'> {
   const existing = await findExistingProduct(db, tenantId, {
     sku: row.sku,
     ...(row.barcode ? { barcode: row.barcode } : {}),
   })
+  const batchTrackingParsed = parseBatchTracking(row.batchTracking)
   if (!existing) {
     await db.$transaction(async (tx) => {
       const product = await tx.product.create({
@@ -767,6 +795,7 @@ async function upsertProductFromRow(
           description: row.description ?? null,
           category: row.category ?? null,
           unit: row.unit ?? 'piece',
+          batchTracking: batchTrackingParsed ?? false,
           metadata: { source: 'csv' } as Prisma.InputJsonObject,
         },
       })
@@ -793,6 +822,7 @@ async function upsertProductFromRow(
       description: true,
       category: true,
       unit: true,
+      batchTracking: true,
       metadata: true,
     },
   })
@@ -803,6 +833,9 @@ async function upsertProductFromRow(
   if (row.description && row.description !== current.description) updates.description = row.description
   if (row.category && row.category !== current.category) updates.category = row.category
   if (row.unit && row.unit !== current.unit) updates.unit = row.unit
+  if (batchTrackingParsed !== undefined && batchTrackingParsed !== current.batchTracking) {
+    updates.batchTracking = batchTrackingParsed
+  }
 
   const currentMeta = (current.metadata ?? {}) as Record<string, unknown>
   const needsSourceStamp = currentMeta['source'] !== 'csv'

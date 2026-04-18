@@ -307,7 +307,8 @@
         "barcode": "EAN / Barcode",
         "description": "Beschreibung",
         "category": "Kategorie",
-        "unit": "Einheit"
+        "unit": "Einheit",
+        "batchTracking": "MHD- / chargengeführt"
       },
       "dialog": {
         "createTitle": "Neues Mapping-Template",
@@ -332,6 +333,10 @@
         "fixedValueLabel": "Fester Wert",
         "csvColumnPlaceholder": "Spalte wählen\u2026",
         "fixedValuePlaceholder": "Festen Wert eingeben\u2026",
+        "unitSelectPlaceholder": "Einheit wählen\u2026",
+        "booleanSelectPlaceholder": "Wählen\u2026",
+        "batchTrackingTrue": "Ja (MHD- / chargengeführt)",
+        "batchTrackingFalse": "Nein",
         "requiredField": "Dieses Feld ist ein Pflichtfeld",
         "back": "Zurück",
         "save": "Speichern",

@@ -307,7 +307,8 @@
         "barcode": "EAN / Barcode",
         "description": "Description",
         "category": "Category",
-        "unit": "Unit"
+        "unit": "Unit",
+        "batchTracking": "Best-before / Batch tracked"
       },
       "dialog": {
         "createTitle": "New Mapping Template",
@@ -332,6 +333,10 @@
         "fixedValueLabel": "Fixed value",
         "csvColumnPlaceholder": "Select a column\u2026",
         "fixedValuePlaceholder": "Enter fixed value\u2026",
+        "unitSelectPlaceholder": "Select a unit\u2026",
+        "booleanSelectPlaceholder": "Select\u2026",
+        "batchTrackingTrue": "Yes (Best-before / Batch tracked)",
+        "batchTrackingFalse": "No",
         "requiredField": "This field is required",
         "back": "Back",
         "save": "Save",

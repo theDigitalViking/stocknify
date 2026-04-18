@@ -25,6 +25,11 @@ export interface ColumnMapping {
   defaultValue?: string
 }
 
+export interface CsvSampleData {
+  headers: string[]
+  rows: string[][]
+}
+
 export interface CsvMappingTemplate {
   id: string
   tenantId: string
@@ -36,6 +41,7 @@ export interface CsvMappingTemplate {
   hasHeaderRow: boolean
   columnMappings: ColumnMapping[]
   defaultValues: Record<string, string>
+  sampleData: CsvSampleData | null
   createdAt: string
   updatedAt: string
   deletedAt: string | null
@@ -71,6 +77,7 @@ export interface CreateMappingInput {
   hasHeaderRow: boolean
   columnMappings: ColumnMapping[]
   defaultValues?: Record<string, string>
+  sampleData?: CsvSampleData
 }
 
 export interface UpdateMappingInput extends Partial<CreateMappingInput> {

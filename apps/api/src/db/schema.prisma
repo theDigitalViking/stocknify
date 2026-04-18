@@ -828,6 +828,7 @@ model CsvMappingTemplate {
   hasHeaderRow  Boolean   @default(true) @map("has_header_row")
   columnMappings Json     @map("column_mappings") @db.JsonB
   defaultValues  Json     @default("{}") @map("default_values") @db.JsonB // static values for unmapped required fields
+  sampleData    Json?     @map("sample_data") @db.JsonB // { headers: string[], rows: string[][] } captured during last preview
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
