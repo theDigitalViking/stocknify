@@ -1,7 +1,8 @@
 import { Buffer } from 'node:buffer'
+import { Readable } from 'node:stream'
 
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { parse as csvParseSync } from 'csv-parse/sync'
+import { parse as csvParseStream } from 'csv-parse'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
@@ -98,27 +99,95 @@ function validateRequiredMappings(
   return null
 }
 
-// Parse a CSV buffer into headers + rows. Uses the synchronous parser because
-// both the preview (5 rows) and the import (10k row cap) are bounded.
-function parseCsv(
+// Parse a CSV buffer into headers + rows with a hard cap enforced DURING
+// parsing, not after. The synchronous parser materialised the whole file into
+// memory before any row-count check could fire, which let a 5 MB CSV of
+// single-character rows inflate into millions of string arrays before we
+// rejected it. Streaming + early-destroy bounds the worst-case heap to
+// O(maxRows × widest row).
+//
+// `mode = 'strict'` rejects with a `ROW_LIMIT_EXCEEDED` error as soon as the
+// source yields more than `maxRows` data rows — used by the import endpoint
+// so the caller gets a 413.
+// `mode = 'truncate'` returns exactly `maxRows` rows and discards the rest
+// silently — used by the preview endpoint where "there's more" is not a
+// failure condition.
+async function parseCsvStreaming(
   buffer: Buffer,
-  opts: { delimiter: string; hasHeaderRow: boolean; toLine?: number },
-): { headers: string[]; rows: string[][] } {
-  const records = csvParseSync(buffer, {
-    delimiter: opts.delimiter,
-    skip_empty_lines: true,
-    trim: true,
-    relax_column_count: true,
-    ...(opts.toLine !== undefined ? { to_line: opts.toLine } : {}),
-  }) as string[][]
-  if (!opts.hasHeaderRow) {
-    // Synthesize header names col1..colN from the widest row.
-    const maxCols = records.reduce((acc, row) => Math.max(acc, row.length), 0)
-    const headers = Array.from({ length: maxCols }, (_, i) => `col${String(i + 1)}`)
-    return { headers, rows: records }
-  }
-  const [first, ...rest] = records
-  return { headers: first ?? [], rows: rest }
+  opts: { delimiter: string; hasHeaderRow: boolean },
+  maxRows: number,
+  mode: 'strict' | 'truncate',
+): Promise<{ headers: string[]; rows: string[][] }> {
+  return new Promise((resolve, reject) => {
+    const parser = csvParseStream({
+      delimiter: opts.delimiter,
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+    })
+
+    const rows: string[][] = []
+    let headers: string[] = []
+    let sawHeaderRow = false
+    let settled = false
+
+    function synthesiseHeadersIfNeeded(): void {
+      if (opts.hasHeaderRow) return
+      if (headers.length > 0) return
+      const maxCols = rows.reduce((acc, row) => Math.max(acc, row.length), 0)
+      headers = Array.from({ length: maxCols }, (_, i) => `col${String(i + 1)}`)
+    }
+
+    function finish(action: () => void): void {
+      if (settled) return
+      settled = true
+      parser.destroy()
+      action()
+    }
+
+    parser.on('readable', () => {
+      let record: string[] | null
+      while ((record = parser.read() as string[] | null) !== null) {
+        if (settled) return
+        if (opts.hasHeaderRow && !sawHeaderRow) {
+          headers = record
+          sawHeaderRow = true
+          continue
+        }
+        if (rows.length >= maxRows) {
+          if (mode === 'strict') {
+            const err = new Error('ROW_LIMIT_EXCEEDED') as Error & { code: string }
+            err.code = 'ROW_LIMIT_EXCEEDED'
+            finish(() => {
+              reject(err)
+            })
+          } else {
+            synthesiseHeadersIfNeeded()
+            finish(() => {
+              resolve({ headers, rows })
+            })
+          }
+          return
+        }
+        rows.push(record)
+      }
+    })
+
+    parser.on('error', (err) => {
+      if (settled) return
+      settled = true
+      reject(err)
+    })
+
+    parser.on('end', () => {
+      if (settled) return
+      settled = true
+      synthesiseHeadersIfNeeded()
+      resolve({ headers, rows })
+    })
+
+    Readable.from(buffer).pipe(parser)
+  })
 }
 
 // Read all parts from a multipart request into a file buffer + text fields.
@@ -456,16 +525,17 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       const delimiter = (fields['delimiter'] ?? ',').slice(0, 1) || ','
       const hasHeaderRow = (fields['hasHeaderRow'] ?? 'true') !== 'false'
 
-      const { headers, rows } = parseCsv(file.buffer, {
-        delimiter,
-        hasHeaderRow,
-        toLine: CSV_PREVIEW_ROWS + (hasHeaderRow ? 1 : 0),
-      })
+      const { headers, rows } = await parseCsvStreaming(
+        file.buffer,
+        { delimiter, hasHeaderRow },
+        CSV_PREVIEW_ROWS,
+        'truncate',
+      )
       return reply.send({
         data: {
           filename: file.filename,
           headers,
-          sampleRows: rows.slice(0, CSV_PREVIEW_ROWS),
+          sampleRows: rows,
         },
       })
     } catch (err) {
@@ -521,15 +591,26 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
         hasHeaderRow = template.hasHeaderRow
       }
 
-      const { headers, rows } = parseCsv(file.buffer, { delimiter, hasHeaderRow })
-      if (rows.length > CSV_MAX_ROWS) {
-        return reply.code(413).send({
-          error: {
-            code: 'FILE_TOO_LARGE',
-            message: `CSV has ${String(rows.length)} rows; maximum is ${String(CSV_MAX_ROWS)}`,
-          },
-        })
+      let parsed: { headers: string[]; rows: string[][] }
+      try {
+        parsed = await parseCsvStreaming(
+          file.buffer,
+          { delimiter, hasHeaderRow },
+          CSV_MAX_ROWS,
+          'strict',
+        )
+      } catch (err) {
+        if ((err as { code?: string } | undefined)?.code === 'ROW_LIMIT_EXCEEDED') {
+          return reply.code(413).send({
+            error: {
+              code: 'FILE_TOO_LARGE',
+              message: `CSV exceeds the maximum of ${String(CSV_MAX_ROWS)} rows`,
+            },
+          })
+        }
+        throw err
       }
+      const { headers, rows } = parsed
 
       const extractor = buildExtractor(mappings, defaults)
       const result = {
