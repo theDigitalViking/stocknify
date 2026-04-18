@@ -27,12 +27,26 @@ export async function stockTypesRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware)
   app.addHook('preHandler', tenantMiddleware)
 
-  // GET /stock-types — system defaults (tenant_id IS NULL) + tenant's own custom types
+  // GET /stock-types — only types relevant to this tenant:
+  //   (a) system defaults (tenant_id IS NULL) that this tenant actually has
+  //       stock rows for — integrations dictate which types populate, so
+  //       unused system defaults would be noise in filter dropdowns
+  //   (b) the tenant's own custom types (always returned, even if unused yet)
   app.get('/stock-types', async (request, reply) => {
     try {
+      const usedStockTypes = await request.db.stockLevel.findMany({
+        where: { tenantId: request.tenantId },
+        select: { stockType: true },
+        distinct: ['stockType'],
+      })
+      const usedKeys = usedStockTypes.map((s) => s.stockType)
+
       const stockTypes = await request.db.stockTypeDefinition.findMany({
         where: {
-          OR: [{ tenantId: null }, { tenantId: request.tenantId }],
+          OR: [
+            { tenantId: null, key: { in: usedKeys } },
+            { tenantId: request.tenantId },
+          ],
         },
         orderBy: { sortOrder: 'asc' },
       })
