@@ -58,5 +58,8 @@ prompts/
 !prompts/TEMPLATE_CODEX_REVIEW.md
 !prompts/TEMPLATE_REVIEW_RESULT.md
 
+# Claude Code local settings (machine-specific, never commit)
+.claude/settings.local.json
+
 # Misc
 .cache/
