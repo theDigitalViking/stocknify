@@ -33,7 +33,7 @@ export function DataTable<T>({
 }: DataTableProps<T>): JSX.Element {
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="h-9 border-b border-border">
             {columns.map((col) => (

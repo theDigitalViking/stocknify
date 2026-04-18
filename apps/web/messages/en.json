@@ -33,6 +33,9 @@
   "auth": {
     "signIn": "Sign in",
     "signUp": "Create account",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "companyName": "Company name",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm password",
@@ -44,6 +47,9 @@
     "signingIn": "Signing in\u2026",
     "creatingAccount": "Creating account\u2026",
     "validation": {
+      "firstNameRequired": "First name is required",
+      "lastNameRequired": "Last name is required",
+      "companyNameRequired": "Company name is required",
       "emailInvalid": "Enter a valid email address",
       "passwordMin": "Password must be at least 8 characters",
       "confirmPassword": "Please confirm your password",

@@ -41,7 +41,6 @@ interface FlatStockRow {
 
 export default function StockPage(): JSX.Element {
   const t = useTranslations('stock')
-  const tCommon = useTranslations('common')
   const locale = useLocale()
   const dateLocale = locale === 'de' ? deLocale : undefined
 
@@ -199,14 +198,7 @@ export default function StockPage(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title={t('title')}>
-        <Button size="sm" variant="outline" disabled>
-          {tCommon('export')}
-        </Button>
-        <Button size="sm" disabled>
-          {t('addProduct')}
-        </Button>
-      </PageHeader>
+      <PageHeader title={t('title')} />
 
       <div className="px-6 py-3 border-b border-border flex items-center gap-3">
         <Input

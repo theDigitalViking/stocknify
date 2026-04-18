@@ -12,9 +12,14 @@ export async function signIn(email: string, password: string): Promise<{ error: 
 export async function signUp(
   email: string,
   password: string,
+  metadata?: { firstName?: string; lastName?: string; companyName?: string },
 ): Promise<{ error: string | null }> {
   const supabase = createSupabaseBrowserClient()
-  const { error } = await supabase.auth.signUp({ email, password })
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: metadata ? { data: metadata } : undefined,
+  })
   return { error: error?.message ?? null }
 }
 

@@ -14,6 +14,9 @@ import { signUp } from '@/lib/auth'
 
 const registerSchema = z
   .object({
+    firstName: z.string().min(1, 'firstNameRequired'),
+    lastName: z.string().min(1, 'lastNameRequired'),
+    companyName: z.string().min(1, 'companyNameRequired'),
     email: z.string().email('emailInvalid'),
     password: z.string().min(8, 'passwordMin'),
     confirmPassword: z.string().min(1, 'confirmPassword'),
@@ -24,6 +27,14 @@ const registerSchema = z
   })
 
 type RegisterFormValues = z.infer<typeof registerSchema>
+type ValidationKey =
+  | 'firstNameRequired'
+  | 'lastNameRequired'
+  | 'companyNameRequired'
+  | 'emailInvalid'
+  | 'passwordMin'
+  | 'confirmPassword'
+  | 'passwordsMatch'
 
 export default function RegisterPage(): JSX.Element {
   const t = useTranslations('auth')
@@ -41,7 +52,11 @@ export default function RegisterPage(): JSX.Element {
 
   async function onSubmit(values: RegisterFormValues): Promise<void> {
     setServerError(null)
-    const { error } = await signUp(values.email, values.password)
+    const { error } = await signUp(values.email, values.password, {
+      firstName: values.firstName,
+      lastName: values.lastName,
+      companyName: values.companyName,
+    })
     if (error) {
       setServerError(error)
       return
@@ -63,6 +78,58 @@ export default function RegisterPage(): JSX.Element {
       <h2 className="text-base font-semibold mb-4">{t('signUp')}</h2>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="firstName" className="mb-1 block">
+              {t('firstName')}
+            </Label>
+            <Input
+              id="firstName"
+              type="text"
+              autoComplete="given-name"
+              {...register('firstName')}
+            />
+            {errors.firstName ? (
+              <p className="text-xs text-red-600 mt-1">
+                {tErrors(errors.firstName.message as ValidationKey)}
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <Label htmlFor="lastName" className="mb-1 block">
+              {t('lastName')}
+            </Label>
+            <Input
+              id="lastName"
+              type="text"
+              autoComplete="family-name"
+              {...register('lastName')}
+            />
+            {errors.lastName ? (
+              <p className="text-xs text-red-600 mt-1">
+                {tErrors(errors.lastName.message as ValidationKey)}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="companyName" className="mb-1 block">
+            {t('companyName')}
+          </Label>
+          <Input
+            id="companyName"
+            type="text"
+            autoComplete="organization"
+            {...register('companyName')}
+          />
+          {errors.companyName ? (
+            <p className="text-xs text-red-600 mt-1">
+              {tErrors(errors.companyName.message as ValidationKey)}
+            </p>
+          ) : null}
+        </div>
+
         <div>
           <Label htmlFor="email" className="mb-1 block">
             {t('email')}
@@ -70,7 +137,7 @@ export default function RegisterPage(): JSX.Element {
           <Input id="email" type="email" autoComplete="email" {...register('email')} />
           {errors.email ? (
             <p className="text-xs text-red-600 mt-1">
-              {tErrors(errors.email.message as 'emailInvalid')}
+              {tErrors(errors.email.message as ValidationKey)}
             </p>
           ) : null}
         </div>
@@ -87,7 +154,7 @@ export default function RegisterPage(): JSX.Element {
           />
           {errors.password ? (
             <p className="text-xs text-red-600 mt-1">
-              {tErrors(errors.password.message as 'passwordMin')}
+              {tErrors(errors.password.message as ValidationKey)}
             </p>
           ) : null}
         </div>
@@ -104,7 +171,7 @@ export default function RegisterPage(): JSX.Element {
           />
           {errors.confirmPassword ? (
             <p className="text-xs text-red-600 mt-1">
-              {tErrors(errors.confirmPassword.message as 'confirmPassword' | 'passwordsMatch')}
+              {tErrors(errors.confirmPassword.message as ValidationKey)}
             </p>
           ) : null}
         </div>

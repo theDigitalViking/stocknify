@@ -39,6 +39,9 @@ interface SupabaseWebhookPayload {
     raw_user_meta_data?: {
       tenant_id?: string
       role?: string // our app role (set by the invite flow)
+      firstName?: string
+      lastName?: string
+      companyName?: string
     }
   }
 }
@@ -135,6 +138,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const { id, email, raw_user_meta_data } = payload.record
     const tenantId = raw_user_meta_data?.tenant_id
     const role = raw_user_meta_data?.role ?? 'user'
+    const firstName = raw_user_meta_data?.firstName?.trim() || undefined
+    const lastName = raw_user_meta_data?.lastName?.trim() || undefined
+    const companyName = raw_user_meta_data?.companyName?.trim() || undefined
+    const fullName = firstName && lastName
+      ? `${firstName} ${lastName}`
+      : firstName ?? lastName ?? null
 
     try {
       // Resolve the final (tenantId, role) pair inside each scenario so we
@@ -148,7 +157,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         // (Supabase fires user.created immediately on invite, before our handler finishes).
         await prisma.user.upsert({
           where: { id },
-          create: { id, tenantId, email, role },
+          create: { id, tenantId, email, role, fullName },
           update: {},
         })
         resolvedTenantId = tenantId
@@ -157,11 +166,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         // Scenario 1 — self-signup: create a new tenant + admin user in one transaction.
         const createdTenantId = await prisma.$transaction(async (tx) => {
           const emailPrefix = (email.split('@')[0] ?? 'user').replace(/[^a-z0-9]/gi, '')
-          const displayName =
+          const emailDisplayName =
             emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1) || 'My Company'
+          const displayName = companyName || emailDisplayName
           const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
 
-          const slug = await generateUniqueSlug(emailPrefix || 'tenant', tx as unknown as PrismaClient)
+          const slugBase = companyName || emailPrefix || 'tenant'
+          const slug = await generateUniqueSlug(slugBase, tx as unknown as PrismaClient)
 
           const tenant = await tx.tenant.create({
             data: {
@@ -176,7 +187,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           // First user of the tenant is always admin
           await tx.user.upsert({
             where: { id },
-            create: { id, tenantId: tenant.id, email, role: 'admin' },
+            create: { id, tenantId: tenant.id, email, role: 'admin', fullName },
             update: {},
           })
 
