@@ -40,7 +40,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
-    return NextResponse.redirect(new URL('/stock', request.url))
+    return NextResponse.redirect(new URL('/products', request.url))
   }
 
   const isDashboardRoute =
@@ -59,7 +59,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   }
 
   if (user && (pathname === '/login' || pathname === '/register')) {
-    return NextResponse.redirect(new URL('/stock', request.url))
+    return NextResponse.redirect(new URL('/products', request.url))
   }
 
   // Return the exact supabaseResponse so refreshed session cookies are preserved.

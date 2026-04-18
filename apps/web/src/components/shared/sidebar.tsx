@@ -78,7 +78,7 @@ export function Sidebar(): JSX.Element {
           <button
             type="button"
             onClick={toggle}
-            title="Collapse sidebar"
+            title={t('collapse')}
             className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
           >
             <PanelLeftClose className="h-4 w-4" />
@@ -90,7 +90,7 @@ export function Sidebar(): JSX.Element {
         <button
           type="button"
           onClick={toggle}
-          title="Expand sidebar"
+          title={t('expand')}
           className="h-12 w-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-b border-border"
         >
           <PanelLeftOpen className="h-4 w-4" />

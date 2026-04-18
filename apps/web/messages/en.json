@@ -28,7 +28,9 @@
     "integrations": "Integrations",
     "notifications": "Notifications",
     "settings": "Settings",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
   },
   "auth": {
     "signIn": "Sign in",
@@ -239,6 +241,98 @@
       "title": "Company",
       "name": "Company name",
       "slug": "URL slug"
+    }
+  },
+  "csv": {
+    "tabs": {
+      "import": "CSV Import",
+      "templates": "Mapping Templates"
+    },
+    "import": {
+      "title": "Import Products from CSV",
+      "templateLabel": "Mapping Template",
+      "defaultTemplate": "Default (columns match Stocknify fields)",
+      "dropzone": "Drop CSV file here or click to upload",
+      "dropzoneHint": "Max. 5 MB, up to 10,000 rows",
+      "clearFile": "Remove file",
+      "dryRunButton": "Test Run",
+      "importButton": "Import",
+      "dryRunBanner": "Test run — no data was saved",
+      "resultTitle": "Import complete",
+      "created": "{count, plural, one {# product created} other {# products created}}",
+      "updated": "{count, plural, one {# product updated} other {# products updated}}",
+      "skipped": "{count, plural, one {# skipped} other {# skipped}}",
+      "errors": "{count, plural, one {# error} other {# errors}}",
+      "showErrors": "Show errors",
+      "errorRow": "Row {row}",
+      "noFile": "Please select a CSV file first",
+      "importFailed": "Import failed",
+      "importFailedGeneric": "An unexpected error occurred during import."
+    },
+    "templates": {
+      "title": "Mapping Templates",
+      "newButton": "New Template",
+      "empty": "No templates yet",
+      "emptyHint": "Create your first mapping template to reuse column-to-field assignments.",
+      "editAction": "Edit template",
+      "deleteAction": "Delete template",
+      "deleteConfirm": "Delete template \"{name}\"? This cannot be undone.",
+      "deleted": "Template deleted",
+      "deleteFailed": "Delete failed",
+      "columns": {
+        "name": "Name",
+        "direction": "Direction",
+        "resourceType": "Resource",
+        "delimiter": "Delimiter",
+        "created": "Created"
+      },
+      "directions": {
+        "import": "Import",
+        "export": "Export"
+      },
+      "resourceTypes": {
+        "products": "Products",
+        "stock": "Stock",
+        "locations": "Locations"
+      },
+      "fields": {
+        "productName": "Product name",
+        "sku": "SKU",
+        "barcode": "EAN / Barcode",
+        "description": "Description",
+        "category": "Category",
+        "unit": "Unit"
+      },
+      "dialog": {
+        "createTitle": "New Mapping Template",
+        "editTitle": "Edit Mapping Template",
+        "step1": "Upload CSV",
+        "step2": "Map Columns",
+        "nameLabel": "Template name",
+        "delimiterLabel": "Delimiter",
+        "hasHeaderLabel": "Has header row",
+        "uploadLabel": "Upload a CSV file to detect columns",
+        "uploadPlaceholder": "Drop a CSV file here to detect columns",
+        "uploadHint": "The first 5 rows will be shown as a preview.",
+        "clearFile": "Remove file",
+        "detectedHeaders": "Detected columns",
+        "preview": "Preview",
+        "previewEmpty": "Upload a CSV in step 1 to see a preview here.",
+        "previewing": "Parsing preview\u2026",
+        "previewFailed": "Preview failed",
+        "csvColumnLabel": "CSV column",
+        "fixedValueLabel": "Fixed value",
+        "csvColumnPlaceholder": "Select a column\u2026",
+        "fixedValuePlaceholder": "Enter fixed value\u2026",
+        "requiredField": "This field is required",
+        "back": "Back",
+        "save": "Save",
+        "next": "Next",
+        "saving": "Saving\u2026",
+        "saved": "Template saved",
+        "created": "Template created",
+        "saveFailed": "Save failed"
+      }
     }
   },
   "errors": {

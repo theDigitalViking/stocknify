@@ -28,7 +28,9 @@
     "integrations": "Integrationen",
     "notifications": "Benachrichtigungen",
     "settings": "Einstellungen",
-    "signOut": "Abmelden"
+    "signOut": "Abmelden",
+    "collapse": "Sidebar einklappen",
+    "expand": "Sidebar ausklappen"
   },
   "auth": {
     "signIn": "Anmelden",
@@ -239,6 +241,98 @@
       "title": "Unternehmen",
       "name": "Firmenname",
       "slug": "URL-Kürzel"
+    }
+  },
+  "csv": {
+    "tabs": {
+      "import": "CSV-Import",
+      "templates": "Mapping-Templates"
+    },
+    "import": {
+      "title": "CSV Produkte importieren",
+      "templateLabel": "Mapping-Template",
+      "defaultTemplate": "Standard (Spalten wie Stocknify-Felder)",
+      "dropzone": "Datei hier ablegen oder klicken um CSV hochzuladen",
+      "dropzoneHint": "Max. 5 MB, bis zu 10.000 Zeilen",
+      "clearFile": "Datei entfernen",
+      "dryRunButton": "Testlauf",
+      "importButton": "Importieren",
+      "dryRunBanner": "Testlauf — keine Daten wurden gespeichert",
+      "resultTitle": "Import abgeschlossen",
+      "created": "{count, plural, one {# Produkt angelegt} other {# Produkte angelegt}}",
+      "updated": "{count, plural, one {# Produkt aktualisiert} other {# Produkte aktualisiert}}",
+      "skipped": "{count, plural, one {# übersprungen} other {# übersprungen}}",
+      "errors": "{count, plural, one {# Fehler} other {# Fehler}}",
+      "showErrors": "Fehler anzeigen",
+      "errorRow": "Zeile {row}",
+      "noFile": "Bitte zuerst eine CSV-Datei auswählen",
+      "importFailed": "Import fehlgeschlagen",
+      "importFailedGeneric": "Beim Import ist ein unerwarteter Fehler aufgetreten."
+    },
+    "templates": {
+      "title": "Mapping-Templates",
+      "newButton": "Neues Template",
+      "empty": "Noch keine Templates",
+      "emptyHint": "Erstelle dein erstes Mapping-Template, um Spaltenzuordnungen wiederzuverwenden.",
+      "editAction": "Template bearbeiten",
+      "deleteAction": "Template löschen",
+      "deleteConfirm": "Template \u201E{name}\u201C löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "deleted": "Template gelöscht",
+      "deleteFailed": "Löschen fehlgeschlagen",
+      "columns": {
+        "name": "Name",
+        "direction": "Richtung",
+        "resourceType": "Ressourcentyp",
+        "delimiter": "Trennzeichen",
+        "created": "Erstellt"
+      },
+      "directions": {
+        "import": "Import",
+        "export": "Export"
+      },
+      "resourceTypes": {
+        "products": "Produkte",
+        "stock": "Bestand",
+        "locations": "Lagerorte"
+      },
+      "fields": {
+        "productName": "Produktname",
+        "sku": "SKU",
+        "barcode": "EAN / Barcode",
+        "description": "Beschreibung",
+        "category": "Kategorie",
+        "unit": "Einheit"
+      },
+      "dialog": {
+        "createTitle": "Neues Mapping-Template",
+        "editTitle": "Mapping-Template bearbeiten",
+        "step1": "CSV hochladen",
+        "step2": "Spalten mappen",
+        "nameLabel": "Template-Name",
+        "delimiterLabel": "Trennzeichen",
+        "hasHeaderLabel": "Enthält Kopfzeile",
+        "uploadLabel": "CSV-Datei hochladen, um Spalten zu erkennen",
+        "uploadPlaceholder": "CSV-Datei hier ablegen, um Spalten zu erkennen",
+        "uploadHint": "Die ersten 5 Zeilen werden als Vorschau angezeigt.",
+        "clearFile": "Datei entfernen",
+        "detectedHeaders": "Erkannte Spalten",
+        "preview": "Vorschau",
+        "previewEmpty": "Lade in Schritt 1 eine CSV hoch, um eine Vorschau zu sehen.",
+        "previewing": "Vorschau wird erstellt\u2026",
+        "previewFailed": "Vorschau fehlgeschlagen",
+        "csvColumnLabel": "CSV-Spalte",
+        "fixedValueLabel": "Fester Wert",
+        "csvColumnPlaceholder": "Spalte wählen\u2026",
+        "fixedValuePlaceholder": "Festen Wert eingeben\u2026",
+        "requiredField": "Dieses Feld ist ein Pflichtfeld",
+        "back": "Zurück",
+        "save": "Speichern",
+        "next": "Weiter",
+        "saving": "Speichert\u2026",
+        "saved": "Template gespeichert",
+        "created": "Template angelegt",
+        "saveFailed": "Speichern fehlgeschlagen"
+      }
     }
   },
   "errors": {
