@@ -1,12 +1,18 @@
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
+import multipart from '@fastify/multipart'
 import rateLimit from '@fastify/rate-limit'
 import sensible from '@fastify/sensible'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import jwksClient from 'jwks-rsa'
 
 import { config } from '../config.js'
+
+// CSV import limits — enforced by multipart before parsing begins.
+// Keep these in sync with the documented limits in PROMPT_CSV_PRODUCT_IMPORT_BACKEND.
+const CSV_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
+const CSV_MAX_TEXT_FIELD_BYTES = 1024 * 1024 // 1 MB — plenty for JSON metadata fields
 
 // Supabase migrated to asymmetric ES256 JWT signing. Legacy HS256 tokens are
 // still around, so we verify both: ES256 via the project's JWKS endpoint,
@@ -86,4 +92,15 @@ export async function registerPlugins(app: FastifyInstance): Promise<void> {
 
   // Fastify sensible helpers (httpErrors, assert, etc.)
   await app.register(sensible)
+
+  // Multipart — CSV upload routes use this. Limits enforced before parsing.
+  await app.register(multipart, {
+    limits: {
+      fileSize: CSV_MAX_FILE_SIZE_BYTES,
+      files: 1,
+      fields: 10,
+      fieldSize: CSV_MAX_TEXT_FIELD_BYTES,
+      headerPairs: 2000,
+    },
+  })
 }

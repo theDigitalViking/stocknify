@@ -4,6 +4,7 @@ import { config } from './config.js'
 import { registerPlugins } from './plugins/index.js'
 import { authRoutes } from './routes/auth/index.js'
 import { billingRoutes } from './routes/billing/index.js'
+import { csvRoutes } from './routes/csv/index.js'
 import { healthRoutes } from './routes/health.js'
 import { integrationsRoutes } from './routes/integrations/index.js'
 import { locationsRoutes } from './routes/locations/index.js'
@@ -40,6 +41,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       await v1.register(stockRoutes)
       await v1.register(stockTypesRoutes)
       await v1.register(integrationsRoutes)
+      await v1.register(csvRoutes)
       await v1.register(rulesRoutes)
       await v1.register(notificationsRoutes)
       await v1.register(billingRoutes)

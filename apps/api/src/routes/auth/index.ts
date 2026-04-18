@@ -1,20 +1,11 @@
 import crypto from 'node:crypto'
 
 import { type PrismaClient } from '@prisma/client'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import { config } from '../../config.js'
+import { getSupabaseAdmin } from '../../lib/supabase-admin.js'
 import { prisma } from '../../middleware/tenant.js'
-
-// Service-role Supabase client for setting app_metadata on auth.users.
-// tenant_id + role in app_metadata end up in the signed JWT claims, which
-// authMiddleware reads on every authenticated request.
-function getSupabaseAdmin(): SupabaseClient {
-  return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Types

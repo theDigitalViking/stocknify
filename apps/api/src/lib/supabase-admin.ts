@@ -1,4 +1,15 @@
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+
 import { config } from '../config.js'
+
+// Service-role Supabase client — bypasses RLS via the service_role JWT.
+// Used for: setting app_metadata on auth.users, writing to tables that are
+// deny-by-default under RLS (e.g. incidents).
+export function getSupabaseAdmin(): SupabaseClient {
+  return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
 /**
  * Invite a user by email via the Supabase Auth admin API.
