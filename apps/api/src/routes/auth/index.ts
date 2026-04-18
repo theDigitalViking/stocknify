@@ -80,6 +80,14 @@ async function generateUniqueSlug(base: string, db: PrismaClient): Promise<strin
   throw new Error('SLUG_GENERATION_FAILED')
 }
 
+// Supabase delivers raw_user_meta_data as arbitrary JSON — the TypeScript
+// interface only describes the happy path. Calling `.trim()` on a number or
+// object would throw before the route's try/catch, so every metadata string
+// read must go through this guard.
+function metaString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -138,9 +146,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const { id, email, raw_user_meta_data } = payload.record
     const tenantId = raw_user_meta_data?.tenant_id
     const role = raw_user_meta_data?.role ?? 'user'
-    const firstName = raw_user_meta_data?.firstName?.trim() || undefined
-    const lastName = raw_user_meta_data?.lastName?.trim() || undefined
-    const companyName = raw_user_meta_data?.companyName?.trim() || undefined
+    const firstName = metaString(raw_user_meta_data?.firstName)?.trim() || undefined
+    const lastName = metaString(raw_user_meta_data?.lastName)?.trim() || undefined
+    const companyName = metaString(raw_user_meta_data?.companyName)?.trim() || undefined
     const fullName = firstName && lastName
       ? `${firstName} ${lastName}`
       : firstName ?? lastName ?? null
