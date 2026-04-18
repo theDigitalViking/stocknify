@@ -3,10 +3,10 @@
 import {
   BarChart2,
   Bell,
-  ChevronLeft,
-  ChevronRight,
   LogOut,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plug,
   Settings,
   Sliders,
@@ -61,22 +61,43 @@ export function Sidebar(): JSX.Element {
       <div
         className={cn(
           'h-12 border-b border-border flex items-center',
-          isCollapsed ? 'justify-center px-0' : 'px-4',
+          isCollapsed ? 'justify-center px-0' : 'px-4 justify-between',
         )}
       >
         <Link
           href="/stock"
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 min-w-0"
           title={isCollapsed ? 'Stocknify' : undefined}
         >
-          <Warehouse className="h-5 w-5 text-brand-600" />
-          {isCollapsed ? null : <span className="text-sm font-semibold">Stocknify</span>}
+          <Warehouse className="h-5 w-5 text-brand-600 flex-shrink-0" />
+          {isCollapsed ? null : (
+            <span className="text-sm font-semibold truncate">Stocknify</span>
+          )}
         </Link>
+        {isCollapsed ? null : (
+          <button
+            type="button"
+            onClick={toggle}
+            title="Collapse sidebar"
+            className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      <nav
-        className={cn('flex-1 py-3 space-y-0.5', isCollapsed ? 'px-2' : 'px-3')}
-      >
+      {isCollapsed ? (
+        <button
+          type="button"
+          onClick={toggle}
+          title="Expand sidebar"
+          className="h-12 w-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-b border-border"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      ) : null}
+
+      <nav className={cn('flex-1 py-3 space-y-0.5', isCollapsed ? 'px-2' : 'px-3')}>
         {NAV_ITEMS.map((item) => {
           const isActive = pathname.startsWith(item.href)
           const label = t(item.key)
@@ -104,25 +125,7 @@ export function Sidebar(): JSX.Element {
         <div className="px-3 pb-2 text-xs text-muted-foreground truncate">{tenant.name}</div>
       ) : null}
 
-      <div className={cn('py-3 border-t border-border space-y-0.5', isCollapsed ? 'px-2' : 'px-3')}>
-        <button
-          type="button"
-          onClick={toggle}
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className={cn(
-            'flex w-full items-center h-8 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors',
-            isCollapsed ? 'justify-center px-0' : 'gap-2 px-3',
-          )}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <>
-              <ChevronLeft className="h-4 w-4" />
-              <span>Collapse</span>
-            </>
-          )}
-        </button>
+      <div className={cn('py-3 border-t border-border', isCollapsed ? 'px-2' : 'px-3')}>
         <button
           type="button"
           onClick={handleSignOut}
