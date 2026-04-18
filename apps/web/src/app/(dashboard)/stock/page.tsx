@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { QuantityCell } from '@/components/shared/quantity-cell'
+import type { SortDir } from '@/components/shared/sortable-header'
 import { ManualAdjustDialog } from '@/components/stock/manual-adjust-dialog'
 import { StockTypeBadge } from '@/components/stock/stock-type-badge'
 import { Button } from '@/components/ui/button'
@@ -48,6 +49,8 @@ export default function StockPage(): JSX.Element {
   const [selectedStockTypes, setSelectedStockTypes] = useState<string[]>([])
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [adjustRow, setAdjustRow] = useState<StockRow | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>(null)
 
   const filters = useMemo(
     () => ({
@@ -83,6 +86,20 @@ export default function StockPage(): JSX.Element {
       return matchesStockType && matchesLocation
     })
   }, [stockData, selectedStockTypes, selectedLocations])
+
+  const sortedRows = useMemo(() => {
+    if (!sortField || !sortDir) return flatRows
+    const copy = [...flatRows]
+    copy.sort((a, b) => {
+      const aVal = (a as unknown as Record<string, unknown>)[sortField]
+      const bVal = (b as unknown as Record<string, unknown>)[sortField]
+      const cmp = String(aVal ?? '').localeCompare(String(bVal ?? ''), undefined, {
+        numeric: true,
+      })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return copy
+  }, [flatRows, sortField, sortDir])
 
   const aggregatedByKey = useMemo(() => {
     const m = new Map<string, StockRow>()
@@ -120,11 +137,13 @@ export default function StockPage(): JSX.Element {
     {
       header: t('columns.sku'),
       accessor: (row) => <span className="font-mono text-xs">{row.sku}</span>,
+      sortField: 'sku',
     },
-    { header: t('columns.product'), accessor: 'productName' },
+    { header: t('columns.product'), accessor: 'productName', sortField: 'productName' },
     {
       header: t('columns.location'),
       accessor: (row) => <span className="text-sm">{row.locationName}</span>,
+      sortField: 'locationName',
     },
     {
       header: t('columns.stockType'),
@@ -139,6 +158,7 @@ export default function StockPage(): JSX.Element {
       header: t('columns.quantity'),
       accessor: (row) => <QuantityCell quantity={row.quantity} />,
       className: 'text-right tabular-nums',
+      sortField: 'quantity',
     },
     {
       header: t('columns.lastSynced'),
@@ -275,12 +295,18 @@ export default function StockPage(): JSX.Element {
 
       <DataTable
         columns={columns}
-        data={flatRows}
+        data={sortedRows}
         isLoading={isLoading}
         emptyIcon={Package}
         emptyTitle={t('empty.title')}
         emptyDescription={t('empty.description')}
         rowKey={(row) => row.id}
+        sortField={sortField}
+        sortDir={sortDir}
+        onSort={(field, dir) => {
+          setSortField(field)
+          setSortDir(dir)
+        }}
       />
 
       <ManualAdjustDialog

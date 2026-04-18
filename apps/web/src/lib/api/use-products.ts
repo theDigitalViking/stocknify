@@ -24,6 +24,8 @@ export interface ProductFilters {
   search?: string
   page?: number
   perPage?: number
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
 }
 
 export function useProducts(filters: ProductFilters = {}): UseQueryResult<ProductWithCount[]> {
@@ -104,6 +106,22 @@ export function useDeleteProduct(): UseMutationResult<unknown, Error, string> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiFetch<unknown>(`/products/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+}
+
+// No bulk-delete backend endpoint yet — fan out sequential DELETE calls so
+// the existing per-id soft-delete transaction runs for each selection.
+export function useDeleteProducts(): UseMutationResult<void, Error, string[]> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await apiFetch<unknown>(`/products/${id}`, { method: 'DELETE' })
+      }
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['products'] })
     },

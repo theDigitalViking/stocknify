@@ -1,6 +1,7 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -68,7 +69,14 @@ export default function RegisterPage(): JSX.Element {
     return (
       <div className="bg-background rounded-md border border-border p-6 text-center max-w-sm w-full">
         <h2 className="text-base font-semibold mb-2">{t('checkInbox')}</h2>
-        <p className="text-sm text-muted-foreground">{t('confirmationSent')}</p>
+        <p className="text-sm text-muted-foreground mb-4">{t('confirmationSent')}</p>
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-1.5 text-sm text-brand-700 font-medium hover:underline"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {t('backToLogin')}
+        </Link>
       </div>
     )
   }

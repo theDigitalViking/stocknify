@@ -46,6 +46,8 @@
     "confirmationSent": "We sent a confirmation email. Click the link to activate your account.",
     "signingIn": "Signing in\u2026",
     "creatingAccount": "Creating account\u2026",
+    "backToLogin": "Back to login",
+    "emailConfirmed": "Your email has been confirmed. You can now sign in.",
     "validation": {
       "firstNameRequired": "First name is required",
       "lastNameRequired": "Last name is required",
@@ -199,6 +201,20 @@
       "deleted": "Product deleted",
       "deleteFailed": "Delete failed",
       "deleteFailedGeneric": "Failed to delete product"
+    },
+    "bulk": {
+      "selectAll": "Select all",
+      "selectRow": "Select {name}",
+      "selectedCount": "{count, plural, one {# product selected} other {# products selected}}",
+      "clearSelection": "Clear",
+      "deleteAction": "Delete",
+      "deleteTitle": "{count, plural, one {Delete # product?} other {Delete # products?}}",
+      "deleteDescription": "{count, plural, one {This will soft-delete # product. Stock data is preserved.} other {This will soft-delete # products. Stock data is preserved.}}",
+      "deleteConfirm": "Delete",
+      "deletedTitle": "Products deleted",
+      "deletedDescription": "{count, plural, one {# product removed} other {# products removed}}",
+      "deleteFailedTitle": "Bulk delete failed",
+      "deleteFailedGeneric": "Failed to delete products"
     }
   },
   "locations": {

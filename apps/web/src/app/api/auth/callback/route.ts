@@ -9,7 +9,10 @@ import { type NextRequest, NextResponse } from 'next/server'
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
-  const next = requestUrl.searchParams.get('next') ?? '/onboarding'
+  // Default target is /login?confirmed=true so the user re-authenticates
+  // explicitly after clicking the email-confirmation link. A caller that
+  // needs a different destination can override via ?next=.
+  const next = requestUrl.searchParams.get('next') ?? '/login?confirmed=true'
 
   if (code) {
     const cookieStore = cookies()
@@ -33,7 +36,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      // New user → onboarding, returning user → dashboard
       return NextResponse.redirect(new URL(next, requestUrl.origin))
     }
   }

@@ -46,6 +46,8 @@
     "confirmationSent": "Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Klicken Sie auf den Link, um Ihr Konto zu aktivieren.",
     "signingIn": "Wird angemeldet\u2026",
     "creatingAccount": "Konto wird erstellt\u2026",
+    "backToLogin": "Zurück zur Anmeldung",
+    "emailConfirmed": "Deine E-Mail wurde bestätigt. Du kannst dich jetzt anmelden.",
     "validation": {
       "firstNameRequired": "Vorname ist ein Pflichtfeld",
       "lastNameRequired": "Nachname ist ein Pflichtfeld",
@@ -199,6 +201,20 @@
       "deleted": "Produkt gelöscht",
       "deleteFailed": "Löschen fehlgeschlagen",
       "deleteFailedGeneric": "Produkt konnte nicht gelöscht werden"
+    },
+    "bulk": {
+      "selectAll": "Alle auswählen",
+      "selectRow": "{name} auswählen",
+      "selectedCount": "{count, plural, one {# Produkt ausgewählt} other {# Produkte ausgewählt}}",
+      "clearSelection": "Zurücksetzen",
+      "deleteAction": "Löschen",
+      "deleteTitle": "{count, plural, one {# Produkt löschen?} other {# Produkte löschen?}}",
+      "deleteDescription": "{count, plural, one {Damit wird # Produkt softgelöscht. Bestandsdaten bleiben erhalten.} other {Damit werden # Produkte softgelöscht. Bestandsdaten bleiben erhalten.}}",
+      "deleteConfirm": "Löschen",
+      "deletedTitle": "Produkte gelöscht",
+      "deletedDescription": "{count, plural, one {# Produkt entfernt} other {# Produkte entfernt}}",
+      "deleteFailedTitle": "Massenlöschung fehlgeschlagen",
+      "deleteFailedGeneric": "Produkte konnten nicht gelöscht werden"
     }
   },
   "locations": {

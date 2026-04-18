@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -22,9 +22,11 @@ type LoginFormValues = z.infer<typeof loginSchema>
 
 export default function LoginPage(): JSX.Element {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const t = useTranslations('auth')
   const tErrors = useTranslations('auth.validation')
   const [serverError, setServerError] = useState<string | null>(null)
+  const isConfirmed = searchParams.get('confirmed') === 'true'
 
   const {
     register,
@@ -48,6 +50,12 @@ export default function LoginPage(): JSX.Element {
   return (
     <div className="bg-background rounded-md border border-border p-6 max-w-sm w-full">
       <h2 className="text-base font-semibold mb-4">{t('signIn')}</h2>
+
+      {isConfirmed ? (
+        <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700 mb-4">
+          {t('emailConfirmed')}
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
         <div>

@@ -5,20 +5,36 @@ import { de as deLocale } from 'date-fns/locale'
 import { CheckCircle2, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AddProductDialog } from '@/components/products/add-product-dialog'
+import { BulkDeleteDialog } from '@/components/products/bulk-delete-dialog'
 import { DeleteProductDialog } from '@/components/products/delete-product-dialog'
 import { EditProductDialog } from '@/components/products/edit-product-dialog'
 import { ProductSourceIcons } from '@/components/products/product-source-icons'
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
+import type { SortDir } from '@/components/shared/sortable-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useProducts, type ProductWithCount } from '@/lib/api/use-products'
+import { toast } from '@/components/ui/use-toast'
+import {
+  useDeleteProducts,
+  useProducts,
+  type ProductWithCount,
+} from '@/lib/api/use-products'
+
+const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
+type UnitKey = (typeof UNIT_KEYS)[number]
+
+function isKnownUnit(value: string): value is UnitKey {
+  return (UNIT_KEYS as readonly string[]).includes(value)
+}
 
 export default function ProductsPage(): JSX.Element {
   const t = useTranslations('products')
+  const tUnits = useTranslations('products.units')
+  const tBulk = useTranslations('products.bulk')
   const locale = useLocale()
   const dateLocale = locale === 'de' ? deLocale : undefined
 
@@ -26,12 +42,119 @@ export default function ProductsPage(): JSX.Element {
   const [addOpen, setAddOpen] = useState(false)
   const [toEdit, setToEdit] = useState<ProductWithCount | null>(null)
   const [toDelete, setToDelete] = useState<ProductWithCount | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>(null)
 
   const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
+    sortBy: sortField ?? undefined,
+    sortDir: sortDir ?? undefined,
   })
+  const deleteMany = useDeleteProducts()
+
+  // Backend does not yet honour sortBy/sortDir — the params are forwarded so
+  // a future server-side implementation works transparently, but today we
+  // sort client-side so the UI actually reflects the user's selection.
+  const sortedProducts = useMemo(() => {
+    if (!sortField || !sortDir) return products
+    const getValue = (row: ProductWithCount): string => {
+      switch (sortField) {
+        case 'name':
+          return row.name
+        case 'sku':
+          return row.variants[0]?.sku ?? ''
+        case 'barcode':
+          return row.variants[0]?.barcode ?? ''
+        case 'createdAt':
+          return row.createdAt
+        default:
+          return ''
+      }
+    }
+    const copy = [...products]
+    copy.sort((a, b) => {
+      const cmp = getValue(a).localeCompare(getValue(b), undefined, { numeric: true })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return copy
+  }, [products, sortField, sortDir])
+
+  function handleSort(field: string | null, dir: SortDir): void {
+    setSortField(field)
+    setSortDir(dir)
+  }
+
+  const allSelected = sortedProducts.length > 0 && selectedIds.size === sortedProducts.length
+  const someSelected = selectedIds.size > 0 && !allSelected
+
+  function toggleAll(checked: boolean): void {
+    if (checked) {
+      setSelectedIds(new Set(sortedProducts.map((p) => p.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  function toggleOne(id: string, checked: boolean): void {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  async function confirmBulkDelete(): Promise<void> {
+    const ids = Array.from(selectedIds)
+    try {
+      await deleteMany.mutateAsync(ids)
+      toast({
+        title: tBulk('deletedTitle'),
+        description: tBulk('deletedDescription', { count: ids.length }),
+      })
+      setSelectedIds(new Set())
+      setBulkDeleteOpen(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : tBulk('deleteFailedGeneric')
+      toast({
+        title: tBulk('deleteFailedTitle'),
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }
 
   const columns: ColumnDef<ProductWithCount>[] = [
+    {
+      header: (
+        <input
+          type="checkbox"
+          aria-label={tBulk('selectAll')}
+          checked={allSelected}
+          ref={(el) => {
+            if (el) el.indeterminate = someSelected
+          }}
+          onChange={(e) => {
+            toggleAll(e.target.checked)
+          }}
+          className="h-4 w-4 rounded border-border cursor-pointer accent-brand-600"
+        />
+      ),
+      accessor: (row) => (
+        <input
+          type="checkbox"
+          aria-label={tBulk('selectRow', { name: row.name })}
+          checked={selectedIds.has(row.id)}
+          onChange={(e) => {
+            toggleOne(row.id, e.target.checked)
+          }}
+          className="h-4 w-4 rounded border-border cursor-pointer accent-brand-600"
+        />
+      ),
+      className: 'w-10',
+    },
     {
       header: t('columns.name'),
       accessor: (row) => (
@@ -39,6 +162,7 @@ export default function ProductsPage(): JSX.Element {
           {row.name}
         </Link>
       ),
+      sortField: 'name',
     },
     {
       header: t('columns.sku'),
@@ -50,6 +174,7 @@ export default function ProductsPage(): JSX.Element {
           <span className="text-xs text-muted-foreground">—</span>
         )
       },
+      sortField: 'sku',
     },
     {
       header: t('columns.barcode'),
@@ -61,6 +186,7 @@ export default function ProductsPage(): JSX.Element {
           <span className="text-xs text-muted-foreground">—</span>
         )
       },
+      sortField: 'barcode',
     },
     {
       header: t('columns.source'),
@@ -76,7 +202,14 @@ export default function ProductsPage(): JSX.Element {
           <span className="text-xs text-muted-foreground">—</span>
         ),
     },
-    { header: t('columns.unit'), accessor: 'unit' },
+    {
+      header: t('columns.unit'),
+      accessor: (row) => (
+        <span className="text-sm text-muted-foreground">
+          {isKnownUnit(row.unit) ? tUnits(row.unit) : row.unit}
+        </span>
+      ),
+    },
     {
       header: t('columns.created'),
       accessor: (row) => (
@@ -87,6 +220,7 @@ export default function ProductsPage(): JSX.Element {
           })}
         </span>
       ),
+      sortField: 'createdAt',
     },
     {
       header: '',
@@ -134,6 +268,35 @@ export default function ProductsPage(): JSX.Element {
         </Button>
       </PageHeader>
 
+      {selectedIds.size > 0 ? (
+        <div className="px-6 py-2 border-b border-border bg-accent flex items-center justify-between">
+          <span className="text-sm text-foreground font-medium">
+            {tBulk('selectedCount', { count: selectedIds.size })}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSelectedIds(new Set())
+              }}
+            >
+              {tBulk('clearSelection')}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                setBulkDeleteOpen(true)
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              {tBulk('deleteAction')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="px-6 py-3 border-b border-border flex items-center gap-3">
         <Input
           placeholder={t('searchPlaceholder')}
@@ -147,12 +310,15 @@ export default function ProductsPage(): JSX.Element {
 
       <DataTable
         columns={columns}
-        data={products}
+        data={sortedProducts}
         isLoading={isLoading}
         emptyIcon={Package}
         emptyTitle={t('empty.title')}
         emptyDescription={t('empty.description')}
         rowKey={(row) => row.id}
+        sortField={sortField}
+        sortDir={sortDir}
+        onSort={handleSort}
       />
 
       <AddProductDialog open={addOpen} onOpenChange={setAddOpen} />
@@ -170,6 +336,17 @@ export default function ProductsPage(): JSX.Element {
         onOpenChange={(open) => {
           if (!open) setToDelete(null)
         }}
+      />
+      <BulkDeleteDialog
+        count={selectedIds.size}
+        open={bulkDeleteOpen}
+        onOpenChange={(open) => {
+          if (!deleteMany.isPending) setBulkDeleteOpen(open)
+        }}
+        onConfirm={() => {
+          void confirmBulkDelete()
+        }}
+        isLoading={deleteMany.isPending}
       />
     </div>
   )
