@@ -1,11 +1,20 @@
 'use client'
 
-import { AlertTriangle, CheckCircle2, ChevronDown, Info, Upload } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  Info,
+  Plus,
+  Upload,
+} from 'lucide-react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import { CsvFileDropzone } from './csv-file-dropzone'
-
+import { CsvFileDropzone } from '@/components/csv/csv-file-dropzone'
+import { MappingTemplateDialog } from '@/components/csv/mapping-template-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -15,20 +24,23 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
-import { useCsvMappings, useImportProducts, type CsvImportResult } from '@/lib/api/use-csv'
+import {
+  useCsvMappings,
+  useImportProducts,
+  type CsvImportResult,
+} from '@/lib/api/use-csv'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_TEMPLATE_VALUE = '__default__'
-const RESOURCE_TYPES: Array<'products' | 'stock'> = ['products', 'stock']
+const NEW_TEMPLATE_VALUE = '__new__'
 
-export function CsvImportPanel(): JSX.Element {
+export default function ProductImportPage(): JSX.Element {
   const t = useTranslations('csv.import')
-  const tResources = useTranslations('csv.templates.resourceTypes')
+  const tProducts = useTranslations('products')
 
-  const [resourceType, setResourceType] = useState<'products' | 'stock'>('products')
   const { data: templates = [] } = useCsvMappings({
     direction: 'import',
-    resourceType,
+    resourceType: 'products',
   })
   const importProducts = useImportProducts()
 
@@ -36,18 +48,15 @@ export function CsvImportPanel(): JSX.Element {
   const [templateValue, setTemplateValue] = useState<string>(DEFAULT_TEMPLATE_VALUE)
   const [result, setResult] = useState<CsvImportResult | null>(null)
   const [errorsOpen, setErrorsOpen] = useState(false)
+  const [createTemplateOpen, setCreateTemplateOpen] = useState(false)
 
-  // Clear selection when switching resource types — templates from the
-  // other resource should not stay selected by stale id.
-  function handleResourceChange(next: 'products' | 'stock'): void {
-    if (next === resourceType) return
-    setResourceType(next)
-    setTemplateValue(DEFAULT_TEMPLATE_VALUE)
-    setFile(null)
-    setResult(null)
+  function handleTemplateChange(value: string): void {
+    if (value === NEW_TEMPLATE_VALUE) {
+      setCreateTemplateOpen(true)
+      return
+    }
+    setTemplateValue(value)
   }
-
-  const resourceLabel = useMemo(() => tResources(resourceType), [tResources, resourceType])
 
   async function runImport(dryRun: boolean): Promise<void> {
     if (!file) {
@@ -72,108 +81,109 @@ export function CsvImportPanel(): JSX.Element {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-md border border-border bg-card p-6">
-        <h2 className="text-sm font-semibold text-foreground mb-4">
-          {t('titleFor', { resource: resourceLabel })}
-        </h2>
-
-        <div className="space-y-4 max-w-xl">
-          <div>
-            <label className="text-sm font-medium mb-1 block">{t('resourceTypeLabel')}</label>
-            <div className="flex gap-2">
-              {RESOURCE_TYPES.map((rt) => (
-                <button
-                  key={rt}
-                  type="button"
-                  onClick={() => {
-                    handleResourceChange(rt)
-                  }}
-                  className={cn(
-                    'h-8 px-3 rounded-md text-sm border transition-colors',
-                    resourceType === rt
-                      ? 'bg-accent border-foreground/20 text-foreground'
-                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
-                  )}
-                >
-                  {tResources(rt)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {resourceType === 'stock' ? (
-            <div className="rounded-md border border-dashed border-border px-6 py-10 text-center text-sm text-muted-foreground">
-              {t('stockComingSoon')}
-            </div>
-          ) : (
-            <>
-              <div>
-                <label className="text-sm font-medium mb-1 block">{t('templateLabel')}</label>
-                <Select value={templateValue} onValueChange={setTemplateValue}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={DEFAULT_TEMPLATE_VALUE}>{t('defaultTemplate')}</SelectItem>
-                    {templates.map((tpl) => (
-                      <SelectItem key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <CsvFileDropzone
-                file={file}
-                onChange={setFile}
-                placeholder={t('dropzone')}
-                hint={t('dropzoneHint')}
-                clearLabel={t('clearFile')}
-              />
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void runImport(true)
-                  }}
-                  disabled={importProducts.isPending || !file}
-                >
-                  {t('dryRunButton')}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    void runImport(false)
-                  }}
-                  disabled={importProducts.isPending || !file}
-                >
-                  <Upload className="h-3.5 w-3.5 mr-1" />
-                  {t('importButton')}
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
+    <div>
+      <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
+        <Link
+          href="/products"
+          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          {tProducts('title')}
+        </Link>
+        <span className="text-muted-foreground">/</span>
+        <span className="font-medium">{t('productImportTitle')}</span>
       </div>
 
-      {result ? (
-        <CsvImportResultCard
-          result={result}
-          errorsOpen={errorsOpen}
-          onToggleErrors={() => {
-            setErrorsOpen((v) => !v)
-          }}
-        />
-      ) : null}
+      <div className="px-6 py-6">
+        <div className="rounded-md border border-border bg-card p-6 max-w-xl">
+          <h2 className="text-sm font-semibold text-foreground mb-4">
+            {t('productImportTitle')}
+          </h2>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">{t('templateLabel')}</label>
+              <Select value={templateValue} onValueChange={handleTemplateChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DEFAULT_TEMPLATE_VALUE}>{t('defaultTemplate')}</SelectItem>
+                  {templates.map((tpl) => (
+                    <SelectItem key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                    </SelectItem>
+                  ))}
+                  <div className="h-px bg-border my-1" />
+                  <SelectItem value={NEW_TEMPLATE_VALUE} className="text-brand-700">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      {t('newTemplate')}
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <CsvFileDropzone
+              file={file}
+              onChange={setFile}
+              placeholder={t('dropzone')}
+              hint={t('dropzoneHint')}
+              clearLabel={t('clearFile')}
+            />
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void runImport(true)
+                }}
+                disabled={importProducts.isPending || !file}
+              >
+                {t('dryRunButton')}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  void runImport(false)
+                }}
+                disabled={importProducts.isPending || !file}
+              >
+                <Upload className="h-3.5 w-3.5 mr-1" />
+                {t('importButton')}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {result ? (
+          <div className="mt-6 max-w-xl">
+            <ResultCard
+              result={result}
+              errorsOpen={errorsOpen}
+              onToggleErrors={() => {
+                setErrorsOpen((v) => !v)
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      <MappingTemplateDialog
+        open={createTemplateOpen}
+        onOpenChange={setCreateTemplateOpen}
+        template={null}
+        onSaved={(saved) => {
+          setTemplateValue(saved.id)
+        }}
+      />
     </div>
   )
 }
 
-function CsvImportResultCard({
+function ResultCard({
   result,
   errorsOpen,
   onToggleErrors,

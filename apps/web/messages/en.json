@@ -125,6 +125,7 @@
   "products": {
     "title": "Products",
     "addProduct": "Add product",
+    "importCsv": "Import CSV",
     "searchPlaceholder": "Search by name or SKU\u2026",
     "columns": {
       "name": "Product",
@@ -250,6 +251,11 @@
     },
     "import": {
       "title": "Import Products from CSV",
+      "titleFor": "Import {resource} from CSV",
+      "productImportTitle": "Import Products from CSV",
+      "resourceTypeLabel": "What to import",
+      "stockComingSoon": "Stock import is coming soon.",
+      "newTemplate": "Create new template\u2026",
       "templateLabel": "Mapping Template",
       "defaultTemplate": "Default (columns match Stocknify fields)",
       "dropzone": "Drop CSV file here or click to upload",
@@ -310,6 +316,8 @@
         "step2": "Map Columns",
         "nameLabel": "Template name",
         "delimiterLabel": "Delimiter",
+        "delimiterDetected": "Auto-detected: {delimiter}",
+        "encodingLabel": "Encoding",
         "hasHeaderLabel": "Has header row",
         "uploadLabel": "Upload a CSV file to detect columns",
         "uploadPlaceholder": "Drop a CSV file here to detect columns",

@@ -182,6 +182,7 @@ export interface CsvPreviewInput {
   file: File
   delimiter?: string
   hasHeaderRow?: boolean
+  encoding?: string
 }
 
 export function useCsvPreview(): UseMutationResult<CsvPreviewResult, Error, CsvPreviewInput> {
@@ -193,6 +194,7 @@ export function useCsvPreview(): UseMutationResult<CsvPreviewResult, Error, CsvP
       if (input.hasHeaderRow !== undefined) {
         formData.append('hasHeaderRow', input.hasHeaderRow ? 'true' : 'false')
       }
+      if (input.encoding) formData.append('encoding', input.encoding)
       return fetchWithFormData<CsvPreviewResult>('/csv-mappings/preview', formData)
     },
   })

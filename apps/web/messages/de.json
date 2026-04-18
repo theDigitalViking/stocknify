@@ -125,6 +125,7 @@
   "products": {
     "title": "Produkte",
     "addProduct": "Produkt hinzufügen",
+    "importCsv": "CSV importieren",
     "searchPlaceholder": "Nach Name oder SKU suchen\u2026",
     "columns": {
       "name": "Produkt",
@@ -250,6 +251,11 @@
     },
     "import": {
       "title": "CSV Produkte importieren",
+      "titleFor": "CSV {resource} importieren",
+      "productImportTitle": "Produkte per CSV importieren",
+      "resourceTypeLabel": "Was importieren",
+      "stockComingSoon": "Bestandsimport folgt in Kürze.",
+      "newTemplate": "Neues Template anlegen\u2026",
       "templateLabel": "Mapping-Template",
       "defaultTemplate": "Standard (Spalten wie Stocknify-Felder)",
       "dropzone": "Datei hier ablegen oder klicken um CSV hochzuladen",
@@ -310,6 +316,8 @@
         "step2": "Spalten mappen",
         "nameLabel": "Template-Name",
         "delimiterLabel": "Trennzeichen",
+        "delimiterDetected": "Automatisch erkannt: {delimiter}",
+        "encodingLabel": "Zeichensatz",
         "hasHeaderLabel": "Enthält Kopfzeile",
         "uploadLabel": "CSV-Datei hochladen, um Spalten zu erkennen",
         "uploadPlaceholder": "CSV-Datei hier ablegen, um Spalten zu erkennen",

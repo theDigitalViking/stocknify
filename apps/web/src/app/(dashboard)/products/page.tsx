@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { CheckCircle2, Package, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Package, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -257,6 +257,12 @@ export default function ProductsPage(): JSX.Element {
   return (
     <div>
       <PageHeader title={t('title')}>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/products/import">
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
+            {t('importCsv')}
+          </Link>
+        </Button>
         <Button
           size="sm"
           onClick={() => {

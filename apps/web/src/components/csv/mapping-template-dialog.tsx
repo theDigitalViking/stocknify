@@ -2,7 +2,7 @@
 
 import { ChevronLeft, Loader2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CsvFileDropzone } from './csv-file-dropzone'
 
@@ -49,22 +49,47 @@ const PRODUCT_FIELDS: Array<{
   { key: 'unit', labelKey: 'unit', required: false },
 ]
 
+const DEFAULT_ENCODING = 'utf-8'
+
 interface FieldConfig {
   mode: 'csv' | 'fixed'
   csvColumn: string | null
   fixedValue: string
 }
 
+// Sniff the delimiter from the first ~2 KB of a dropped file. We pick the
+// character with the highest count among ','/';'/'\t'. On ties or no matches
+// we fall back to comma, which is the most common CSV delimiter.
+function detectDelimiter(text: string): string {
+  const sample = text.slice(0, 2000)
+  const counts: Array<[string, number]> = [
+    [',', (sample.match(/,/g) ?? []).length],
+    [';', (sample.match(/;/g) ?? []).length],
+    ['\t', (sample.match(/\t/g) ?? []).length],
+  ]
+  counts.sort((a, b) => b[1] - a[1])
+  const top = counts[0]
+  if (!top || top[1] === 0) return ','
+  return top[0]
+}
+
+function displayDelimiter(d: string): string {
+  if (d === '\t') return 'Tab'
+  return d
+}
+
 interface MappingTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   template: CsvMappingTemplate | null
+  onSaved?: (template: CsvMappingTemplate) => void
 }
 
 export function MappingTemplateDialog({
   open,
   onOpenChange,
   template,
+  onSaved,
 }: MappingTemplateDialogProps): JSX.Element {
   const t = useTranslations('csv.templates.dialog')
   const tFields = useTranslations('csv.templates.fields')
@@ -78,10 +103,12 @@ export function MappingTemplateDialog({
   // Step 1 state
   const [name, setName] = useState('')
   const [delimiter, setDelimiter] = useState<string>(',')
+  const [encoding, setEncoding] = useState<string>(DEFAULT_ENCODING)
   const [hasHeaderRow, setHasHeaderRow] = useState(true)
   const [file, setFile] = useState<File | null>(null)
   const [headers, setHeaders] = useState<string[]>([])
   const [sampleRows, setSampleRows] = useState<string[][]>([])
+  const [detectedDelimiter, setDetectedDelimiter] = useState<string | null>(null)
 
   // Step 2 state (field config keyed by product field)
   const [fields, setFields] = useState<Record<string, FieldConfig>>(() =>
@@ -102,6 +129,7 @@ export function MappingTemplateDialog({
       // is empty until the user re-uploads a file.
       setName(template.name)
       setDelimiter(template.delimiter)
+      setEncoding(template.encoding || DEFAULT_ENCODING)
       setHasHeaderRow(template.hasHeaderRow)
       setHeaders(
         template.columnMappings
@@ -109,6 +137,7 @@ export function MappingTemplateDialog({
           .filter((c): c is string => typeof c === 'string'),
       )
       setSampleRows([])
+      setDetectedDelimiter(null)
       const next: Record<string, FieldConfig> = {}
       for (const f of PRODUCT_FIELDS) {
         const mapping = template.columnMappings.find((m) => m.field === f.key)
@@ -127,10 +156,12 @@ export function MappingTemplateDialog({
     } else {
       setName('')
       setDelimiter(',')
+      setEncoding(DEFAULT_ENCODING)
       setHasHeaderRow(true)
       setFile(null)
       setHeaders([])
       setSampleRows([])
+      setDetectedDelimiter(null)
       setFields(
         Object.fromEntries(
           PRODUCT_FIELDS.map((f) => [
@@ -143,13 +174,22 @@ export function MappingTemplateDialog({
     }
   }, [open, template])
 
-  async function runPreview(): Promise<void> {
+  // `runPreview` captures current state; kept in a ref so the effects
+  // below don't need to depend on it (and don't need an eslint-disable for
+  // exhaustive-deps, which crashes the react-hooks plugin on ESLint 9).
+  const runPreviewRef = useRef<(overrides?: { delimiter?: string }) => Promise<void>>(
+    async () => {
+      /* populated on each render */
+    },
+  )
+  runPreviewRef.current = async (overrides) => {
     if (!file) return
     try {
       const data = await preview.mutateAsync({
         file,
-        delimiter,
+        delimiter: overrides?.delimiter ?? delimiter,
         hasHeaderRow,
+        encoding,
       })
       setHeaders(data.headers)
       setSampleRows(data.sampleRows)
@@ -161,6 +201,32 @@ export function MappingTemplateDialog({
       })
     }
   }
+
+  // When a new file is dropped, sniff the delimiter from a sample and run
+  // the first preview. The delimiter is passed explicitly because it isn't
+  // yet in state at this point in the tick.
+  useEffect(() => {
+    if (!file || step !== 1) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = typeof e.target?.result === 'string' ? e.target.result : ''
+      const detected = detectDelimiter(text)
+      setDelimiter(detected)
+      setDetectedDelimiter(detected)
+      void runPreviewRef.current({ delimiter: detected })
+    }
+    reader.onerror = () => {
+      void runPreviewRef.current()
+    }
+    reader.readAsText(file, 'utf-8')
+  }, [file, step])
+
+  // User-driven delimiter / header / encoding changes re-run the preview,
+  // but only after the first preview has populated headers.
+  useEffect(() => {
+    if (!file || headers.length === 0) return
+    void runPreviewRef.current()
+  }, [delimiter, hasHeaderRow, encoding, file, headers.length])
 
   function canProceedToStep2(): boolean {
     return name.trim().length > 0 && headers.length > 0
@@ -231,26 +297,30 @@ export function MappingTemplateDialog({
     const { columnMappings, defaultValues } = buildMappings()
     try {
       if (isEdit && template) {
-        await update.mutateAsync({
+        const saved = await update.mutateAsync({
           id: template.id,
           name: name.trim(),
           delimiter,
+          encoding,
           hasHeaderRow,
           columnMappings,
           defaultValues,
         })
         toast({ title: t('saved') })
+        onSaved?.(saved)
       } else {
-        await create.mutateAsync({
+        const saved = await create.mutateAsync({
           name: name.trim(),
           direction: 'import',
           resourceType: 'products',
           delimiter,
+          encoding,
           hasHeaderRow,
           columnMappings,
           defaultValues,
         })
         toast({ title: t('created') })
+        onSaved?.(saved)
       }
       onOpenChange(false)
     } catch (err) {
@@ -283,13 +353,15 @@ export function MappingTemplateDialog({
             onNameChange={setName}
             delimiter={delimiter}
             onDelimiterChange={setDelimiter}
+            detectedDelimiter={detectedDelimiter}
+            encoding={encoding}
+            onEncodingChange={setEncoding}
             hasHeaderRow={hasHeaderRow}
             onHasHeaderRowChange={setHasHeaderRow}
             file={file}
             onFileChange={setFile}
             headers={headers}
             sampleRows={sampleRows}
-            onRunPreview={runPreview}
             isPreviewing={preview.isPending}
           />
         ) : (
@@ -397,26 +469,30 @@ function Step1({
   onNameChange,
   delimiter,
   onDelimiterChange,
+  detectedDelimiter,
+  encoding,
+  onEncodingChange,
   hasHeaderRow,
   onHasHeaderRowChange,
   file,
   onFileChange,
   headers,
   sampleRows,
-  onRunPreview,
   isPreviewing,
 }: {
   name: string
   onNameChange: (v: string) => void
   delimiter: string
   onDelimiterChange: (v: string) => void
+  detectedDelimiter: string | null
+  encoding: string
+  onEncodingChange: (v: string) => void
   hasHeaderRow: boolean
   onHasHeaderRowChange: (v: boolean) => void
   file: File | null
   onFileChange: (f: File | null) => void
   headers: string[]
   sampleRows: string[][]
-  onRunPreview: () => Promise<void>
   isPreviewing: boolean
 }): JSX.Element {
   const t = useTranslations('csv.templates.dialog')
@@ -462,6 +538,11 @@ function Step1({
               </button>
             ))}
           </div>
+          {detectedDelimiter ? (
+            <p className="text-xs text-muted-foreground mt-1">
+              {t('delimiterDetected', { delimiter: displayDelimiter(detectedDelimiter) })}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between pt-6">
@@ -471,13 +552,24 @@ function Step1({
       </div>
 
       <div>
+        <Label className="mb-1 block">{t('encodingLabel')}</Label>
+        <Select value={encoding} onValueChange={onEncodingChange}>
+          <SelectTrigger className="h-8 w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="utf-8">UTF-8</SelectItem>
+            <SelectItem value="iso-8859-1">ISO-8859-1 / Latin-1</SelectItem>
+            <SelectItem value="windows-1252">Windows-1252</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
         <Label className="mb-1 block">{t('uploadLabel')}</Label>
         <CsvFileDropzone
           file={file}
-          onChange={(f) => {
-            onFileChange(f)
-            if (f) void onRunPreview()
-          }}
+          onChange={onFileChange}
           placeholder={t('uploadPlaceholder')}
           hint={t('uploadHint')}
           clearLabel={t('clearFile')}
