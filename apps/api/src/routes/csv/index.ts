@@ -4,6 +4,7 @@ import { Readable } from 'node:stream'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parse as csvParseStream } from 'csv-parse'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import iconv from 'iconv-lite'
 import { z } from 'zod'
 
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js'
@@ -41,6 +42,24 @@ const DEFAULT_PRODUCT_HEADERS: Record<string, ProductImportField> = {
   description: 'description',
   category: 'category',
   unit: 'unit',
+}
+
+// Supported encodings. Any unknown value falls back to utf-8 to prevent
+// iconv-lite from throwing on attacker-controlled input.
+const SUPPORTED_ENCODINGS = new Set(['utf-8', 'utf8', 'iso-8859-1', 'latin1', 'windows-1252'])
+
+/**
+ * Decode a file buffer to a UTF-8 string using the given encoding label,
+ * then re-encode as a UTF-8 Buffer for the streaming CSV parser.
+ * Falls back to utf-8 for any unrecognised encoding string.
+ */
+function decodeBuffer(buffer: Buffer, encoding: string): Buffer {
+  const enc = encoding.toLowerCase().trim()
+  if (!SUPPORTED_ENCODINGS.has(enc) || enc === 'utf-8' || enc === 'utf8') {
+    return buffer
+  }
+  const decoded = iconv.decode(buffer, enc)
+  return Buffer.from(decoded, 'utf-8')
 }
 
 // ---------------------------------------------------------------------------
@@ -524,9 +543,11 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       }
       const delimiter = (fields['delimiter'] ?? ',').slice(0, 1) || ','
       const hasHeaderRow = (fields['hasHeaderRow'] ?? 'true') !== 'false'
+      const encoding = (fields['encoding'] ?? 'utf-8').trim()
+      const decodedBuffer = decodeBuffer(file.buffer, encoding)
 
       const { headers, rows } = await parseCsvStreaming(
-        file.buffer,
+        decodedBuffer,
         { delimiter, hasHeaderRow },
         CSV_PREVIEW_ROWS,
         'truncate',
@@ -567,6 +588,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       let defaults: Record<string, string> = {}
       let delimiter = ','
       let hasHeaderRow = true
+      let encoding = (fields['encoding'] ?? 'utf-8').trim()
 
       if (mappingTemplateId) {
         const template = await request.db.csvMappingTemplate.findFirst({
@@ -589,12 +611,15 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
         defaults = template.defaultValues as Record<string, string>
         delimiter = template.delimiter
         hasHeaderRow = template.hasHeaderRow
+        encoding = template.encoding
       }
+
+      const decodedBuffer = decodeBuffer(file.buffer, encoding)
 
       let parsed: { headers: string[]; rows: string[][] }
       try {
         parsed = await parseCsvStreaming(
-          file.buffer,
+          decodedBuffer,
           { delimiter, hasHeaderRow },
           CSV_MAX_ROWS,
           'strict',
