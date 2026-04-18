@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { AddProductDialog } from '@/components/products/add-product-dialog'
 import { DeleteProductDialog } from '@/components/products/delete-product-dialog'
 import { EditProductDialog } from '@/components/products/edit-product-dialog'
+import { ProductSourceIcons } from '@/components/products/product-source-icons'
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
@@ -60,6 +61,11 @@ export default function ProductsPage(): JSX.Element {
           <span className="text-xs text-muted-foreground">—</span>
         )
       },
+    },
+    {
+      header: t('columns.source'),
+      accessor: (row) => <ProductSourceIcons metadata={row.metadata} />,
+      className: 'w-16',
     },
     {
       header: t('columns.batch'),

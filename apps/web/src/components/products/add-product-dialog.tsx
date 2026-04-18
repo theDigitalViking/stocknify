@@ -79,6 +79,7 @@ export function AddProductDialog({ open, onOpenChange }: AddProductDialogProps):
         unit: values.unit,
         batchTracking: values.batchTracking,
         description: values.description?.trim() || undefined,
+        metadata: { source: 'manual' },
       })
       toast({ title: t('created'), description: values.name })
       reset()

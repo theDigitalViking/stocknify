@@ -34,10 +34,25 @@ export function useProducts(filters: ProductFilters = {}): UseQueryResult<Produc
   })
 }
 
-export function useProduct(id: string | null): UseQueryResult<ProductWithCount> {
-  return useQuery<ProductWithCount>({
+export interface ProductDetailVariant {
+  id: string
+  sku: string
+  name: string | null
+  barcode: string | null
+  attributes: Record<string, unknown>
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProductDetail extends Product {
+  variants: ProductDetailVariant[]
+}
+
+export function useProduct(id: string | null): UseQueryResult<ProductDetail> {
+  return useQuery<ProductDetail>({
     queryKey: ['products', id],
-    queryFn: () => apiFetch<ProductWithCount>(`/products/${id as string}`),
+    queryFn: () => apiFetch<ProductDetail>(`/products/${id as string}`),
     enabled: Boolean(id),
   })
 }
@@ -49,6 +64,7 @@ export interface CreateProductInput {
   unit?: string
   batchTracking?: boolean
   description?: string
+  metadata?: Record<string, unknown>
 }
 
 export function useCreateProduct(): UseMutationResult<Product, Error, CreateProductInput> {

@@ -126,9 +126,32 @@
       "name": "Product",
       "sku": "SKU",
       "barcode": "EAN / Barcode",
+      "source": "Source",
       "batch": "Batch",
       "unit": "Unit",
       "created": "Created"
+    },
+    "source": {
+      "manual": "Added manually",
+      "csv": "CSV import",
+      "api": "API / Integration"
+    },
+    "detail": {
+      "notFound": "Product not found.",
+      "variantsTitle": "Variants",
+      "variantStatus": "Status",
+      "defaultVariant": "Default variant",
+      "active": "Active",
+      "inactive": "Inactive",
+      "batchTrackingOn": "Enabled",
+      "batchTrackingOff": "Disabled",
+      "createdRelative": "Created {when}",
+      "integrationsTitle": "Integrations",
+      "integrationName": "Integration",
+      "integrationType": "Type",
+      "integrationStatus": "Status",
+      "integrationExternalId": "External ID",
+      "integrationsEmpty": "No integrations linked yet. They will appear here once integrations are active."
     },
     "form": {
       "addTitle": "Add product",

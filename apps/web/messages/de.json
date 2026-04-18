@@ -126,9 +126,32 @@
       "name": "Produkt",
       "sku": "SKU",
       "barcode": "EAN / Barcode",
+      "source": "Quelle",
       "batch": "Charge",
       "unit": "Einheit",
       "created": "Angelegt"
+    },
+    "source": {
+      "manual": "Manuell hinzugefügt",
+      "csv": "CSV-Import",
+      "api": "API / Integration"
+    },
+    "detail": {
+      "notFound": "Produkt nicht gefunden.",
+      "variantsTitle": "Varianten",
+      "variantStatus": "Status",
+      "defaultVariant": "Standardvariante",
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "batchTrackingOn": "Aktiv",
+      "batchTrackingOff": "Inaktiv",
+      "createdRelative": "Angelegt {when}",
+      "integrationsTitle": "Integrationen",
+      "integrationName": "Integration",
+      "integrationType": "Typ",
+      "integrationStatus": "Status",
+      "integrationExternalId": "Externe ID",
+      "integrationsEmpty": "Noch keine Integrationen verknüpft. Sobald Integrationen aktiv sind, werden sie hier angezeigt."
     },
     "form": {
       "addTitle": "Produkt hinzufügen",
