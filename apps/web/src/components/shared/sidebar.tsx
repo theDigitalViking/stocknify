@@ -65,7 +65,7 @@ export function Sidebar(): JSX.Element {
         )}
       >
         <Link
-          href="/stock"
+          href="/products"
           className="flex items-center gap-2 min-w-0"
           title={isCollapsed ? 'Stocknify' : undefined}
         >

@@ -35,18 +35,20 @@ import {
 import { cn } from '@/lib/utils'
 
 // The product-import dictionary drives the Step-2 mapping UI. Keep in sync
-// with the backend PRODUCT_IMPORT_FIELDS constant.
+// with the backend PRODUCT_IMPORT_FIELDS constant. `csvOnly` means the user
+// can only map the field to a CSV column — a fixed value isn't meaningful
+// (every row has its own name/sku/barcode/description).
 const PRODUCT_FIELDS: Array<{
-  key: 'name' | 'sku' | 'barcode' | 'description' | 'category' | 'unit'
-  labelKey: 'productName' | 'sku' | 'barcode' | 'description' | 'category' | 'unit'
+  key: 'name' | 'sku' | 'barcode' | 'description' | 'unit'
+  labelKey: 'productName' | 'sku' | 'barcode' | 'description' | 'unit'
   required: boolean
+  csvOnly: boolean
 }> = [
-  { key: 'name', labelKey: 'productName', required: true },
-  { key: 'sku', labelKey: 'sku', required: true },
-  { key: 'barcode', labelKey: 'barcode', required: false },
-  { key: 'description', labelKey: 'description', required: false },
-  { key: 'category', labelKey: 'category', required: false },
-  { key: 'unit', labelKey: 'unit', required: false },
+  { key: 'name', labelKey: 'productName', required: true, csvOnly: true },
+  { key: 'sku', labelKey: 'sku', required: true, csvOnly: true },
+  { key: 'barcode', labelKey: 'barcode', required: true, csvOnly: true },
+  { key: 'description', labelKey: 'description', required: false, csvOnly: true },
+  { key: 'unit', labelKey: 'unit', required: false, csvOnly: false },
 ]
 
 const DEFAULT_ENCODING = 'utf-8'
@@ -145,7 +147,7 @@ export function MappingTemplateDialog({
           mapping?.defaultValue ?? template.defaultValues[f.key] ?? ''
         if (mapping?.csvColumn) {
           next[f.key] = { mode: 'csv', csvColumn: mapping.csvColumn, fixedValue: defaultValue }
-        } else if (defaultValue) {
+        } else if (defaultValue && !f.csvOnly) {
           next[f.key] = { mode: 'fixed', csvColumn: null, fixedValue: defaultValue }
         } else {
           next[f.key] = { mode: 'csv', csvColumn: null, fixedValue: '' }
@@ -238,9 +240,10 @@ export function MappingTemplateDialog({
       if (!f.required) continue
       const cfg = fields[f.key]
       if (!cfg) continue
-      const ok =
-        (cfg.mode === 'csv' && cfg.csvColumn) ||
-        (cfg.mode === 'fixed' && cfg.fixedValue.trim().length > 0)
+      const ok = f.csvOnly
+        ? Boolean(cfg.csvColumn)
+        : (cfg.mode === 'csv' && cfg.csvColumn) ||
+          (cfg.mode === 'fixed' && cfg.fixedValue.trim().length > 0)
       if (!ok) errors[f.key] = t('requiredField')
     }
     return errors
@@ -272,18 +275,20 @@ export function MappingTemplateDialog({
   function buildMappings(): { columnMappings: ColumnMapping[]; defaultValues: Record<string, string> } {
     const columnMappings: ColumnMapping[] = PRODUCT_FIELDS.map((f) => {
       const cfg = fields[f.key] ?? { mode: 'csv', csvColumn: null, fixedValue: '' }
+      const effectiveMode = f.csvOnly ? 'csv' : cfg.mode
       const base: ColumnMapping = {
         field: f.key,
         required: f.required,
-        csvColumn: cfg.mode === 'csv' ? cfg.csvColumn : null,
+        csvColumn: effectiveMode === 'csv' ? cfg.csvColumn : null,
       }
-      if (cfg.mode === 'fixed' && cfg.fixedValue.trim()) {
+      if (effectiveMode === 'fixed' && cfg.fixedValue.trim()) {
         base.defaultValue = cfg.fixedValue.trim()
       }
       return base
     })
     const defaultValues: Record<string, string> = {}
     for (const f of PRODUCT_FIELDS) {
+      if (f.csvOnly) continue
       const cfg = fields[f.key]
       if (cfg?.mode === 'fixed' && cfg.fixedValue.trim()) {
         defaultValues[f.key] = cfg.fixedValue.trim()
@@ -347,7 +352,7 @@ export function MappingTemplateDialog({
           <StepBadge active={step === 2} done={false} index={2} label={t('step2')} />
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+        <div className="flex-1 overflow-y-auto min-h-0 px-1">
         {step === 1 ? (
           <Step1
             name={name}
@@ -660,6 +665,7 @@ function Step2({
       <div className="space-y-3">
         {PRODUCT_FIELDS.map((f) => {
           const cfg = fields[f.key] ?? { mode: 'csv' as const, csvColumn: null, fixedValue: '' }
+          const effectiveMode = f.csvOnly ? 'csv' : cfg.mode
           const error = validationErrors[f.key]
           return (
             <div key={f.key}>
@@ -668,38 +674,40 @@ function Step2({
                 {f.required ? <span className="text-red-500 ml-0.5">*</span> : null}
               </Label>
               <div className="flex items-stretch gap-2">
-                <div className="flex rounded-md overflow-hidden border border-border text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSetMode(f.key, 'csv')
-                    }}
-                    className={cn(
-                      'px-2 h-8 transition-colors',
-                      cfg.mode === 'csv'
-                        ? 'bg-accent text-foreground'
-                        : 'text-muted-foreground hover:bg-muted',
-                    )}
-                  >
-                    {t('csvColumnLabel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSetMode(f.key, 'fixed')
-                    }}
-                    className={cn(
-                      'px-2 h-8 transition-colors',
-                      cfg.mode === 'fixed'
-                        ? 'bg-accent text-foreground'
-                        : 'text-muted-foreground hover:bg-muted',
-                    )}
-                  >
-                    {t('fixedValueLabel')}
-                  </button>
-                </div>
+                {!f.csvOnly && (
+                  <div className="flex rounded-md overflow-hidden border border-border text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSetMode(f.key, 'csv')
+                      }}
+                      className={cn(
+                        'px-2 h-8 transition-colors',
+                        cfg.mode === 'csv'
+                          ? 'bg-accent text-foreground'
+                          : 'text-muted-foreground hover:bg-muted',
+                      )}
+                    >
+                      {t('csvColumnLabel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSetMode(f.key, 'fixed')
+                      }}
+                      className={cn(
+                        'px-2 h-8 transition-colors',
+                        cfg.mode === 'fixed'
+                          ? 'bg-accent text-foreground'
+                          : 'text-muted-foreground hover:bg-muted',
+                      )}
+                    >
+                      {t('fixedValueLabel')}
+                    </button>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
-                  {cfg.mode === 'csv' ? (
+                  {effectiveMode === 'csv' ? (
                     <Select
                       value={cfg.csvColumn ?? ''}
                       onValueChange={(v) => {

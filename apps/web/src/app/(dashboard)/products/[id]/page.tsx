@@ -98,7 +98,7 @@ export default function ProductDetailPage(): JSX.Element {
           <MetaItem label={t('columns.unit')}>
             <span className="text-sm">{unitLabel}</span>
           </MetaItem>
-          <MetaItem label={t('columns.batch')}>
+          <MetaItem label={t('form.batchTracking')}>
             {product.batchTracking ? (
               <span className="inline-flex items-center gap-1 text-xs text-green-700">
                 <CheckCircle2 className="h-3.5 w-3.5" />
