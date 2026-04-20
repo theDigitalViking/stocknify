@@ -384,16 +384,49 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } })
     }
     try {
+      // Own, non-locked templates for this tenant.
       const templates = await request.db.csvMappingTemplate.findMany({
         where: {
           tenantId: request.tenantId,
           deletedAt: null,
+          isLocked: false,
           ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
           ...(parsed.data.resourceType ? { resourceType: parsed.data.resourceType } : {}),
         },
         orderBy: { createdAt: 'desc' },
       })
-      return reply.send({ data: templates })
+
+      // Locked templates from marketplace integrations that are enabled
+      // for this tenant. A disabled integration hides its templates.
+      const enabledMarketplaceIntegrations = await request.db.integration.findMany({
+        where: {
+          tenantId: request.tenantId,
+          deletedAt: null,
+          isEnabled: true,
+          marketplaceKey: { not: null },
+        },
+        select: { marketplaceKey: true },
+      })
+      const enabledKeys = enabledMarketplaceIntegrations
+        .map((i) => i.marketplaceKey)
+        .filter((k): k is string => k !== null)
+
+      let lockedTemplates: typeof templates = []
+      if (enabledKeys.length > 0) {
+        lockedTemplates = await request.db.csvMappingTemplate.findMany({
+          where: {
+            tenantId: request.tenantId,
+            deletedAt: null,
+            isLocked: true,
+            marketplaceKey: { in: enabledKeys },
+            ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
+            ...(parsed.data.resourceType ? { resourceType: parsed.data.resourceType } : {}),
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      }
+
+      return reply.send({ data: [...templates, ...lockedTemplates] })
     } catch (err) {
       request.log.error({ err }, 'csv-mappings list failed')
       return reply
@@ -485,6 +518,14 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Template not found' } })
     }
+    if (existing.isLocked) {
+      return reply.code(403).send({
+        error: {
+          code: 'TEMPLATE_LOCKED',
+          message: 'This template belongs to a marketplace integration and cannot be modified.',
+        },
+      })
+    }
 
     // When mappings or defaults are updated, re-validate against required fields.
     const nextMappings = (parsed.data.columnMappings ??
@@ -547,6 +588,14 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
     })
     if (!existing) {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Template not found' } })
+    }
+    if (existing.isLocked) {
+      return reply.code(403).send({
+        error: {
+          code: 'TEMPLATE_LOCKED',
+          message: 'This template belongs to a marketplace integration and cannot be modified.',
+        },
+      })
     }
     await request.db.csvMappingTemplate.update({
       where: { id: params.data.id },

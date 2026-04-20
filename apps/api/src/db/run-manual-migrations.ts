@@ -42,6 +42,8 @@ const MANUAL_SQL_FILES = [
   'incident-check-constraints.sql',
   // v5 — sampleData on csv_mapping_templates
   'add-sample-data-to-csv-mapping-template.sql',
+  // v6 — marketplace fields on integrations + csv_mapping_templates
+  'add-integration-marketplace-fields.sql',
 ];
 
 // Idempotent seed files — safe to re-run via ON CONFLICT DO NOTHING

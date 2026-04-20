@@ -385,6 +385,14 @@ model Integration {
   lastSuccessfulSyncAt  DateTime? @map("last_successful_sync_at") @db.Timestamptz
   lastErrorAt           DateTime? @map("last_error_at") @db.Timestamptz
   consecutiveFailures   Int       @default(0) @map("consecutive_failures")
+  // Marketplace / enablement
+  isEnabled             Boolean   @default(true) @map("is_enabled")
+  // false = integration is installed but disabled (no syncs, templates not usable)
+  marketplaceKey        String?   @map("marketplace_key") @db.Text
+  // set when installed from the marketplace catalog
+  logoUrl               String?   @map("logo_url") @db.Text
+  category              String?   @db.Text
+  // 'shop' | 'erp' | 'warehouse' | 'fulfiller'
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
@@ -829,6 +837,10 @@ model CsvMappingTemplate {
   columnMappings Json     @map("column_mappings") @db.JsonB
   defaultValues  Json     @default("{}") @map("default_values") @db.JsonB // static values for unmapped required fields
   sampleData    Json?     @map("sample_data") @db.JsonB // { headers: string[], rows: string[][] } captured during last preview
+  isLocked      Boolean   @default(false) @map("is_locked")
+  // true = created by a marketplace integration, cannot be edited or deleted by tenant
+  marketplaceKey String?  @map("marketplace_key") @db.Text
+  // references MarketplaceIntegration.key — links this template to its source integration
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
