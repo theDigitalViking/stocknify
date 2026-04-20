@@ -1944,5 +1944,5 @@ PATCH  /admin/incidents/:id        Incident verwalten
 
 ---
 
-*Last updated: 2026-04-17*
-*Version: 0.5.0 — Schema v3 (Partner, Credentials, Schedules, i18n, External References) + Schema v4 (Incidents, Integration Health, Super-Admin) + CI/CD vollautomatisiert + Job Queue, Incidents, Health & Super-Admin Architektur dokumentiert*
+*Last updated: 2026-04-18*
+*Version: 0.6.0 — Phase 3B/3C abgeschlossen (Frontend, i18n) + Frontend-Verbesserungen (Sidebar, Responsive, Sortierung, Bulk-Delete) + Phase 4: CSV-Import Backend + Frontend (Mapping Templates, Produkt-Import, OOM-Fix, Upload-UI, Mapping-Editor)*

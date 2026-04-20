@@ -63,3 +63,4 @@ prompts/
 
 # Misc
 .cache/
+/stocknify-test-produkte.csv
