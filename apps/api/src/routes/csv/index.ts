@@ -20,6 +20,10 @@ const CSV_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB — duplicated from plug
 const CSV_PREVIEW_ROWS = 5
 const CSV_INTEGRATION_TYPE = 'csv'
 const ALLOWED_MIME_TYPES = new Set(['text/csv', 'application/csv', 'text/plain'])
+// How often to re-verify the source marketplace integration is still enabled
+// during a locked-template import. Bounds the TOCTOU window to N rows without
+// a DB hit per row.
+const INTEGRATION_RECHECK_INTERVAL = 100
 
 // Product import field dictionary. `required: true` fields must be covered by
 // either a CSV column mapping or a default value on the template.
@@ -744,6 +748,9 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       let delimiter = ','
       let hasHeaderRow = true
       let encoding = (fields['encoding'] ?? 'utf-8').trim()
+      // Non-null for locked marketplace templates → triggers per-batch
+      // re-check during the import loop. Null for user-owned templates.
+      let lockedTemplateIntegrationKey: string | null = null
 
       if (mappingTemplateId) {
         const template = await request.db.csvMappingTemplate.findFirst({
@@ -774,6 +781,9 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
         delimiter = template.delimiter
         hasHeaderRow = template.hasHeaderRow
         encoding = template.encoding
+        if (template.isLocked && template.marketplaceKey) {
+          lockedTemplateIntegrationKey = template.marketplaceKey
+        }
       }
 
       const decodedBuffer = decodeBuffer(file.buffer, encoding)
@@ -810,6 +820,33 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       }
 
       for (let i = 0; i < rows.length; i++) {
+        // TOCTOU guard: for locked marketplace templates, periodically
+        // re-verify the source integration is still enabled. Aborts the
+        // import (rather than silently continuing) if it was disabled or
+        // uninstalled mid-run.
+        if (
+          lockedTemplateIntegrationKey !== null &&
+          i > 0 &&
+          i % INTEGRATION_RECHECK_INTERVAL === 0
+        ) {
+          const stillEnabled = await request.db.integration.findFirst({
+            where: {
+              tenantId: request.tenantId,
+              marketplaceKey: lockedTemplateIntegrationKey,
+              isEnabled: true,
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+          if (!stillEnabled) {
+            result.errors.push({
+              row: i + 1,
+              reason: 'Import aborted: the integration providing this template was disabled.',
+            })
+            break
+          }
+        }
+
         const rowNumber = i + 1 // 1-indexed from first data row
         const rawRow = rows[i]
         if (!rawRow) continue
