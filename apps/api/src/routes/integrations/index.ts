@@ -221,7 +221,9 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid marketplace key' } })
     }
     try {
-      const existing = await request.db.integration.findFirst({
+      // Defensive against any pre-unique-constraint duplicates: operate on all
+      // matching active rows, not just the first.
+      const existing = await request.db.integration.findMany({
         where: {
           tenantId: request.tenantId,
           deletedAt: null,
@@ -229,15 +231,19 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         },
         select: { id: true },
       })
-      if (!existing) {
+      if (existing.length === 0) {
         return reply
           .code(404)
           .send({ error: { code: 'NOT_FOUND', message: 'Integration is not installed' } })
       }
       const now = new Date()
       await request.db.$transaction([
-        request.db.integration.update({
-          where: { id: existing.id },
+        request.db.integration.updateMany({
+          where: {
+            tenantId: request.tenantId,
+            deletedAt: null,
+            marketplaceKey: params.data.key,
+          },
           data: { deletedAt: now },
         }),
         request.db.csvMappingTemplate.updateMany({

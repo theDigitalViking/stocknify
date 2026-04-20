@@ -44,6 +44,8 @@ const MANUAL_SQL_FILES = [
   'add-sample-data-to-csv-mapping-template.sql',
   // v6 — marketplace fields on integrations + csv_mapping_templates
   'add-integration-marketplace-fields.sql',
+  // v6b — unique active marketplace integration per tenant
+  'unique-active-marketplace-integration.sql',
 ];
 
 // Idempotent seed files — safe to re-run via ON CONFLICT DO NOTHING

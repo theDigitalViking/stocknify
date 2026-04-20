@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { Readable } from 'node:stream'
 
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { Prisma, type CsvMappingTemplate, type PrismaClient } from '@prisma/client'
 import { parse as csvParseStream } from 'csv-parse'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import iconv from 'iconv-lite'
@@ -350,6 +350,80 @@ function isProductImportField(value: string): value is ProductImportField {
   return PRODUCT_IMPORT_FIELDS.some((f) => f.key === value)
 }
 
+// Raw row shape returned by $queryRaw against csv_mapping_templates. Column
+// names come back snake_case; mapTemplateRowToCamel normalises them back to
+// the Prisma client shape so callers can treat them uniformly.
+interface CsvMappingTemplateRow {
+  id: string
+  tenant_id: string
+  name: string
+  direction: string
+  resource_type: string
+  delimiter: string
+  encoding: string
+  has_header_row: boolean
+  column_mappings: Prisma.JsonValue
+  default_values: Prisma.JsonValue
+  sample_data: Prisma.JsonValue | null
+  is_locked: boolean
+  marketplace_key: string | null
+  created_at: Date
+  updated_at: Date
+  deleted_at: Date | null
+}
+
+// For locked templates, verify the source marketplace integration is still
+// enabled and not soft-deleted. Returns a reply on failure (403), or null on
+// success so the caller can continue. Non-locked or non-marketplace templates
+// pass through untouched.
+async function ensureMarketplaceIntegrationEnabled(
+  db: PrismaClient,
+  tenantId: string,
+  template: { isLocked: boolean; marketplaceKey: string | null },
+  reply: FastifyReply,
+): Promise<FastifyReply | null> {
+  if (!template.isLocked || !template.marketplaceKey) return null
+  const integration = await db.integration.findFirst({
+    where: {
+      tenantId,
+      marketplaceKey: template.marketplaceKey,
+      isEnabled: true,
+      deletedAt: null,
+    },
+    select: { id: true },
+  })
+  if (!integration) {
+    return reply.code(403).send({
+      error: {
+        code: 'INTEGRATION_DISABLED',
+        message: 'This template belongs to a disabled integration and cannot be used.',
+      },
+    })
+  }
+  return null
+}
+
+function mapTemplateRowToCamel(row: CsvMappingTemplateRow): CsvMappingTemplate {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    name: row.name,
+    direction: row.direction,
+    resourceType: row.resource_type,
+    delimiter: row.delimiter,
+    encoding: row.encoding,
+    hasHeaderRow: row.has_header_row,
+    columnMappings: row.column_mappings,
+    defaultValues: row.default_values,
+    sampleData: row.sample_data,
+    isLocked: row.is_locked,
+    marketplaceKey: row.marketplace_key,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
@@ -396,35 +470,35 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
         orderBy: { createdAt: 'desc' },
       })
 
-      // Locked templates from marketplace integrations that are enabled
-      // for this tenant. A disabled integration hides its templates.
-      const enabledMarketplaceIntegrations = await request.db.integration.findMany({
-        where: {
-          tenantId: request.tenantId,
-          deletedAt: null,
-          isEnabled: true,
-          marketplaceKey: { not: null },
-        },
-        select: { marketplaceKey: true },
-      })
-      const enabledKeys = enabledMarketplaceIntegrations
-        .map((i) => i.marketplaceKey)
-        .filter((k): k is string => k !== null)
-
-      let lockedTemplates: typeof templates = []
-      if (enabledKeys.length > 0) {
-        lockedTemplates = await request.db.csvMappingTemplate.findMany({
-          where: {
-            tenantId: request.tenantId,
-            deletedAt: null,
-            isLocked: true,
-            marketplaceKey: { in: enabledKeys },
-            ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
-            ...(parsed.data.resourceType ? { resourceType: parsed.data.resourceType } : {}),
-          },
-          orderBy: { createdAt: 'asc' },
-        })
-      }
+      // Locked templates from marketplace integrations that are currently
+      // enabled — enforced in ONE statement so there is no window where a
+      // toggle of `isEnabled` between two sequential queries could leak a
+      // template whose integration is no longer active.
+      const directionFilter = parsed.data.direction
+        ? Prisma.sql`AND cmt.direction = ${parsed.data.direction}`
+        : Prisma.empty
+      const resourceTypeFilter = parsed.data.resourceType
+        ? Prisma.sql`AND cmt.resource_type = ${parsed.data.resourceType}`
+        : Prisma.empty
+      const rawLocked = await request.db.$queryRaw<CsvMappingTemplateRow[]>`
+        SELECT cmt.*
+        FROM csv_mapping_templates cmt
+        WHERE cmt.tenant_id = ${request.tenantId}::uuid
+          AND cmt.deleted_at IS NULL
+          AND cmt.is_locked = true
+          AND cmt.marketplace_key IS NOT NULL
+          ${directionFilter}
+          ${resourceTypeFilter}
+          AND EXISTS (
+            SELECT 1 FROM integrations i
+            WHERE i.tenant_id = ${request.tenantId}::uuid
+              AND i.marketplace_key = cmt.marketplace_key
+              AND i.is_enabled = true
+              AND i.deleted_at IS NULL
+          )
+        ORDER BY cmt.created_at ASC
+      `
+      const lockedTemplates = rawLocked.map(mapTemplateRowToCamel)
 
       return reply.send({ data: [...templates, ...lockedTemplates] })
     } catch (err) {
@@ -494,6 +568,13 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
     if (!template) {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Template not found' } })
     }
+    const blocked = await ensureMarketplaceIntegrationEnabled(
+      request.db,
+      request.tenantId,
+      template,
+      reply,
+    )
+    if (blocked) return blocked
     return reply.send({ data: template })
   })
 
@@ -681,6 +762,13 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
             },
           })
         }
+        const blocked = await ensureMarketplaceIntegrationEnabled(
+          request.db,
+          request.tenantId,
+          template,
+          reply,
+        )
+        if (blocked) return blocked
         mappings = template.columnMappings as unknown as ColumnMapping[]
         defaults = template.defaultValues as Record<string, string>
         delimiter = template.delimiter
