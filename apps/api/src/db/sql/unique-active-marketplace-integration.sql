@@ -6,9 +6,11 @@
 
 -- Step 1 — Deduplicate any pre-existing active duplicates before the index
 -- goes in. Without this step CREATE UNIQUE INDEX would fail on databases
--- that raced past the application-level check. Keeps the newest row per
--- (tenant_id, marketplace_key) and soft-deletes the rest. On a clean DB
--- this UPDATE matches zero rows.
+-- that raced past the application-level check. Survivor selection:
+--   1. prefer is_enabled = true  (keep the row tenants can actually use)
+--   2. then most recently updated (latest configuration change wins)
+--   3. then highest id           (stable, deterministic tiebreaker)
+-- On a clean DB this UPDATE matches zero rows.
 UPDATE integrations
 SET deleted_at = NOW()
 WHERE marketplace_key IS NOT NULL
@@ -18,7 +20,12 @@ WHERE marketplace_key IS NOT NULL
     FROM integrations
     WHERE marketplace_key IS NOT NULL
       AND deleted_at IS NULL
-    ORDER BY tenant_id, marketplace_key, created_at DESC
+    ORDER BY
+      tenant_id,
+      marketplace_key,
+      is_enabled DESC,
+      updated_at DESC,
+      id DESC
   );
 
 -- Step 2 — Create the partial unique index.

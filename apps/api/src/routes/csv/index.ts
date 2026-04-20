@@ -20,10 +20,12 @@ const CSV_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB — duplicated from plug
 const CSV_PREVIEW_ROWS = 5
 const CSV_INTEGRATION_TYPE = 'csv'
 const ALLOWED_MIME_TYPES = new Set(['text/csv', 'application/csv', 'text/plain'])
-// How often to re-verify the source marketplace integration is still enabled
-// during a locked-template import. Bounds the TOCTOU window to N rows without
-// a DB hit per row.
-const INTEGRATION_RECHECK_INTERVAL = 100
+// Re-check integration enablement every N rows to close the TOCTOU gap.
+// A per-row check would add O(n) DB queries for large imports — not acceptable
+// at 10,000 rows. N=10 bounds the worst-case unauthorized window to 9 rows,
+// which is an acceptable tradeoff for MVP. Post-v1.0 can enforce this
+// transactionally if required.
+const INTEGRATION_RECHECK_INTERVAL = 10
 
 // Product import field dictionary. `required: true` fields must be covered by
 // either a CSV column mapping or a default value on the template.
