@@ -6,11 +6,15 @@
 
 -- Step 1 — Deduplicate any pre-existing active duplicates before the index
 -- goes in. Without this step CREATE UNIQUE INDEX would fail on databases
--- that raced past the application-level check. Survivor selection:
---   1. prefer is_enabled = true  (keep the row tenants can actually use)
---   2. then most recently updated (latest configuration change wins)
---   3. then highest id           (stable, deterministic tiebreaker)
--- On a clean DB this UPDATE matches zero rows.
+-- that raced past the application-level check. Survivor selection is
+-- recency-first so the migration never overrides the tenant's most recent
+-- intent (e.g. a disable performed after an earlier install must stick):
+--   1. most recently updated (latest state the tenant touched)
+--   2. highest id            (stable, deterministic tiebreaker)
+-- `is_enabled` is intentionally NOT part of the ordering — preferring
+-- enabled rows would let an older enabled duplicate win against a newer
+-- disabled one, silently re-enabling an integration the tenant just turned
+-- off. On a clean DB this UPDATE matches zero rows.
 UPDATE integrations
 SET deleted_at = NOW()
 WHERE marketplace_key IS NOT NULL
@@ -23,7 +27,6 @@ WHERE marketplace_key IS NOT NULL
     ORDER BY
       tenant_id,
       marketplace_key,
-      is_enabled DESC,
       updated_at DESC,
       id DESC
   );
