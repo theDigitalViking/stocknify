@@ -238,7 +238,7 @@ export default function OnboardingPage(): JSX.Element {
           <p className="text-sm text-muted-foreground mb-6">{t('step3Description')}</p>
           <Button
             onClick={() => {
-              router.push('/stock')
+              router.push('/products')
             }}
           >
             {t('goToDashboard')}
