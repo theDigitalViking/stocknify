@@ -326,7 +326,13 @@
         "description": "Description",
         "category": "Category",
         "unit": "Unit",
-        "batchTracking": "Best-before / Batch tracked"
+        "batchTracking": "Best-before / Batch tracked",
+        "locationName": "Location",
+        "quantity": "Quantity",
+        "stockType": "Stock type",
+        "batchNumber": "Batch number",
+        "expiryDate": "Expiry date",
+        "storageLocation": "Storage location"
       },
       "dialog": {
         "createTitle": "New Mapping Template",

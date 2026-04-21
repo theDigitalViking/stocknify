@@ -34,18 +34,20 @@ import {
 } from '@/lib/api/use-csv'
 import { cn } from '@/lib/utils'
 
-// The product-import dictionary drives the Step-2 mapping UI. Keep in sync
-// with the backend PRODUCT_IMPORT_FIELDS constant. `csvOnly` means the user
-// can only map the field to a CSV column — a fixed value isn't meaningful
-// (every row has its own name/sku/barcode/description). `fieldType` selects
-// the editor for the fixed-value mode.
-const PRODUCT_FIELDS: Array<{
-  key: 'name' | 'sku' | 'barcode' | 'description' | 'unit' | 'batchTracking'
-  labelKey: 'productName' | 'sku' | 'barcode' | 'description' | 'unit' | 'batchTracking'
+// Field descriptor shared across resource types. `csvOnly` means the user
+// can only map this field to a CSV column — a fixed value isn't meaningful
+// (every row has its own identifier/value). `fieldType` selects the editor
+// for the fixed-value mode.
+interface FieldSpec {
+  key: string
+  labelKey: string
   required: boolean
   csvOnly: boolean
   fieldType: 'text' | 'unit' | 'boolean'
-}> = [
+}
+
+// Product-import dictionary. Keep in sync with backend PRODUCT_IMPORT_FIELDS.
+const PRODUCT_FIELDS: FieldSpec[] = [
   { key: 'name', labelKey: 'productName', required: true, csvOnly: true, fieldType: 'text' },
   { key: 'sku', labelKey: 'sku', required: true, csvOnly: true, fieldType: 'text' },
   { key: 'barcode', labelKey: 'barcode', required: true, csvOnly: true, fieldType: 'text' },
@@ -53,6 +55,25 @@ const PRODUCT_FIELDS: Array<{
   { key: 'unit', labelKey: 'unit', required: false, csvOnly: false, fieldType: 'unit' },
   { key: 'batchTracking', labelKey: 'batchTracking', required: false, csvOnly: false, fieldType: 'boolean' },
 ]
+
+// Stock-import dictionary. Keep in sync with backend STOCK_IMPORT_FIELDS.
+// `sku` and `barcode` are both soft-required: the backend rejects the
+// template unless at least one of them is mapped. We mark both as optional
+// here and surface the joint-requirement at save time.
+const STOCK_FIELDS: FieldSpec[] = [
+  { key: 'sku', labelKey: 'sku', required: false, csvOnly: true, fieldType: 'text' },
+  { key: 'barcode', labelKey: 'barcode', required: false, csvOnly: true, fieldType: 'text' },
+  { key: 'locationName', labelKey: 'locationName', required: true, csvOnly: false, fieldType: 'text' },
+  { key: 'quantity', labelKey: 'quantity', required: true, csvOnly: true, fieldType: 'text' },
+  { key: 'stockType', labelKey: 'stockType', required: false, csvOnly: false, fieldType: 'text' },
+  { key: 'batchNumber', labelKey: 'batchNumber', required: false, csvOnly: true, fieldType: 'text' },
+  { key: 'expiryDate', labelKey: 'expiryDate', required: false, csvOnly: true, fieldType: 'text' },
+  { key: 'storageLocation', labelKey: 'storageLocation', required: false, csvOnly: false, fieldType: 'text' },
+]
+
+function fieldsForResource(resourceType: 'products' | 'stock'): FieldSpec[] {
+  return resourceType === 'stock' ? STOCK_FIELDS : PRODUCT_FIELDS
+}
 
 const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
 
@@ -89,6 +110,9 @@ interface MappingTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   template: CsvMappingTemplate | null
+  // Resource type for a NEW template. Ignored when `template` is set — the
+  // existing template's `resourceType` is always authoritative on edit.
+  resourceType?: 'products' | 'stock'
   onSaved?: (template: CsvMappingTemplate) => void
 }
 
@@ -96,6 +120,7 @@ export function MappingTemplateDialog({
   open,
   onOpenChange,
   template,
+  resourceType,
   onSaved,
 }: MappingTemplateDialogProps): JSX.Element {
   const t = useTranslations('csv.templates.dialog')
@@ -106,6 +131,16 @@ export function MappingTemplateDialog({
   const preview = useCsvPreview()
   const create = useCreateCsvMapping()
   const update = useUpdateCsvMapping()
+
+  // Existing template's resourceType wins over the prop on edit. New
+  // templates default to 'products' when the caller didn't specify one —
+  // preserves the old single-resource behavior.
+  const effectiveResourceType: 'products' | 'stock' = isEdit
+    ? template.resourceType === 'stock'
+      ? 'stock'
+      : 'products'
+    : (resourceType ?? 'products')
+  const FIELDS = useMemo(() => fieldsForResource(effectiveResourceType), [effectiveResourceType])
 
   // Step 1 state
   const [name, setName] = useState('')
@@ -120,7 +155,7 @@ export function MappingTemplateDialog({
   // Step 2 state (field config keyed by product field)
   const [fields, setFields] = useState<Record<string, FieldConfig>>(() =>
     Object.fromEntries(
-      PRODUCT_FIELDS.map((f) => [
+      FIELDS.map((f) => [
         f.key,
         { mode: 'csv' as const, csvColumn: null, fixedValue: '' },
       ]),
@@ -152,7 +187,7 @@ export function MappingTemplateDialog({
       }
       setDetectedDelimiter(null)
       const next: Record<string, FieldConfig> = {}
-      for (const f of PRODUCT_FIELDS) {
+      for (const f of FIELDS) {
         const mapping = template.columnMappings.find((m) => m.field === f.key)
         const defaultValue =
           mapping?.defaultValue ?? template.defaultValues[f.key] ?? ''
@@ -177,7 +212,7 @@ export function MappingTemplateDialog({
       setDetectedDelimiter(null)
       setFields(
         Object.fromEntries(
-          PRODUCT_FIELDS.map((f) => [
+          FIELDS.map((f) => [
             f.key,
             { mode: 'csv' as const, csvColumn: null, fixedValue: '' },
           ]),
@@ -185,7 +220,7 @@ export function MappingTemplateDialog({
       )
       setStep(1)
     }
-  }, [open, template])
+  }, [open, template, FIELDS])
 
   // `runPreview` captures current state; kept in a ref so the effects
   // below don't need to depend on it (and don't need an eslint-disable for
@@ -247,7 +282,7 @@ export function MappingTemplateDialog({
 
   const validationErrors = useMemo(() => {
     const errors: Record<string, string> = {}
-    for (const f of PRODUCT_FIELDS) {
+    for (const f of FIELDS) {
       if (!f.required) continue
       const cfg = fields[f.key]
       if (!cfg) continue
@@ -257,8 +292,17 @@ export function MappingTemplateDialog({
           (cfg.mode === 'fixed' && cfg.fixedValue.trim().length > 0)
       if (!ok) errors[f.key] = t('requiredField')
     }
+    // Stock: either sku or barcode must be mapped (mirrors backend validation).
+    if (effectiveResourceType === 'stock') {
+      const skuOk = Boolean(fields['sku']?.csvColumn)
+      const barcodeOk = Boolean(fields['barcode']?.csvColumn)
+      if (!skuOk && !barcodeOk) {
+        errors['sku'] = t('requiredField')
+        errors['barcode'] = t('requiredField')
+      }
+    }
     return errors
-  }, [fields, t])
+  }, [fields, t, FIELDS, effectiveResourceType])
 
   const canSave = Object.keys(validationErrors).length === 0
 
@@ -284,7 +328,7 @@ export function MappingTemplateDialog({
   }
 
   function buildMappings(): { columnMappings: ColumnMapping[]; defaultValues: Record<string, string> } {
-    const columnMappings: ColumnMapping[] = PRODUCT_FIELDS.map((f) => {
+    const columnMappings: ColumnMapping[] = FIELDS.map((f) => {
       const cfg = fields[f.key] ?? { mode: 'csv', csvColumn: null, fixedValue: '' }
       const effectiveMode = f.csvOnly ? 'csv' : cfg.mode
       const base: ColumnMapping = {
@@ -298,7 +342,7 @@ export function MappingTemplateDialog({
       return base
     })
     const defaultValues: Record<string, string> = {}
-    for (const f of PRODUCT_FIELDS) {
+    for (const f of FIELDS) {
       if (f.csvOnly) continue
       const cfg = fields[f.key]
       if (cfg?.mode === 'fixed' && cfg.fixedValue.trim()) {
@@ -335,7 +379,7 @@ export function MappingTemplateDialog({
         const saved = await create.mutateAsync({
           name: name.trim(),
           direction: 'import',
-          resourceType: 'products',
+          resourceType: effectiveResourceType,
           delimiter,
           encoding,
           hasHeaderRow,
@@ -391,6 +435,7 @@ export function MappingTemplateDialog({
           />
         ) : (
           <Step2
+            fieldSpecs={FIELDS}
             fields={fields}
             headers={headers}
             sampleRows={sampleRows}
@@ -648,6 +693,7 @@ function Step1({
 }
 
 function Step2({
+  fieldSpecs,
   fields,
   headers,
   sampleRows,
@@ -657,6 +703,7 @@ function Step2({
   validationErrors,
   tFields,
 }: {
+  fieldSpecs: FieldSpec[]
   fields: Record<string, FieldConfig>
   headers: string[]
   sampleRows: string[][]
@@ -682,7 +729,7 @@ function Step2({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div className="space-y-3">
-        {PRODUCT_FIELDS.map((f) => {
+        {fieldSpecs.map((f) => {
           const cfg = fields[f.key] ?? { mode: 'csv' as const, csvColumn: null, fixedValue: '' }
           const effectiveMode = f.csvOnly ? 'csv' : cfg.mode
           const error = validationErrors[f.key]
@@ -794,7 +841,7 @@ function Step2({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {PRODUCT_FIELDS.map((f) => (
+                {fieldSpecs.map((f) => (
                   <th
                     key={f.key}
                     className="text-left px-3 py-2 font-medium text-foreground whitespace-nowrap"
@@ -808,7 +855,7 @@ function Step2({
               {sampleRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={PRODUCT_FIELDS.length}
+                    colSpan={fieldSpecs.length}
                     className="px-3 py-6 text-center text-muted-foreground text-xs"
                   >
                     {t('previewEmpty')}
@@ -817,7 +864,7 @@ function Step2({
               ) : (
                 sampleRows.slice(0, 3).map((row, rIdx) => (
                   <tr key={rIdx} className="border-b border-border last:border-b-0">
-                    {PRODUCT_FIELDS.map((f) => (
+                    {fieldSpecs.map((f) => (
                       <td
                         key={f.key}
                         className="px-3 py-1.5 text-muted-foreground whitespace-nowrap"

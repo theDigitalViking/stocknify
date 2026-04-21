@@ -52,6 +52,45 @@ const DEFAULT_PRODUCT_HEADERS: Record<string, ProductImportField> = {
   batchTracking: 'batchTracking',
 }
 
+// Stock import field dictionary. `sku` and `barcode` are each individually
+// optional, but the handler enforces that at least one of them is mapped or
+// has a default value — a row without either cannot resolve to a variant.
+const STOCK_IMPORT_FIELDS = [
+  { key: 'sku', label: 'SKU', required: false },
+  { key: 'barcode', label: 'EAN / Barcode', required: false },
+  { key: 'locationName', label: 'Location', required: true },
+  { key: 'quantity', label: 'Quantity', required: true },
+  { key: 'stockType', label: 'Stock type', required: false }, // default: 'available'
+  { key: 'batchNumber', label: 'Batch number', required: false },
+  { key: 'expiryDate', label: 'Expiry date (ISO)', required: false },
+  { key: 'storageLocation', label: 'Storage location', required: false },
+] as const
+
+type StockImportField = (typeof STOCK_IMPORT_FIELDS)[number]['key']
+
+function isStockImportField(value: string): value is StockImportField {
+  return STOCK_IMPORT_FIELDS.some((f) => f.key === value)
+}
+
+// Default header names for stock import when no mapping template is selected.
+// Both snake_case and camelCase variants are accepted so we tolerate headers
+// emitted by a wide range of systems (ERP exports, spreadsheets, etc.).
+const DEFAULT_STOCK_HEADERS: Record<string, StockImportField> = {
+  sku: 'sku',
+  barcode: 'barcode',
+  location: 'locationName',
+  locationName: 'locationName',
+  quantity: 'quantity',
+  stockType: 'stockType',
+  stock_type: 'stockType',
+  batchNumber: 'batchNumber',
+  batch_number: 'batchNumber',
+  expiryDate: 'expiryDate',
+  expiry_date: 'expiryDate',
+  storageLocation: 'storageLocation',
+  storage_location: 'storageLocation',
+}
+
 // Coerce CSV-shaped truthy/falsy strings ("true"/"1"/"ja"/"yes" etc.) into a
 // boolean. Returns `undefined` on anything we can't confidently classify so
 // the caller can fall back to defaults instead of guessing.
@@ -127,11 +166,19 @@ function validateRequiredMappings(
   defaults: Record<string, string>,
   resourceType: 'products' | 'stock' | 'locations',
 ): string | null {
-  if (resourceType !== 'products') {
-    // Stock/locations mapping validation is deferred to a later phase.
+  const fields =
+    resourceType === 'products'
+      ? PRODUCT_IMPORT_FIELDS
+      : resourceType === 'stock'
+        ? STOCK_IMPORT_FIELDS
+        : null
+
+  if (!fields) {
+    // locations mapping validation is deferred to a later phase.
     return null
   }
-  for (const spec of PRODUCT_IMPORT_FIELDS) {
+
+  for (const spec of fields) {
     if (!spec.required) continue
     const mapping = mappings.find((m) => m.field === spec.key)
     const hasColumn = Boolean(mapping?.csvColumn)
@@ -140,6 +187,21 @@ function validateRequiredMappings(
       return `Required field "${spec.label}" must be mapped to a CSV column or given a default value`
     }
   }
+
+  // Stock rows need at least one identifier (sku or barcode) to resolve a
+  // variant. Neither is marked `required` individually, so check the
+  // disjunction explicitly here.
+  if (resourceType === 'stock') {
+    const hasSku =
+      mappings.some((m) => m.field === 'sku' && Boolean(m.csvColumn)) || Boolean(defaults['sku'])
+    const hasBarcode =
+      mappings.some((m) => m.field === 'barcode' && Boolean(m.csvColumn)) ||
+      Boolean(defaults['barcode'])
+    if (!hasSku && !hasBarcode) {
+      return 'At least one of SKU or EAN/Barcode must be mapped to a CSV column or given a default value'
+    }
+  }
+
   return null
 }
 
@@ -354,6 +416,44 @@ function buildExtractor(
 
 function isProductImportField(value: string): value is ProductImportField {
   return PRODUCT_IMPORT_FIELDS.some((f) => f.key === value)
+}
+
+// Parallel to buildExtractor but scoped to the stock field dictionary.
+type StockRowExtractor = (
+  row: Record<string, string | undefined>,
+) => Partial<Record<StockImportField, string>>
+
+function buildStockExtractor(
+  mappings: ColumnMapping[] | null,
+  defaults: Record<string, string>,
+): StockRowExtractor {
+  if (!mappings) {
+    return (row) => {
+      const out: Partial<Record<StockImportField, string>> = {}
+      for (const [header, field] of Object.entries(DEFAULT_STOCK_HEADERS)) {
+        const value = row[header]?.trim()
+        if (value) out[field] = value
+      }
+      return out
+    }
+  }
+  return (row) => {
+    const out: Partial<Record<StockImportField, string>> = {}
+    for (const m of mappings) {
+      if (!isStockImportField(m.field)) continue
+      const raw = m.csvColumn ? row[m.csvColumn]?.trim() : undefined
+      const fallback = m.defaultValue?.trim() || defaults[m.field]?.trim()
+      const value = raw || fallback
+      if (value) out[m.field] = value
+    }
+    for (const [field, value] of Object.entries(defaults)) {
+      if (!isStockImportField(field)) continue
+      if (out[field]) continue
+      const trimmed = value.trim()
+      if (trimmed) out[field] = trimmed
+    }
+    return out
+  }
 }
 
 // Raw row shape returned by $queryRaw against csv_mapping_templates. Column
@@ -918,6 +1018,295 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       return handleMultipartOrParseError(err, reply, request, 'import')
     }
   })
+
+  // -------------------------------------------------------------------------
+  // POST /integrations/csv/import/stock — bulk stock-level import
+  //
+  // Upserts stock_levels by (tenant, variant, location, storageLocation,
+  // batch, stockType). Every change is mirrored into stock_movements so the
+  // audit trail is intact. Variants are resolved via barcode (preferred) or
+  // SKU; locations via exact name match; optional bins and batches via name
+  // scoped to the resolved location / product.
+  // -------------------------------------------------------------------------
+  app.post('/integrations/csv/import/stock', async (request, reply) => {
+    try {
+      const { file, fields } = await readMultipart(request)
+      if (!file) {
+        return reply
+          .code(400)
+          .send({ error: { code: 'VALIDATION_ERROR', message: 'Missing file part' } })
+      }
+
+      const dryRun = fields['dryRun'] === 'true'
+      const mappingTemplateIdRaw = fields['mappingTemplateId']
+      const mappingTemplateId =
+        mappingTemplateIdRaw && z.string().uuid().safeParse(mappingTemplateIdRaw).success
+          ? mappingTemplateIdRaw
+          : null
+
+      let mappings: ColumnMapping[] | null = null
+      let defaults: Record<string, string> = {}
+      let delimiter = ','
+      let hasHeaderRow = true
+      let encoding = (fields['encoding'] ?? 'utf-8').trim()
+      let lockedTemplateIntegrationKey: string | null = null
+
+      if (mappingTemplateId) {
+        const template = await request.db.csvMappingTemplate.findFirst({
+          where: { id: mappingTemplateId, tenantId: request.tenantId, deletedAt: null },
+        })
+        if (!template) {
+          return reply
+            .code(404)
+            .send({ error: { code: 'NOT_FOUND', message: 'Mapping template not found' } })
+        }
+        if (template.direction !== 'import' || template.resourceType !== 'stock') {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_TEMPLATE',
+              message: 'Template must have direction=import and resourceType=stock',
+            },
+          })
+        }
+        const blocked = await ensureMarketplaceIntegrationEnabled(
+          request.db,
+          request.tenantId,
+          template,
+          reply,
+        )
+        if (blocked) return blocked
+        mappings = template.columnMappings as unknown as ColumnMapping[]
+        defaults = template.defaultValues as Record<string, string>
+        delimiter = template.delimiter
+        hasHeaderRow = template.hasHeaderRow
+        encoding = template.encoding
+        if (template.isLocked && template.marketplaceKey) {
+          lockedTemplateIntegrationKey = template.marketplaceKey
+        }
+      }
+
+      const decodedBuffer = decodeBuffer(file.buffer, encoding)
+
+      let parsed: { headers: string[]; rows: string[][] }
+      try {
+        parsed = await parseCsvStreaming(
+          decodedBuffer,
+          { delimiter, hasHeaderRow },
+          CSV_MAX_ROWS,
+          'strict',
+        )
+      } catch (err) {
+        if ((err as { code?: string } | undefined)?.code === 'ROW_LIMIT_EXCEEDED') {
+          return reply.code(413).send({
+            error: {
+              code: 'FILE_TOO_LARGE',
+              message: `CSV exceeds the maximum of ${String(CSV_MAX_ROWS)} rows`,
+            },
+          })
+        }
+        throw err
+      }
+      const { headers, rows } = parsed
+
+      const extractor = buildStockExtractor(mappings, defaults)
+      const result = {
+        totalRows: rows.length,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [] as Array<{ row: number; sku?: string; reason: string }>,
+        dryRun,
+      }
+
+      for (let i = 0; i < rows.length; i++) {
+        // Same TOCTOU guard as the products import — re-verify the locked
+        // template's integration is still enabled periodically.
+        if (
+          lockedTemplateIntegrationKey !== null &&
+          i > 0 &&
+          i % INTEGRATION_RECHECK_INTERVAL === 0
+        ) {
+          const stillEnabled = await request.db.integration.findFirst({
+            where: {
+              tenantId: request.tenantId,
+              marketplaceKey: lockedTemplateIntegrationKey,
+              isEnabled: true,
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+          if (!stillEnabled) {
+            result.errors.push({
+              row: i + 1,
+              reason: 'Import aborted: the integration providing this template was disabled.',
+            })
+            break
+          }
+        }
+
+        const rowNumber = i + 1
+        const rawRow = rows[i]
+        if (!rawRow) continue
+
+        try {
+          const recordObj: Record<string, string | undefined> = {}
+          headers.forEach((h, idx) => {
+            recordObj[h] = rawRow[idx]
+          })
+
+          const extracted = extractor(recordObj)
+
+          const variant = await resolveVariant(request.db, request.tenantId, extracted)
+          if (!variant) {
+            result.errors.push({
+              row: rowNumber,
+              ...(extracted.sku ? { sku: extracted.sku } : {}),
+              reason: 'Product variant not found — no match for SKU or barcode',
+            })
+            continue
+          }
+
+          const locationName = extracted.locationName?.trim()
+          if (!locationName) {
+            result.errors.push({
+              row: rowNumber,
+              sku: variant.sku,
+              reason: 'Missing required field: locationName',
+            })
+            continue
+          }
+          const location = await request.db.location.findFirst({
+            where: { tenantId: request.tenantId, name: locationName, deletedAt: null },
+            select: { id: true },
+          })
+          if (!location) {
+            result.errors.push({
+              row: rowNumber,
+              sku: variant.sku,
+              reason: `Location not found: "${locationName}" — create it first in the Locations section`,
+            })
+            continue
+          }
+
+          const quantityRaw = extracted.quantity?.trim()
+          if (!quantityRaw) {
+            result.errors.push({
+              row: rowNumber,
+              sku: variant.sku,
+              reason: 'Missing required field: quantity',
+            })
+            continue
+          }
+          // Accept comma decimals (de-DE) — Number() doesn't do the swap.
+          const quantity = Number(quantityRaw.replace(',', '.'))
+          if (isNaN(quantity)) {
+            result.errors.push({
+              row: rowNumber,
+              sku: variant.sku,
+              reason: `Invalid quantity: "${quantityRaw}"`,
+            })
+            continue
+          }
+
+          const stockType = extracted.stockType?.trim() || 'available'
+
+          // Storage location lookup is best-effort — a mistyped bin should not
+          // fail the whole row. Fall back to the bin-agnostic stock level.
+          let storageLocationId: string | null = null
+          if (extracted.storageLocation?.trim()) {
+            const sl = await request.db.storageLocation.findFirst({
+              where: {
+                tenantId: request.tenantId,
+                locationId: location.id,
+                name: extracted.storageLocation.trim(),
+                deletedAt: null,
+              },
+              select: { id: true },
+            })
+            if (sl) storageLocationId = sl.id
+          }
+
+          // Batch lookup/create: only when the product has batchTracking on.
+          // Products without batch tracking silently drop the batch_number
+          // and expiry columns — those rows become the batch-agnostic stock
+          // record for the product.
+          let batchId: string | null = null
+          if (extracted.batchNumber?.trim()) {
+            const batchNumber = extracted.batchNumber.trim()
+            const product = await request.db.product.findFirst({
+              where: { id: variant.productId, tenantId: request.tenantId },
+              select: { id: true, batchTracking: true },
+            })
+            if (product?.batchTracking) {
+              let batch = await request.db.batch.findFirst({
+                where: { tenantId: request.tenantId, productId: product.id, batchNumber },
+              })
+              if (!batch && !dryRun) {
+                const rawExpiry = extracted.expiryDate?.trim()
+                const parsedExpiry = rawExpiry ? new Date(rawExpiry) : null
+                batch = await request.db.batch.create({
+                  data: {
+                    tenantId: request.tenantId,
+                    productId: product.id,
+                    batchNumber,
+                    expiryDate:
+                      parsedExpiry && !isNaN(parsedExpiry.getTime()) ? parsedExpiry : null,
+                    metadata: {},
+                  },
+                })
+              }
+              if (batch) batchId = batch.id
+            }
+          }
+
+          if (dryRun) {
+            // Pass nullable foreign keys as `null` (not undefined) so Prisma
+            // filters `IS NULL` instead of ignoring the column. Otherwise a
+            // row with no bin/batch would match any existing stock_level with
+            // any bin/batch and miscount as "updated".
+            const existing = await request.db.stockLevel.findFirst({
+              where: {
+                tenantId: request.tenantId,
+                variantId: variant.id,
+                locationId: location.id,
+                storageLocationId,
+                batchId,
+                stockType,
+              },
+            })
+            if (existing) result.updated += 1
+            else result.created += 1
+            continue
+          }
+
+          const outcome = await upsertStockLevel(request.db, request.tenantId, {
+            variantId: variant.id,
+            locationId: location.id,
+            storageLocationId,
+            batchId,
+            stockType,
+            quantity,
+            source: 'csv',
+            createdBy: request.userId,
+          })
+          result[outcome] += 1
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'Unknown error'
+          const rowRef = rows[i]
+          const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
+          result.errors.push({ row: rowNumber, ...(sku ? { sku } : {}), reason })
+        }
+      }
+
+      if (!dryRun) {
+        await recordStockImportIncident(request, result)
+      }
+
+      return reply.send({ data: result })
+    } catch (err) {
+      return handleMultipartOrParseError(err, reply, request, 'import')
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -1073,6 +1462,172 @@ async function recordImportIncident(
   if (error) {
     // Incident write failures must not fail the import itself — log and continue.
     request.log.error({ err: error }, 'csv import: failed to write incident')
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stock import helpers
+// ---------------------------------------------------------------------------
+
+// Resolve a variant by barcode first (preferred — globally unique) then fall
+// back to SKU. Both are tenant-scoped and skip soft-deleted variants.
+async function resolveVariant(
+  db: PrismaClient,
+  tenantId: string,
+  extracted: Partial<Record<StockImportField, string>>,
+): Promise<{ id: string; sku: string; productId: string } | null> {
+  const sku = extracted.sku?.trim()
+  const barcode = extracted.barcode?.trim()
+
+  if (barcode) {
+    const v = await db.productVariant.findFirst({
+      where: { tenantId, barcode, deletedAt: null },
+      select: { id: true, sku: true, productId: true },
+    })
+    if (v) return v
+  }
+  if (sku) {
+    const v = await db.productVariant.findFirst({
+      where: { tenantId, sku, deletedAt: null },
+      select: { id: true, sku: true, productId: true },
+    })
+    if (v) return v
+  }
+  return null
+}
+
+// Upsert a stock level row and append a matching stock_movement record.
+// Returns 'created', 'updated', or 'skipped' (no-op when quantity is
+// unchanged). The nullable foreign keys (storageLocationId, batchId) are
+// passed as `null` — not `undefined` — so Prisma filters `IS NULL` during
+// the existing-row lookup. The underlying COALESCE-based unique index
+// (see apps/api/src/db/sql/unique-stock-levels.sql) guarantees at most one
+// row per (tenant, variant, location, storage, batch, stockType) tuple.
+async function upsertStockLevel(
+  db: PrismaClient,
+  tenantId: string,
+  row: {
+    variantId: string
+    locationId: string
+    storageLocationId: string | null
+    batchId: string | null
+    stockType: string
+    quantity: number
+    source: string
+    createdBy: string | null
+  },
+): Promise<'created' | 'updated' | 'skipped'> {
+  const existing = await db.stockLevel.findFirst({
+    where: {
+      tenantId,
+      variantId: row.variantId,
+      locationId: row.locationId,
+      storageLocationId: row.storageLocationId,
+      batchId: row.batchId,
+      stockType: row.stockType,
+    },
+  })
+
+  const newQty = new Prisma.Decimal(row.quantity)
+
+  if (!existing) {
+    await db.stockLevel.create({
+      data: {
+        tenantId,
+        variantId: row.variantId,
+        locationId: row.locationId,
+        storageLocationId: row.storageLocationId,
+        batchId: row.batchId,
+        stockType: row.stockType,
+        quantity: newQty,
+        source: row.source,
+        lastSyncedAt: new Date(),
+      },
+    })
+    await db.stockMovement.create({
+      data: {
+        tenantId,
+        variantId: row.variantId,
+        locationId: row.locationId,
+        storageLocationId: row.storageLocationId,
+        batchId: row.batchId,
+        stockType: row.stockType,
+        quantityBefore: new Prisma.Decimal(0),
+        quantityAfter: newQty,
+        delta: newQty,
+        movementType: 'sync',
+        source: row.source,
+        createdBy: row.createdBy,
+      },
+    })
+    return 'created'
+  }
+
+  if (existing.quantity.equals(newQty)) return 'skipped'
+
+  const delta = newQty.minus(existing.quantity)
+  await db.stockLevel.update({
+    where: { id: existing.id },
+    data: { quantity: newQty, source: row.source, lastSyncedAt: new Date() },
+  })
+  await db.stockMovement.create({
+    data: {
+      tenantId,
+      variantId: row.variantId,
+      locationId: row.locationId,
+      storageLocationId: row.storageLocationId,
+      batchId: row.batchId,
+      stockType: row.stockType,
+      quantityBefore: existing.quantity,
+      quantityAfter: newQty,
+      delta,
+      movementType: 'sync',
+      source: row.source,
+      createdBy: row.createdBy,
+    },
+  })
+  return 'updated'
+}
+
+async function recordStockImportIncident(
+  request: FastifyRequest,
+  result: {
+    totalRows: number
+    created: number
+    updated: number
+    skipped: number
+    errors: Array<{ row: number; sku?: string; reason: string }>
+    dryRun: boolean
+  },
+): Promise<void> {
+  const supabase = getSupabaseAdmin()
+  const integration = await ensureCsvIntegration(request.db, request.tenantId)
+  const hasErrors = result.errors.length > 0
+  const userMessage = hasErrors
+    ? `Bestandsimport abgeschlossen mit ${String(result.errors.length)} Fehlern. Bitte Fehlerbericht prüfen.`
+    : `Bestandsimport erfolgreich: ${String(result.created)} angelegt, ${String(result.updated)} aktualisiert.`
+
+  const { error } = await supabase.from('incidents').insert({
+    tenant_id: request.tenantId,
+    source_type: 'api',
+    source_id: 'POST /integrations/csv/import/stock',
+    integration_id: integration.id,
+    severity: hasErrors ? 'warning' : 'info',
+    code: 'CSV_STOCK_IMPORT_COMPLETE',
+    title: `CSV stock import: ${String(result.created)} created, ${String(result.updated)} updated, ${String(result.errors.length)} errors`,
+    user_message: userMessage,
+    is_user_visible: true,
+    context: {
+      totalRows: result.totalRows,
+      created: result.created,
+      updated: result.updated,
+      skipped: result.skipped,
+      errors: result.errors,
+    },
+  })
+
+  if (error) {
+    request.log.error({ err: error }, 'csv stock import: failed to write incident')
   }
 }
 

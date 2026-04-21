@@ -326,7 +326,13 @@
         "description": "Beschreibung",
         "category": "Kategorie",
         "unit": "Einheit",
-        "batchTracking": "MHD- / chargengeführt"
+        "batchTracking": "MHD- / chargengeführt",
+        "locationName": "Lager",
+        "quantity": "Menge",
+        "stockType": "Bestandstyp",
+        "batchNumber": "Chargennummer",
+        "expiryDate": "Verfallsdatum",
+        "storageLocation": "Lagerplatz"
       },
       "dialog": {
         "createTitle": "Neues Mapping-Template",

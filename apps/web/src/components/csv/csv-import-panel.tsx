@@ -16,7 +16,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
-import { useCsvMappings, useImportProducts, type CsvImportResult } from '@/lib/api/use-csv'
+import {
+  useCsvMappings,
+  useImportProducts,
+  useImportStock,
+  type CsvImportResult,
+} from '@/lib/api/use-csv'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_TEMPLATE_VALUE = '__default__'
@@ -32,6 +37,7 @@ export function CsvImportPanel(): JSX.Element {
     resourceType,
   })
   const importProducts = useImportProducts()
+  const importStock = useImportStock()
 
   const [file, setFile] = useState<File | null>(null)
   const [templateValue, setTemplateValue] = useState<string>(DEFAULT_TEMPLATE_VALUE)
@@ -51,17 +57,23 @@ export function CsvImportPanel(): JSX.Element {
 
   const resourceLabel = useMemo(() => tResources(resourceType), [tResources, resourceType])
 
+  const isPending = importProducts.isPending || importStock.isPending
+
   async function runImport(dryRun: boolean): Promise<void> {
     if (!file) {
       toast({ title: t('noFile'), variant: 'destructive' })
       return
     }
     try {
-      const res = await importProducts.mutateAsync({
+      const params = {
         file,
         dryRun,
         ...(templateValue !== DEFAULT_TEMPLATE_VALUE ? { mappingTemplateId: templateValue } : {}),
-      })
+      }
+      const res =
+        resourceType === 'stock'
+          ? await importStock.mutateAsync(params)
+          : await importProducts.mutateAsync(params)
       setResult(res)
       setErrorsOpen(false)
     } catch (err) {
@@ -104,80 +116,72 @@ export function CsvImportPanel(): JSX.Element {
             </div>
           </div>
 
-          {resourceType === 'stock' ? (
-            <div className="rounded-md border border-dashed border-border px-6 py-10 text-center text-sm text-muted-foreground">
-              {t('stockComingSoon')}
-            </div>
-          ) : (
-            <>
-              <div>
-                <label className="text-sm font-medium mb-1 block">{t('templateLabel')}</label>
-                <Select value={templateValue} onValueChange={setTemplateValue}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={DEFAULT_TEMPLATE_VALUE}>{t('defaultTemplate')}</SelectItem>
-                    {templates.map((tpl) => (
-                      <SelectItem key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </SelectItem>
-                    ))}
-                    <div className="h-px bg-border my-1" />
-                    <div
-                      role="option"
-                      tabIndex={0}
-                      aria-selected={false}
-                      className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-brand-700 hover:bg-accent outline-none"
-                      onClick={() => {
-                        setCreateTemplateOpen(true)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setCreateTemplateOpen(true)
-                        }
-                      }}
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1.5" />
-                      {t('newTemplate')}
-                    </div>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <CsvFileDropzone
-                file={file}
-                onChange={setFile}
-                placeholder={t('dropzone')}
-                hint={t('dropzoneHint')}
-                clearLabel={t('clearFile')}
-              />
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
+          <div>
+            <label className="text-sm font-medium mb-1 block">{t('templateLabel')}</label>
+            <Select value={templateValue} onValueChange={setTemplateValue}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DEFAULT_TEMPLATE_VALUE}>{t('defaultTemplate')}</SelectItem>
+                {templates.map((tpl) => (
+                  <SelectItem key={tpl.id} value={tpl.id}>
+                    {tpl.name}
+                  </SelectItem>
+                ))}
+                <div className="h-px bg-border my-1" />
+                <div
+                  role="option"
+                  tabIndex={0}
+                  aria-selected={false}
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-brand-700 hover:bg-accent outline-none"
                   onClick={() => {
-                    void runImport(true)
+                    setCreateTemplateOpen(true)
                   }}
-                  disabled={importProducts.isPending || !file}
-                >
-                  {t('dryRunButton')}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    void runImport(false)
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setCreateTemplateOpen(true)
+                    }
                   }}
-                  disabled={importProducts.isPending || !file}
                 >
-                  <Upload className="h-3.5 w-3.5 mr-1" />
-                  {t('importButton')}
-                </Button>
-              </div>
-            </>
-          )}
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  {t('newTemplate')}
+                </div>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <CsvFileDropzone
+            file={file}
+            onChange={setFile}
+            placeholder={t('dropzone')}
+            hint={t('dropzoneHint')}
+            clearLabel={t('clearFile')}
+          />
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void runImport(true)
+              }}
+              disabled={isPending || !file}
+            >
+              {t('dryRunButton')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                void runImport(false)
+              }}
+              disabled={isPending || !file}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1" />
+              {t('importButton')}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -195,6 +199,7 @@ export function CsvImportPanel(): JSX.Element {
         open={createTemplateOpen}
         onOpenChange={setCreateTemplateOpen}
         template={null}
+        resourceType={resourceType}
         onSaved={(saved) => {
           setTemplateValue(saved.id)
           setCreateTemplateOpen(false)

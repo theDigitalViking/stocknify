@@ -239,3 +239,29 @@ export function useImportProducts(): UseMutationResult<
     },
   })
 }
+
+export interface ImportStockInput {
+  file: File
+  mappingTemplateId?: string
+  dryRun: boolean
+}
+
+export function useImportStock(): UseMutationResult<CsvImportResult, Error, ImportStockInput> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input) => {
+      const formData = new FormData()
+      formData.append('file', input.file)
+      if (input.mappingTemplateId) {
+        formData.append('mappingTemplateId', input.mappingTemplateId)
+      }
+      formData.append('dryRun', input.dryRun ? 'true' : 'false')
+      return fetchWithFormData<CsvImportResult>('/integrations/csv/import/stock', formData)
+    },
+    onSuccess: (_data, vars) => {
+      if (!vars.dryRun) {
+        void qc.invalidateQueries({ queryKey: ['stock'] })
+      }
+    },
+  })
+}
