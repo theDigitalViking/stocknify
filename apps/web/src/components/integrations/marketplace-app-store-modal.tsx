@@ -63,7 +63,7 @@ export function MarketplaceAppStoreModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[80vh] p-0 flex flex-col">
+        <DialogContent className="max-w-3xl h-[600px] p-0 flex flex-col">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
             <DialogTitle>{t('appStoreTitle')}</DialogTitle>
             <div className="relative mt-3">
@@ -100,7 +100,7 @@ export function MarketplaceAppStoreModal({
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 min-h-0">
               {filtered.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted-foreground">
                   {t('noResults')}
