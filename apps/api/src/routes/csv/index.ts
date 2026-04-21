@@ -1512,19 +1512,22 @@ async function resolveVariant(
 // Returns 'created', 'updated', or 'skipped' (no-op when quantity is
 // unchanged).
 //
-// Runs in a single interactive transaction:
-//   1. `SELECT ... FOR UPDATE` locks the existing row (if any) so concurrent
-//      imports against the same (tenant, variant, location, storage, batch,
-//      stockType) tuple serialize here — the previous findFirst-then-write
-//      pattern could let two callers observe the same `quantityBefore` and
-//      emit divergent movement rows.
-//   2. `IS NOT DISTINCT FROM` on the nullable FKs matches the COALESCE-based
-//      partial unique index in apps/api/src/db/sql/unique-stock-levels.sql —
-//      Postgres NULL equality semantics would otherwise find no match for
-//      bin-agnostic or batch-agnostic stock.
-//   3. stock_levels and stock_movements writes share the same transaction
-//      so the invariant "every stock change has a matching movement row"
-//      holds even on a mid-sequence DB failure.
+// Runs in a single interactive transaction and uses insert-then-catch-P2002
+// to close the missing-row race that SELECT FOR UPDATE alone cannot cover:
+// Postgres does not take a gap lock under READ COMMITTED, so two concurrent
+// imports for a tuple that has no existing stock row would both observe
+// `existing = null` and both attempt INSERT — one would then fail on the
+// COALESCE-based unique index (see apps/api/src/db/sql/unique-stock-levels.sql).
+//
+// The flow:
+//   1. Try INSERT via raw SQL (Prisma's create path can't express composite
+//      nullable FKs cleanly for this table, and we need explicit ::uuid casts
+//      to match the index's column types).
+//   2. On success → append the matching "created" movement and return.
+//   3. On P2002 → fall through to SELECT ... FOR UPDATE (the row now
+//      definitively exists) + UPDATE + matching movement.
+//   4. `IS NOT DISTINCT FROM` matches NULL-valued nullable FKs the same way
+//      the COALESCE-based unique index does.
 async function upsertStockLevel(
   db: PrismaClient,
   tenantId: string,
@@ -1540,34 +1543,31 @@ async function upsertStockLevel(
   },
 ): Promise<'created' | 'updated' | 'skipped'> {
   return db.$transaction(async (tx) => {
-    const existingRows = await tx.$queryRaw<Array<{ id: string; quantity: string }>>`
-      SELECT id, quantity::text
-      FROM stock_levels
-      WHERE tenant_id    = ${tenantId}::uuid
-        AND variant_id   = ${row.variantId}::uuid
-        AND location_id  = ${row.locationId}::uuid
-        AND storage_location_id IS NOT DISTINCT FROM ${row.storageLocationId}::uuid
-        AND batch_id     IS NOT DISTINCT FROM ${row.batchId}::uuid
-        AND stock_type   = ${row.stockType}
-      FOR UPDATE
-    `
-    const existing = existingRows[0] ?? null
     const newQty = new Prisma.Decimal(row.quantity)
+    const now = new Date()
 
-    if (!existing) {
-      await tx.stockLevel.create({
-        data: {
-          tenantId,
-          variantId: row.variantId,
-          locationId: row.locationId,
-          storageLocationId: row.storageLocationId,
-          batchId: row.batchId,
-          stockType: row.stockType,
-          quantity: newQty,
-          source: row.source,
-          lastSyncedAt: new Date(),
-        },
-      })
+    try {
+      await tx.$executeRaw`
+        INSERT INTO stock_levels (
+          id, tenant_id, variant_id, location_id,
+          storage_location_id, batch_id,
+          stock_type, quantity, source, last_synced_at,
+          created_at, updated_at
+        ) VALUES (
+          gen_random_uuid(),
+          ${tenantId}::uuid,
+          ${row.variantId}::uuid,
+          ${row.locationId}::uuid,
+          ${row.storageLocationId}::uuid,
+          ${row.batchId}::uuid,
+          ${row.stockType},
+          ${newQty},
+          ${row.source},
+          ${now},
+          ${now},
+          ${now}
+        )
+      `
       await tx.stockMovement.create({
         data: {
           tenantId,
@@ -1585,6 +1585,36 @@ async function upsertStockLevel(
         },
       })
       return 'created'
+    } catch (insertErr) {
+      // Only swallow unique-constraint violations; everything else is an
+      // unexpected failure and must abort the transaction.
+      const isUniqueViolation =
+        insertErr instanceof Prisma.PrismaClientKnownRequestError &&
+        insertErr.code === 'P2002'
+      if (!isUniqueViolation) throw insertErr
+    }
+
+    // Row exists (either pre-existing or just inserted by a concurrent
+    // transaction that won the race). SELECT FOR UPDATE locks it so our
+    // movement row's quantityBefore/delta reflect the state we are actually
+    // writing against.
+    const existingRows = await tx.$queryRaw<Array<{ id: string; quantity: string }>>`
+      SELECT id, quantity::text
+      FROM stock_levels
+      WHERE tenant_id    = ${tenantId}::uuid
+        AND variant_id   = ${row.variantId}::uuid
+        AND location_id  = ${row.locationId}::uuid
+        AND storage_location_id IS NOT DISTINCT FROM ${row.storageLocationId}::uuid
+        AND batch_id     IS NOT DISTINCT FROM ${row.batchId}::uuid
+        AND stock_type   = ${row.stockType}
+      FOR UPDATE
+    `
+    const existing = existingRows[0]
+    if (!existing) {
+      // Should be unreachable — we just caught a P2002 on INSERT. Treating
+      // as skipped rather than throwing avoids poisoning the import result
+      // if the DB ever hands us an inconsistent view.
+      return 'skipped'
     }
 
     const currentQty = new Prisma.Decimal(existing.quantity)
@@ -1594,7 +1624,7 @@ async function upsertStockLevel(
 
     await tx.stockLevel.update({
       where: { id: existing.id },
-      data: { quantity: newQty, source: row.source, lastSyncedAt: new Date() },
+      data: { quantity: newQty, source: row.source, lastSyncedAt: now },
     })
     await tx.stockMovement.create({
       data: {
