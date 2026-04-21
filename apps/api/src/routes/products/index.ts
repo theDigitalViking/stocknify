@@ -67,7 +67,15 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
           { name: { contains: search, mode: 'insensitive' } },
           {
             variants: {
-              some: { sku: { contains: search, mode: 'insensitive' }, deletedAt: null },
+              // In deleted-view mode the product's variants are themselves
+              // soft-deleted (DELETE handler cascades deletedAt to all
+              // variants). Filtering by deletedAt: null would then hide every
+              // deleted product from SKU search. Drop the filter in that mode
+              // so SKU lookup still works on deleted rows.
+              some: {
+                sku: { contains: search, mode: 'insensitive' },
+                ...(showDeleted ? {} : { deletedAt: null }),
+              },
             },
           },
         ]
@@ -226,6 +234,39 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } })
       }
 
+      // Guard: barcode lives on the default variant and must not be mutated
+      // when the product is linked to an external integration. The frontend
+      // also locks this field, but backend validation is the authoritative
+      // boundary — a direct API call must be rejected, not silently accepted.
+      if (parse.data.barcode !== undefined) {
+        const variantIds = (
+          await request.db.productVariant.findMany({
+            where: { productId: id, tenantId: request.tenantId, deletedAt: null },
+            select: { id: true },
+          })
+        ).map((v) => v.id)
+
+        if (variantIds.length > 0) {
+          const externalRefCount = await request.db.externalReference.count({
+            where: {
+              tenantId: request.tenantId,
+              resourceType: 'product_variant',
+              resourceId: { in: variantIds },
+            },
+          })
+
+          if (externalRefCount > 0) {
+            return reply.code(409).send({
+              error: {
+                code: 'PRODUCT_EXTERNALLY_LINKED',
+                message:
+                  'Barcode cannot be changed while this product is connected to an integration.',
+              },
+            })
+          }
+        }
+      }
+
       // Guard: batchTracking can only be deactivated when no batch-linked
       // stock levels exist. Otherwise we would orphan rows whose batchId no
       // longer carries semantic meaning.
@@ -304,36 +345,40 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       const now = new Date()
       const deletedBy = request.userId
 
-      // Capture variant ids before the soft-delete so we can hard-delete their
-      // stock levels in the same transaction. StockLevel has no deletedAt; we
-      // remove the rows outright so downstream syncs do not republish them.
-      const variantIds = (
-        await request.db.productVariant.findMany({
+      // Interactive transaction: resolve variant ids inside the same snapshot
+      // that performs the deletes. The previous approach read variant ids
+      // outside the transaction, which let a concurrent variant insert slip
+      // through — the new variant would be soft-deleted by updateMany but its
+      // stock levels would survive because the id was not in the pre-captured
+      // list. StockLevel has no deletedAt, so leftover rows would be hard to
+      // reconcile. Keeping the id resolution inside the transaction closes
+      // that race.
+      await request.db.$transaction(async (tx) => {
+        const variants = await tx.productVariant.findMany({
           where: { productId: id, tenantId: request.tenantId },
           select: { id: true },
         })
-      ).map((v) => v.id)
+        const variantIds = variants.map((v) => v.id)
 
-      await request.db.$transaction([
-        request.db.product.update({
+        await tx.product.update({
           where: { id },
           data: { deletedAt: now, deletedBy },
-        }),
-        request.db.productVariant.updateMany({
+        })
+
+        await tx.productVariant.updateMany({
           where: { productId: id, tenantId: request.tenantId, deletedAt: null },
           data: { deletedAt: now },
-        }),
-        ...(variantIds.length > 0
-          ? [
-              request.db.stockLevel.deleteMany({
-                where: {
-                  tenantId: request.tenantId,
-                  variantId: { in: variantIds },
-                },
-              }),
-            ]
-          : []),
-      ])
+        })
+
+        if (variantIds.length > 0) {
+          await tx.stockLevel.deleteMany({
+            where: {
+              tenantId: request.tenantId,
+              variantId: { in: variantIds },
+            },
+          })
+        }
+      })
 
       return reply.code(204).send()
     } catch {
