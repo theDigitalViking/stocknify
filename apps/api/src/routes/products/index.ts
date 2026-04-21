@@ -33,13 +33,15 @@ const listQuerySchema = paginationSchema.extend({
   showDeleted: z.enum(['true', 'false']).optional(),
 })
 
-// PATCH /products body. barcode updates the default variant (not the product).
+// PATCH /products body. sku + barcode update the default variant, not the
+// product row itself — see the identity guards in the handler.
 const updateProductBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
   description: z.string().optional(),
   category: z.string().optional(),
   unit: z.string().optional(),
   batchTracking: z.boolean().optional(),
+  sku: z.string().min(1).max(255).optional(),
   barcode: z.string().max(255).optional(),
 })
 
@@ -234,11 +236,28 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } })
       }
 
-      // Guard: barcode lives on the default variant and must not be mutated
-      // when the product is linked to an external integration. The frontend
-      // also locks this field, but backend validation is the authoritative
-      // boundary — a direct API call must be rejected, not silently accepted.
-      if (parse.data.barcode !== undefined) {
+      // Identity guard: SKU + barcode (both on the default variant) are the
+      // primary record key for integrations. Two independent conditions lock
+      // them and either alone is sufficient to reject the change:
+      //   1. The product did not originate manually — `metadata.source` is
+      //      set to a non-'manual' value (CSV import, API, integration sync).
+      //      In that case the source system is authoritative for identity.
+      //   2. At least one variant has a row in `external_references` — a live
+      //      integration is using that SKU/barcode as the linking key.
+      // The check runs whenever sku or barcode is in the patch body.
+      if (parse.data.sku !== undefined || parse.data.barcode !== undefined) {
+        const meta = (existing.metadata ?? {}) as Record<string, unknown>
+        const source = typeof meta['source'] === 'string' ? (meta['source'] as string) : undefined
+        if (source && source !== 'manual') {
+          return reply.code(409).send({
+            error: {
+              code: 'PRODUCT_IDENTITY_LOCKED',
+              message:
+                'SKU and barcode cannot be changed on products that were imported from an external source.',
+            },
+          })
+        }
+
         const variantIds = (
           await request.db.productVariant.findMany({
             where: { productId: id, tenantId: request.tenantId, deletedAt: null },
@@ -258,9 +277,9 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
           if (externalRefCount > 0) {
             return reply.code(409).send({
               error: {
-                code: 'PRODUCT_EXTERNALLY_LINKED',
+                code: 'PRODUCT_IDENTITY_LOCKED',
                 message:
-                  'Barcode cannot be changed while this product is connected to an integration.',
+                  'SKU and barcode cannot be changed while this product is connected to an integration.',
               },
             })
           }
@@ -299,15 +318,17 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
-      // barcode lives on the default variant, not the product — route it separately.
-      const { barcode, ...productFields } = parse.data
+      // sku + barcode live on the default variant, not the product — route
+      // them separately. Either of them triggers a single variant fetch that
+      // the subsequent update calls share.
+      const { sku, barcode, ...productFields } = parse.data
 
       const product = await request.db.product.update({
         where: { id },
         data: omitUndefined(productFields) as unknown as Prisma.ProductUpdateInput,
       })
 
-      if (barcode !== undefined) {
+      if (sku !== undefined || barcode !== undefined) {
         const defaultVariant = await request.db.productVariant.findFirst({
           where: { productId: id, tenantId: request.tenantId, deletedAt: null },
           orderBy: { createdAt: 'asc' },
@@ -315,7 +336,10 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         if (defaultVariant) {
           await request.db.productVariant.update({
             where: { id: defaultVariant.id },
-            data: { barcode },
+            data: {
+              ...(sku !== undefined ? { sku } : {}),
+              ...(barcode !== undefined ? { barcode } : {}),
+            },
           })
         }
       }

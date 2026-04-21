@@ -32,6 +32,13 @@ function isKnownUnit(value: string): value is UnitKey {
   return (UNIT_KEYS as readonly string[]).includes(value)
 }
 
+function deriveSourceLockedFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  const source = metadata?.['source']
+  return typeof source === 'string' && source !== 'manual'
+}
+
 export default function ProductsPage(): JSX.Element {
   const t = useTranslations('products')
   const tUnits = useTranslations('products.units')
@@ -382,6 +389,10 @@ export default function ProductsPage(): JSX.Element {
       <EditProductDialog
         product={toEdit}
         open={toEdit !== null}
+        // List-view rows don't carry hasExternalReferences — the list endpoint
+        // doesn't return it. We can still lock on source-based criteria alone;
+        // the backend enforces the external-reference rule authoritatively.
+        isIdentityLocked={toEdit ? deriveSourceLockedFromMetadata(toEdit.metadata) : false}
         onOpenChange={(open) => {
           if (!open) setToEdit(null)
         }}

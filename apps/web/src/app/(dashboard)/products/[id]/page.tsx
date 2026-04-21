@@ -275,6 +275,7 @@ export default function ProductDetailPage(): JSX.Element {
         product={product}
         open={editOpen}
         onOpenChange={setEditOpen}
+        isIdentityLocked={deriveIsIdentityLocked(product)}
         hasExternalReferences={product.hasExternalReferences}
       />
 
@@ -340,4 +341,17 @@ function tryUnitLabel(t: (key: string) => string, unit: string): string {
   } catch {
     return unit
   }
+}
+
+// SKU and barcode must be immutable when either (a) the product is linked to
+// an external integration, or (b) it came from a non-manual source (CSV /
+// API). A product is only freely editable when it was created manually and
+// has no external references.
+function deriveIsIdentityLocked(product: {
+  hasExternalReferences: boolean
+  metadata: Record<string, unknown> | null | undefined
+}): boolean {
+  if (product.hasExternalReferences) return true
+  const source = product.metadata?.['source']
+  return typeof source === 'string' && source !== 'manual'
 }

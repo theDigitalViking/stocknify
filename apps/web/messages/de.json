@@ -200,7 +200,9 @@
       "createFailedGeneric": "Produkt konnte nicht angelegt werden",
       "updateFailedGeneric": "Produkt konnte nicht aktualisiert werden",
       "lockedByIntegration": "Durch Integration gesperrt",
-      "barcodeLockedHelp": "EAN/Barcode kann nicht geändert werden, solange das Produkt mit einer Integration verbunden ist."
+      "barcodeLockedHelp": "EAN/Barcode kann nicht geändert werden, solange das Produkt mit einer Integration verbunden ist.",
+      "lockedBySource": "Dieses Feld ist gesperrt, da das Produkt über einen automatischen Import ({source}) hinzugefügt wurde.",
+      "lockedByReference": "Dieses Feld ist gesperrt, da das Produkt mit einer externen Integration verbunden ist."
     },
     "units": {
       "piece": "Stück",
@@ -371,7 +373,27 @@
     },
     "marketplace": {
       "title": "Marketplace",
-      "comingSoon": "Verbinde externe Dienste wie Shopify, Hive, Xentral und mehr \u2014 kommt bald."
+      "comingSoon": "Verbinde externe Dienste wie Shopify, Hive, Xentral und mehr \u2014 kommt bald.",
+      "activeTitle": "Aktive Integrationen",
+      "addIntegration": "Integration hinzufügen",
+      "emptyState": "Noch keine Integrationen installiert.",
+      "browseIntegrations": "Integrationen durchsuchen",
+      "appStoreTitle": "Integrations-Marktplatz",
+      "searchPlaceholder": "Integrationen suchen\u2026",
+      "noResults": "Keine Integrationen gefunden.",
+      "install": "Installieren",
+      "alreadyInstalled": "Installiert",
+      "installSuccess": "{name} wurde installiert.",
+      "installFailed": "Installation fehlgeschlagen. Bitte erneut versuchen.",
+      "statusActive": "Aktiv",
+      "statusInactive": "Inaktiv",
+      "category": {
+        "all": "Alle",
+        "shop": "Shop-Systeme",
+        "erp": "ERP-Systeme",
+        "warehouse": "Warehouse",
+        "fulfiller": "Fulfiller"
+      }
     }
   },
   "errors": {

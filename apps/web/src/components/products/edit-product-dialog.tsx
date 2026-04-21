@@ -38,6 +38,7 @@ const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
 
 const editProductSchema = z.object({
   name: z.string().min(1, 'nameRequired').max(500),
+  sku: z.string().min(1, 'skuRequired').max(255),
   barcode: z.string().max(255).optional().default(''),
   unit: z.string().default('piece'),
   batchTracking: z.boolean().default(false),
@@ -45,7 +46,7 @@ const editProductSchema = z.object({
 })
 
 type EditProductFormValues = z.infer<typeof editProductSchema>
-type FormError = 'nameRequired'
+type FormError = 'nameRequired' | 'skuRequired'
 
 // Accept both the list-view shape (ProductWithCount — minimal variant fields)
 // and the detail-view shape (ProductDetail). The dialog only reads fields that
@@ -56,15 +57,29 @@ interface EditProductDialogProps {
   product: EditableProduct | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  // When true, SKU + barcode are read-only and the UI surfaces a lock hint.
-  // Only the detail page knows this — from the list view we pass undefined.
+  // When true, SKU + barcode are read-only and surface a lock reason.
+  // Callers compute this from both signals (external references + source).
+  // The list view only has `metadata.source` available; the detail view
+  // additionally knows about `hasExternalReferences`.
+  isIdentityLocked?: boolean
+  // Disambiguates the reason text when the lock fires. When truthy, the
+  // lock was caused by an external-integration reference; otherwise the
+  // lock reason falls back to the product's non-manual `metadata.source`.
   hasExternalReferences?: boolean
+}
+
+function readSource(product: EditableProduct | null): string | null {
+  if (!product) return null
+  const meta = product.metadata as Record<string, unknown> | null | undefined
+  const source = meta?.['source']
+  return typeof source === 'string' ? source : null
 }
 
 export function EditProductDialog({
   product,
   open,
   onOpenChange,
+  isIdentityLocked = false,
   hasExternalReferences = false,
 }: EditProductDialogProps): JSX.Element {
   const t = useTranslations('products.form')
@@ -84,6 +99,7 @@ export function EditProductDialog({
     resolver: zodResolver(editProductSchema),
     defaultValues: {
       name: '',
+      sku: '',
       barcode: '',
       unit: 'piece',
       batchTracking: false,
@@ -95,6 +111,7 @@ export function EditProductDialog({
     if (product) {
       reset({
         name: product.name,
+        sku: product.variants[0]?.sku ?? '',
         barcode: product.variants[0]?.barcode ?? '',
         unit: product.unit,
         batchTracking: product.batchTracking,
@@ -103,17 +120,35 @@ export function EditProductDialog({
     }
   }, [product, reset])
 
+  const source = readSource(product)
+  const isSourceLocked = source !== null && source !== 'manual'
+  // Source-based lock wins over external-reference lock for the reason text —
+  // the source tells the user concretely where the record originated (CSV /
+  // specific integration name), which is more actionable than a generic
+  // "linked to an integration" message.
+  const lockReason = isIdentityLocked
+    ? isSourceLocked
+      ? t('lockedBySource', { source: source ?? '' })
+      : hasExternalReferences
+        ? t('lockedByReference')
+        : null
+    : null
+
   async function onSubmit(values: EditProductFormValues): Promise<void> {
     if (!product) return
     try {
       await update.mutateAsync({
         id: product.id,
         name: values.name.trim(),
-        // Barcode is locked when hasExternalReferences — do not send a change
-        // even if the controlled input somehow produced one.
-        ...(hasExternalReferences
+        // SKU + barcode are only sent when the identity fields are unlocked.
+        // The backend enforces the same rule — this is defense in depth so a
+        // stale client that somehow produced values still can't mutate them.
+        ...(isIdentityLocked
           ? {}
-          : { barcode: values.barcode.trim() }),
+          : {
+              sku: values.sku.trim(),
+              barcode: values.barcode?.trim() ?? '',
+            }),
         unit: values.unit,
         batchTracking: values.batchTracking,
         description: values.description?.trim() || undefined,
@@ -121,8 +156,6 @@ export function EditProductDialog({
       toast({ title: t('updated'), description: values.name })
       onOpenChange(false)
     } catch (err) {
-      // Special-case the batch-tracking guard so the UI can revert the switch
-      // and show a targeted explanation instead of the generic failure toast.
       if (err instanceof ApiError && err.code === 'BATCH_STOCK_EXISTS') {
         setValue('batchTracking', product.batchTracking)
         toast({
@@ -136,8 +169,6 @@ export function EditProductDialog({
       toast({ title: t('updateFailed'), description: message, variant: 'destructive' })
     }
   }
-
-  const sku = product?.variants[0]?.sku ?? ''
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -158,16 +189,25 @@ export function EditProductDialog({
           </div>
 
           <div>
-            <Label className="mb-1 block">{t('sku')}</Label>
-            <div className="flex items-center gap-2">
-              <code className="text-sm font-mono bg-muted px-2 py-1 rounded">{sku || '—'}</code>
-              {hasExternalReferences ? (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Lock className="h-3 w-3" />
-                  {t('lockedByIntegration')}
-                </span>
-              ) : null}
-            </div>
+            <Label htmlFor="edit-sku" className="mb-1 block">
+              {t('sku')} <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="edit-sku"
+              className="font-mono"
+              disabled={isIdentityLocked}
+              title={lockReason ?? undefined}
+              {...register('sku')}
+            />
+            {errors.sku ? (
+              <p className="text-xs text-red-600 mt-1">{t(errors.sku.message as FormError)}</p>
+            ) : null}
+            {isIdentityLocked && lockReason ? (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Lock className="h-3 w-3 flex-shrink-0" />
+                <span>{lockReason}</span>
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -178,13 +218,14 @@ export function EditProductDialog({
               id="edit-barcode"
               placeholder={t('barcodePlaceholder')}
               className="font-mono"
-              disabled={hasExternalReferences}
+              disabled={isIdentityLocked}
+              title={lockReason ?? undefined}
               {...register('barcode')}
             />
-            {hasExternalReferences ? (
+            {isIdentityLocked && lockReason ? (
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                <Lock className="h-3 w-3" />
-                {t('barcodeLockedHelp')}
+                <Lock className="h-3 w-3 flex-shrink-0" />
+                <span>{lockReason}</span>
               </p>
             ) : null}
           </div>
