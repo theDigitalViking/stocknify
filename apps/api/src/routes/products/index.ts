@@ -246,14 +246,19 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       //      integration is using that SKU/barcode as the linking key.
       // The check runs whenever sku or barcode is in the patch body.
       if (parse.data.sku !== undefined || parse.data.barcode !== undefined) {
+        // Only lock SKU/barcode for automated import pipelines (sftp/ftp).
+        // Manual CSV imports ('csv') are user-driven and stay editable.
+        // Keep this set in sync with the frontend `LOCKED_SOURCES` in
+        // apps/web/src/app/(dashboard)/products/page.tsx and [id]/page.tsx.
+        const AUTOMATED_SOURCES = new Set<string>(['sftp', 'ftp'])
         const meta = (existing.metadata ?? {}) as Record<string, unknown>
         const source = typeof meta['source'] === 'string' ? (meta['source'] as string) : undefined
-        if (source && source !== 'manual') {
+        if (source && AUTOMATED_SOURCES.has(source)) {
           return reply.code(409).send({
             error: {
               code: 'PRODUCT_IDENTITY_LOCKED',
               message:
-                'SKU and barcode cannot be changed on products that were imported from an external source.',
+                'SKU and barcode cannot be changed on products imported via automated pipelines.',
             },
           })
         }

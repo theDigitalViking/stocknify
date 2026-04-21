@@ -385,6 +385,12 @@
       "alreadyInstalled": "Installed",
       "installSuccess": "{name} has been installed.",
       "installFailed": "Installation failed. Please try again.",
+      "installDialogTitle": "Install {name}",
+      "installNameLabel": "Integration name",
+      "installNameHelp": "Give this integration a name to identify it in your workspace.",
+      "installSettingsPlaceholder": "Integration-specific settings will appear here once configured.",
+      "installing": "Installing\u2026",
+      "installConfirm": "Install",
       "statusActive": "Active",
       "statusInactive": "Inactive",
       "category": {

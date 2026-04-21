@@ -32,11 +32,17 @@ function isKnownUnit(value: string): value is UnitKey {
   return (UNIT_KEYS as readonly string[]).includes(value)
 }
 
+// Automated import sources whose records own identity. Manual CSV ('csv') is
+// intentionally NOT here — that pipeline is user-driven and SKU/EAN stay
+// editable. Keep this list in sync with the backend PATCH guard in
+// apps/api/src/routes/products/index.ts.
+const LOCKED_SOURCES = new Set(['sftp', 'ftp'])
+
 function deriveSourceLockedFromMetadata(
   metadata: Record<string, unknown> | null | undefined,
 ): boolean {
   const source = metadata?.['source']
-  return typeof source === 'string' && source !== 'manual'
+  return typeof source === 'string' && LOCKED_SOURCES.has(source)
 }
 
 export default function ProductsPage(): JSX.Element {

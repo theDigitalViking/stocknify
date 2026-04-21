@@ -212,7 +212,7 @@ export function EditProductDialog({
 
           <div>
             <Label htmlFor="edit-barcode" className="mb-1 block">
-              {t('barcode')}
+              {t('barcode')} <span className="text-red-500">*</span>
             </Label>
             <Input
               id="edit-barcode"

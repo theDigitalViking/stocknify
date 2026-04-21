@@ -344,14 +344,17 @@ function tryUnitLabel(t: (key: string) => string, unit: string): string {
 }
 
 // SKU and barcode must be immutable when either (a) the product is linked to
-// an external integration, or (b) it came from a non-manual source (CSV /
-// API). A product is only freely editable when it was created manually and
-// has no external references.
+// an external integration, or (b) it came in via an automated import pipeline
+// that owns identity (sftp/ftp sync today; more added as they ship). CSV
+// imports are NOT locked — the user uploaded the file themselves and should
+// be able to correct identity fields after the fact.
+const LOCKED_SOURCES = new Set(['sftp', 'ftp'])
+
 function deriveIsIdentityLocked(product: {
   hasExternalReferences: boolean
   metadata: Record<string, unknown> | null | undefined
 }): boolean {
   if (product.hasExternalReferences) return true
   const source = product.metadata?.['source']
-  return typeof source === 'string' && source !== 'manual'
+  return typeof source === 'string' && LOCKED_SOURCES.has(source)
 }

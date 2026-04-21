@@ -40,16 +40,6 @@ export default function MarketplacePage(): JSX.Element {
           {installed.length === 0 ? (
             <div className="rounded-md border border-border border-dashed px-6 py-12 text-center">
               <p className="text-sm text-muted-foreground">{t('emptyState')}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => {
-                  setAppStoreOpen(true)
-                }}
-              >
-                {t('browseIntegrations')}
-              </Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 
+import { IntegrationLogoPlaceholder } from '@/components/integrations/integration-logo-placeholder'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -40,9 +41,7 @@ export function MarketplaceIntegrationCard({
               }}
             />
           ) : (
-            <span className="text-lg font-semibold text-muted-foreground">
-              {integration.name[0]}
-            </span>
+            <IntegrationLogoPlaceholder name={integration.name} size={28} />
           )}
         </div>
         <div className="min-w-0">
