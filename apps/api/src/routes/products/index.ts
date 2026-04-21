@@ -345,21 +345,15 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       const now = new Date()
       const deletedBy = request.userId
 
-      // Interactive transaction: resolve variant ids inside the same snapshot
-      // that performs the deletes. The previous approach read variant ids
-      // outside the transaction, which let a concurrent variant insert slip
-      // through — the new variant would be soft-deleted by updateMany but its
-      // stock levels would survive because the id was not in the pre-captured
-      // list. StockLevel has no deletedAt, so leftover rows would be hard to
-      // reconcile. Keeping the id resolution inside the transaction closes
-      // that race.
+      // Interactive transaction. Stock levels are deleted relationally via
+      // raw SQL so the predicate evaluates current rows at execution time
+      // rather than a pre-captured variantIds snapshot. Under READ COMMITTED
+      // (Postgres default) a prior `findMany`-then-`deleteMany` pattern let a
+      // concurrent variant insert bypass the stock cleanup while still being
+      // soft-deleted by updateMany — that race is closed here. StockLevel has
+      // no deletedAt; rows are removed outright so downstream syncs do not
+      // republish them.
       await request.db.$transaction(async (tx) => {
-        const variants = await tx.productVariant.findMany({
-          where: { productId: id, tenantId: request.tenantId },
-          select: { id: true },
-        })
-        const variantIds = variants.map((v) => v.id)
-
         await tx.product.update({
           where: { id },
           data: { deletedAt: now, deletedBy },
@@ -370,14 +364,15 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
           data: { deletedAt: now },
         })
 
-        if (variantIds.length > 0) {
-          await tx.stockLevel.deleteMany({
-            where: {
-              tenantId: request.tenantId,
-              variantId: { in: variantIds },
-            },
-          })
-        }
+        await tx.$executeRaw`
+          DELETE FROM stock_levels
+          WHERE tenant_id = ${request.tenantId}::uuid
+            AND variant_id IN (
+              SELECT id FROM product_variants
+              WHERE product_id = ${id}::uuid
+                AND tenant_id = ${request.tenantId}::uuid
+            )
+        `
       })
 
       return reply.code(204).send()
