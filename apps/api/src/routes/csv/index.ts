@@ -1202,16 +1202,30 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
             })
             continue
           }
-          const location = await request.db.location.findFirst({
+          let location = await request.db.location.findFirst({
             where: { tenantId: request.tenantId, name: locationName, deletedAt: null },
             select: { id: true },
           })
-          if (!location) {
-            result.errors.push({
-              row: rowNumber,
-              sku: variant.sku,
-              reason: `Location not found: "${locationName}" — create it first in the Locations section`,
+          if (!location && !dryRun) {
+            // Auto-create a missing location instead of failing the row.
+            // 'own_warehouse' is the sensible default for locations a merchant
+            // types into a CSV — the "I know this place exists, just wasn't
+            // set up yet" case. A fulfiller integration would create its own
+            // location separately.
+            location = await request.db.location.create({
+              data: {
+                tenantId: request.tenantId,
+                name: locationName,
+                type: 'own_warehouse',
+                address: {},
+              },
+              select: { id: true },
             })
+          }
+          if (!location) {
+            // Dry-run with a missing location: report as skipped rather than
+            // as an error — the real run would create it and succeed.
+            result.skipped += 1
             continue
           }
 

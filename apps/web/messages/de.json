@@ -291,10 +291,16 @@
       "importButton": "Importieren",
       "dryRunBanner": "Testlauf — keine Daten wurden gespeichert",
       "resultTitle": "Import abgeschlossen",
-      "created": "{count, plural, one {# Produkt angelegt} other {# Produkte angelegt}}",
-      "updated": "{count, plural, one {# Produkt aktualisiert} other {# Produkte aktualisiert}}",
-      "skipped": "{count, plural, one {# übersprungen} other {# übersprungen}}",
-      "errors": "{count, plural, one {# Fehler} other {# Fehler}}",
+      "products": {
+        "created": "Produkte angelegt",
+        "updated": "Produkte aktualisiert"
+      },
+      "stock": {
+        "created": "Bestände angelegt",
+        "updated": "Bestände aktualisiert"
+      },
+      "skipped": "Übersprungen",
+      "errors": "Fehler",
       "showErrors": "Fehler anzeigen",
       "errorRow": "Zeile {row}",
       "noFile": "Bitte zuerst eine CSV-Datei auswählen",

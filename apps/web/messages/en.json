@@ -291,10 +291,16 @@
       "importButton": "Import",
       "dryRunBanner": "Test run — no data was saved",
       "resultTitle": "Import complete",
-      "created": "{count, plural, one {# product created} other {# products created}}",
-      "updated": "{count, plural, one {# product updated} other {# products updated}}",
-      "skipped": "{count, plural, one {# skipped} other {# skipped}}",
-      "errors": "{count, plural, one {# error} other {# errors}}",
+      "products": {
+        "created": "Products created",
+        "updated": "Products updated"
+      },
+      "stock": {
+        "created": "Stock levels created",
+        "updated": "Stock levels updated"
+      },
+      "skipped": "Skipped",
+      "errors": "Errors",
       "showErrors": "Show errors",
       "errorRow": "Row {row}",
       "noFile": "Please select a CSV file first",

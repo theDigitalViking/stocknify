@@ -63,12 +63,14 @@ const PRODUCT_FIELDS: FieldSpec[] = [
 const STOCK_FIELDS: FieldSpec[] = [
   { key: 'sku', labelKey: 'sku', required: false, csvOnly: true, fieldType: 'text' },
   { key: 'barcode', labelKey: 'barcode', required: false, csvOnly: true, fieldType: 'text' },
+  // `storageLocation` (bin) is grouped directly after `locationName` so the
+  // mapping UI reads as a single "where does this stock live?" block.
   { key: 'locationName', labelKey: 'locationName', required: true, csvOnly: false, fieldType: 'text' },
+  { key: 'storageLocation', labelKey: 'storageLocation', required: false, csvOnly: false, fieldType: 'text' },
   { key: 'quantity', labelKey: 'quantity', required: true, csvOnly: true, fieldType: 'text' },
   { key: 'stockType', labelKey: 'stockType', required: false, csvOnly: false, fieldType: 'text' },
   { key: 'batchNumber', labelKey: 'batchNumber', required: false, csvOnly: true, fieldType: 'text' },
   { key: 'expiryDate', labelKey: 'expiryDate', required: false, csvOnly: true, fieldType: 'text' },
-  { key: 'storageLocation', labelKey: 'storageLocation', required: false, csvOnly: false, fieldType: 'text' },
 ]
 
 function fieldsForResource(resourceType: 'products' | 'stock'): FieldSpec[] {

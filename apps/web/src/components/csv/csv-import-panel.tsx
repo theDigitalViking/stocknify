@@ -202,6 +202,7 @@ export function CsvImportPanel({
       {result ? (
         <CsvImportResultCard
           result={result}
+          resourceType={resourceType}
           errorsOpen={errorsOpen}
           onToggleErrors={() => {
             setErrorsOpen((v) => !v)
@@ -225,15 +226,22 @@ export function CsvImportPanel({
 
 function CsvImportResultCard({
   result,
+  resourceType,
   errorsOpen,
   onToggleErrors,
 }: {
   result: CsvImportResult
+  resourceType: 'products' | 'stock'
   errorsOpen: boolean
   onToggleErrors: () => void
 }): JSX.Element {
   const t = useTranslations('csv.import')
   const hasErrors = result.errors.length > 0
+  // Pick between "Products created" / "Stock levels created" etc. — the
+  // `created` and `updated` counts mean different things per resource type,
+  // so the label should name the resource explicitly.
+  const createdLabel = resourceType === 'stock' ? t('stock.created') : t('products.created')
+  const updatedLabel = resourceType === 'stock' ? t('stock.updated') : t('products.updated')
   return (
     <div className="rounded-md border border-border bg-card p-6 space-y-4">
       {result.dryRun ? (
@@ -252,11 +260,11 @@ function CsvImportResultCard({
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold">{t('resultTitle')}</h3>
           <dl className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm">
-            <Metric label={t('created', { count: result.created })} value={result.created} tone="success" />
-            <Metric label={t('updated', { count: result.updated })} value={result.updated} tone="info" />
-            <Metric label={t('skipped', { count: result.skipped })} value={result.skipped} tone="muted" />
+            <Metric label={createdLabel} value={result.created} tone="success" />
+            <Metric label={updatedLabel} value={result.updated} tone="info" />
+            <Metric label={t('skipped')} value={result.skipped} tone="muted" />
             <Metric
-              label={t('errors', { count: result.errors.length })}
+              label={t('errors')}
               value={result.errors.length}
               tone={hasErrors ? 'warning' : 'muted'}
             />
