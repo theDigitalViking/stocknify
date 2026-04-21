@@ -418,6 +418,22 @@ function isProductImportField(value: string): value is ProductImportField {
   return PRODUCT_IMPORT_FIELDS.some((f) => f.key === value)
 }
 
+// Unique-violation detection across both ORM and raw SQL paths.
+//   P2002 — Prisma Client ORM unique violation (create/update via prisma.*).
+//   P2010 — raw query error; unique violations surface as SQLSTATE 23505
+//           on `err.meta.code`. `tx.$executeRaw` goes through this path.
+// Any other error shape is treated as non-unique so the caller aborts the
+// transaction correctly.
+function isUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false
+  if (err.code === 'P2002') return true
+  if (err.code === 'P2010') {
+    const rawCode = err.meta?.['code']
+    return typeof rawCode === 'string' && rawCode === '23505'
+  }
+  return false
+}
+
 // Parallel to buildExtractor but scoped to the stock field dictionary.
 type StockRowExtractor = (
   row: Record<string, string | undefined>,
@@ -1574,20 +1590,19 @@ async function upsertStockLevel(
       await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
       wasInserted = true
     } catch (insertErr) {
-      const isUniqueViolation =
-        insertErr instanceof Prisma.PrismaClientKnownRequestError &&
-        insertErr.code === 'P2002'
-      if (!isUniqueViolation) {
-        // Unknown error — release the savepoint so the connection's
-        // statement state is clean before we rethrow and let the outer
-        // transaction abort.
-        await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
-        throw insertErr
-      }
-      // P2002: roll back to the savepoint so the outer transaction stays
-      // usable, then release the savepoint before continuing.
+      // Any INSERT error — unique or not — leaves the transaction in the
+      // aborted state until `ROLLBACK TO SAVEPOINT` restores it. Doing a
+      // bare `RELEASE SAVEPOINT` while aborted would itself fail and mask
+      // the original error. Always ROLLBACK first, then RELEASE.
       await tx.$executeRaw`ROLLBACK TO SAVEPOINT upsert_stock_level`
       await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
+      if (!isUniqueViolation(insertErr)) {
+        // Unknown error: outer transaction aborts so neither the would-be
+        // stock-level row nor the would-be movement row land.
+        throw insertErr
+      }
+      // Unique violation: fall through to the update path below — the row
+      // must exist (either pre-existing or created by a concurrent writer).
     }
 
     if (wasInserted) {
