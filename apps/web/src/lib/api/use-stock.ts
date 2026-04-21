@@ -18,6 +18,9 @@ export interface StockRow {
   locationType: string
   storageLocationId: string | null
   storageLocationName: string | null
+  batchId: string | null
+  batchNumber: string | null
+  expiryDate: string | null
   quantities: Record<string, number>
   lastSyncedAt: string | null
 }
@@ -27,6 +30,7 @@ export interface StockFilters {
   stockType?: string
   locationId?: string
   variantId?: string
+  productId?: string
   page?: number
   perPage?: number
 }

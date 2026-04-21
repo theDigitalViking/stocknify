@@ -10,6 +10,7 @@ import { useState } from 'react'
 
 import { EditProductDialog } from '@/components/products/edit-product-dialog'
 import { ProductSourceIcons } from '@/components/products/product-source-icons'
+import { ProductStockTable } from '@/components/products/product-stock-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -236,6 +237,13 @@ export default function ProductDetailPage(): JSX.Element {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="px-6 py-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3">
+          {tDetail('stockTitle')}
+        </h2>
+        <ProductStockTable productId={id} />
       </section>
 
       <section className="px-6 py-4">

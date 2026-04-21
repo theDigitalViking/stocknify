@@ -20,6 +20,7 @@ const upsertBodySchema = upsertStockLevelSchema.extend({
 const stockQuerySchema = z.object({
   variantId: uuidSchema.optional(),
   locationId: uuidSchema.optional(),
+  productId: uuidSchema.optional(),
   stockType: z.string().min(1).optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
@@ -45,11 +46,16 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
       if (!query.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: query.error.message } })
       }
-      const { variantId, locationId, stockType, search, page, perPage } = query.data
+      const { variantId, locationId, productId, stockType, search, page, perPage } = query.data
 
       const where: Prisma.StockLevelWhereInput = { tenantId: request.tenantId }
       if (variantId) where.variantId = variantId
       if (locationId) where.locationId = locationId
+      if (productId) {
+        // Scope to variants of the given product. Used by the product-detail
+        // stock table so it shows only this product's inventory.
+        where.variant = { productId, deletedAt: null }
+      }
       if (stockType) where.stockType = stockType
       if (search) {
         where.OR = [
@@ -66,15 +72,17 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
           variant: { include: { product: true } },
           location: true,
           storageLocation: true,
+          batch: true,
         },
         orderBy: [{ variant: { sku: 'asc' } }, { location: { name: 'asc' } }],
         take: 10_000,
       })
 
-      // Group by (variantId, locationId, storageLocationId) and aggregate
-      // quantities by stockType. Including the storage-location dimension
-      // in the key splits bin-specific stock into its own rows so the
-      // frontend can filter and display per-bin without re-aggregating.
+      // Group by (variantId, locationId, storageLocationId, batchId) and
+      // aggregate quantities by stockType. Each dimension in the key
+      // corresponds to a user-meaningful split on the UI — the product
+      // detail page shows every row, the main stock page flattens by
+      // stockType but keeps the other three.
       type StockRow = {
         variantId: string
         sku: string
@@ -84,14 +92,22 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         locationType: string
         storageLocationId: string | null
         storageLocationName: string | null
+        batchId: string | null
+        batchNumber: string | null
+        expiryDate: string | null
         quantities: Record<string, number>
         lastSyncedAt: Date | null
       }
 
       const grouped = new Map<string, StockRow>()
       for (const level of levels) {
-        // `-` sentinel distinguishes "no bin" from any real bin id.
-        const key = `${level.variantId}:${level.locationId}:${level.storageLocationId ?? '-'}`
+        // `-` sentinel distinguishes "no bin"/"no batch" from any real id.
+        const key = [
+          level.variantId,
+          level.locationId,
+          level.storageLocationId ?? '-',
+          level.batchId ?? '-',
+        ].join(':')
         if (!grouped.has(key)) {
           grouped.set(key, {
             variantId: level.variantId,
@@ -102,6 +118,9 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
             locationType: level.location.type,
             storageLocationId: level.storageLocationId,
             storageLocationName: level.storageLocation?.name ?? null,
+            batchId: level.batchId,
+            batchNumber: level.batch?.batchNumber ?? null,
+            expiryDate: level.batch?.expiryDate?.toISOString() ?? null,
             quantities: {},
             lastSyncedAt: level.lastSyncedAt,
           })

@@ -1252,36 +1252,60 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
 
           const stockType = extracted.stockType?.trim() || 'available'
 
-          // Ensure a StockTypeDefinition exists for this key.
-          // System defaults (tenant_id IS NULL) might not be seeded on every
-          // deploy; an integration or CSV import is what decides which types
-          // this tenant actually uses. Auto-registering on first sight keeps
-          // the `/stock-types` list accurate without requiring seed SQL.
+          // Ensure a StockTypeDefinition exists for this key. Auto-register
+          // on first sight so the tenant's `/stock-types` list is accurate
+          // without seed SQL and stays accurate when integrations or CSVs
+          // surface new type keys.
+          //
+          // Concurrency: `findFirst`-then-`create` is racy — two parallel
+          // imports observing no existing row both try to INSERT and one
+          // loses with a unique violation. That would land in the per-row
+          // catch and skip the actual stock write. We use the insert-then-
+          // catch-P2010/23505 savepoint pattern from CODING_GUIDELINES 3b/3c
+          // so the race collapses into the expected "already exists" branch.
           if (!dryRun) {
-            const existingDef = await request.db.stockTypeDefinition.findFirst({
-              where: {
-                key: stockType,
-                OR: [{ tenantId: null }, { tenantId: request.tenantId }],
-              },
-              select: { id: true },
+            // 'in_transit' → 'In Transit'. Users can rename it later; the
+            // label is only for display and the key is immutable.
+            const label = stockType
+              .split('_')
+              .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+              .join(' ')
+            await request.db.$transaction(async (tx) => {
+              await tx.$executeRaw`SAVEPOINT stock_type_upsert`
+              try {
+                await tx.$executeRaw`
+                  INSERT INTO stock_type_definitions (
+                    id, tenant_id, key, label, is_system, sort_order, created_at, updated_at
+                  ) VALUES (
+                    gen_random_uuid(),
+                    ${request.tenantId}::uuid,
+                    ${stockType},
+                    ${label},
+                    false,
+                    99,
+                    now(),
+                    now()
+                  )
+                `
+                await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
+              } catch (insertErr) {
+                try {
+                  await tx.$executeRaw`ROLLBACK TO SAVEPOINT stock_type_upsert`
+                  await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
+                } catch (cleanupErr) {
+                  throw new Error(
+                    `Savepoint cleanup failed: ${
+                      cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+                    }`,
+                    { cause: insertErr },
+                  )
+                }
+                if (!isUniqueViolation(insertErr)) throw insertErr
+                // Unique violation: definition already exists (either a
+                // system default or a concurrent import just created it).
+                // Either way, proceed to the stock write.
+              }
             })
-            if (!existingDef) {
-              // 'in_transit' → 'In Transit'. Users can rename it later; the
-              // label is only for display and the key is immutable.
-              const label = stockType
-                .split('_')
-                .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-                .join(' ')
-              await request.db.stockTypeDefinition.create({
-                data: {
-                  tenantId: request.tenantId,
-                  key: stockType,
-                  label,
-                  isSystem: false,
-                  sortOrder: 99,
-                },
-              })
-            }
           }
 
           // Storage location (bin) auto-create: symmetric to the parent

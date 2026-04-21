@@ -8,9 +8,15 @@ import type { PrismaClient } from '@prisma/client'
  * touched — they exist for all tenants even when a particular tenant has no
  * stock in that type yet.
  *
+ * Executed as a single DELETE with a correlated NOT IN subquery so the
+ * read-then-delete race window is closed: a concurrent writer that inserts
+ * a `stock_levels` row for a key between the subquery and the DELETE will
+ * either be visible to the subquery (and the key is spared) or not yet
+ * committed (and the DELETE targets a still-unused key). Orphan sweeps
+ * cannot strand a newly-live key.
+ *
  * Intended to run after any bulk operation that deletes stock_levels:
- *   - CSV stock import completion (a key that was auto-registered but never
- *     actually used gets reaped)
+ *   - CSV stock import completion
  *   - Product deletion (stock_levels are hard-deleted; orphaned types follow)
  *
  * Safe to call repeatedly — a no-op when nothing is orphaned.
@@ -19,26 +25,14 @@ export async function cleanupOrphanedStockTypeDefinitions(
   db: PrismaClient,
   tenantId: string,
 ): Promise<void> {
-  const tenantDefs = await db.stockTypeDefinition.findMany({
-    where: { tenantId, isSystem: false },
-    select: { id: true, key: true },
-  })
-  if (tenantDefs.length === 0) return
-
-  const usedLevels = await db.stockLevel.findMany({
-    where: {
-      tenantId,
-      stockType: { in: tenantDefs.map((d) => d.key) },
-    },
-    select: { stockType: true },
-    distinct: ['stockType'],
-  })
-  const usedKeys = new Set(usedLevels.map((l) => l.stockType))
-
-  const orphanIds = tenantDefs.filter((d) => !usedKeys.has(d.key)).map((d) => d.id)
-  if (orphanIds.length === 0) return
-
-  await db.stockTypeDefinition.deleteMany({
-    where: { id: { in: orphanIds }, tenantId },
-  })
+  await db.$executeRaw`
+    DELETE FROM stock_type_definitions
+    WHERE tenant_id = ${tenantId}::uuid
+      AND is_system = false
+      AND key NOT IN (
+        SELECT DISTINCT stock_type
+        FROM stock_levels
+        WHERE tenant_id = ${tenantId}::uuid
+      )
+  `
 }

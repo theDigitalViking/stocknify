@@ -38,6 +38,9 @@ interface FlatStockRow {
   locationType: string
   storageLocationId: string | null
   storageLocationName: string | null
+  batchId: string | null
+  batchNumber: string | null
+  expiryDate: string | null
   stockType: string
   quantity: number
   lastSyncedAt: Date | null
@@ -79,7 +82,13 @@ export default function StockPage(): JSX.Element {
   const flatRows: FlatStockRow[] = useMemo(() => {
     const all = stockData.flatMap((item) =>
       Object.entries(item.quantities).map(([stockType, quantity]) => ({
-        id: `${item.variantId}:${item.locationId}:${item.storageLocationId ?? '-'}:${stockType}`,
+        id: [
+          item.variantId,
+          item.locationId,
+          item.storageLocationId ?? '-',
+          item.batchId ?? '-',
+          stockType,
+        ].join(':'),
         variantId: item.variantId,
         sku: item.sku,
         productName: item.productName,
@@ -88,6 +97,9 @@ export default function StockPage(): JSX.Element {
         locationType: item.locationType,
         storageLocationId: item.storageLocationId,
         storageLocationName: item.storageLocationName,
+        batchId: item.batchId,
+        batchNumber: item.batchNumber,
+        expiryDate: item.expiryDate,
         stockType,
         quantity,
         lastSyncedAt: item.lastSyncedAt ? new Date(item.lastSyncedAt) : null,
@@ -124,9 +136,23 @@ export default function StockPage(): JSX.Element {
     return copy
   }, [flatRows, sortField, sortDir])
 
+  // Key must include every dimension that makes a stock row unique, so the
+  // manual-adjust action opens the exact row the user clicked — not a
+  // different row for the same (variant, location) pair in a different bin
+  // or batch. With only `variantId:locationId`, rows split by storage
+  // location or batch collapse into one map entry (last-write-wins) and the
+  // action operates on a near-miss row.
   const aggregatedByKey = useMemo(() => {
     const m = new Map<string, StockRow>()
-    for (const item of stockData) m.set(`${item.variantId}:${item.locationId}`, item)
+    for (const item of stockData) {
+      const key = [
+        item.variantId,
+        item.locationId,
+        item.storageLocationId ?? '-',
+        item.batchId ?? '-',
+      ].join(':')
+      m.set(key, item)
+    }
     return m
   }, [stockData])
 
@@ -165,9 +191,19 @@ export default function StockPage(): JSX.Element {
     },
     { header: t('columns.product'), accessor: 'productName', sortField: 'productName' },
     {
-      header: t('columns.location'),
+      header: t('columns.warehouse'),
       accessor: (row) => <span className="text-sm">{row.locationName}</span>,
       sortField: 'locationName',
+    },
+    {
+      header: t('columns.storageLocation'),
+      accessor: (row) =>
+        row.storageLocationName ? (
+          <span className="text-sm">{row.storageLocationName}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+      sortField: 'storageLocationName',
     },
     {
       header: t('columns.stockType'),
@@ -210,7 +246,13 @@ export default function StockPage(): JSX.Element {
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onSelect={() => {
-                const agg = aggregatedByKey.get(`${row.variantId}:${row.locationId}`)
+                const key = [
+                  row.variantId,
+                  row.locationId,
+                  row.storageLocationId ?? '-',
+                  row.batchId ?? '-',
+                ].join(':')
+                const agg = aggregatedByKey.get(key)
                 if (agg) setAdjustRow(agg)
               }}
             >
@@ -230,14 +272,14 @@ export default function StockPage(): JSX.Element {
       : t('typesCount', { count: selectedStockTypes.length })
 
   const locationFilterLabel = (() => {
-    if (selectedLocations.length === 0) return t('filterLocation')
+    if (selectedLocations.length === 0) return t('filterWarehouse')
     if (selectedLocations.length === 1) {
       return (
         locations.find((loc) => loc.id === selectedLocations[0])?.name ??
-        t('locationsCount', { count: 1 })
+        t('warehousesCount', { count: 1 })
       )
     }
-    return t('locationsCount', { count: selectedLocations.length })
+    return t('warehousesCount', { count: selectedLocations.length })
   })()
 
   const storageLocationFilterLabel = (() => {
@@ -301,7 +343,7 @@ export default function StockPage(): JSX.Element {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[240px]">
-            <DropdownMenuLabel>{t('filterLocation')}</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('filterWarehouse')}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {locations.map((loc) => {
               const isChecked = selectedLocations.includes(loc.id)
