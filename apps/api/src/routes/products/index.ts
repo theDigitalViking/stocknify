@@ -318,10 +318,41 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      // Pre-check: if the caller is changing the default variant's SKU,
+      // verify up front that the target SKU is not already taken elsewhere
+      // in this tenant. Returning 409 here lets the transaction below rely
+      // on a much cleaner error policy — any P2002 from inside the
+      // transaction is then treated as unexpected (race or schema drift)
+      // and returns 500, without driver-specific meta.target parsing.
+      if (parse.data.sku !== undefined) {
+        const defaultVariant = await request.db.productVariant.findFirst({
+          where: { productId: id, tenantId: request.tenantId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, sku: true },
+        })
+
+        if (defaultVariant && parse.data.sku !== defaultVariant.sku) {
+          const conflict = await request.db.productVariant.findFirst({
+            where: {
+              tenantId: request.tenantId,
+              sku: parse.data.sku,
+              deletedAt: null,
+              id: { not: defaultVariant.id },
+            },
+            select: { id: true },
+          })
+          if (conflict) {
+            return reply.code(409).send({
+              error: { code: 'CONFLICT', message: 'A variant with this SKU already exists' },
+            })
+          }
+        }
+      }
+
       // sku + barcode live on the default variant, not the product — route
       // them separately. Both the product row update and the variant update
-      // run inside a single interactive transaction so a unique-SKU conflict
-      // (P2002) on the variant write rolls back the product-field changes
+      // run inside a single interactive transaction so a SKU conflict that
+      // slips past the pre-check rolls back the product-field changes
       // instead of leaving a partial edit behind.
       const { sku, barcode, ...productFields } = parse.data
 
@@ -352,17 +383,12 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         })
 
         return reply.send({ data: result })
-      } catch (err) {
-        // P2002 in this handler can only come from productVariant.update on
-        // the (tenantId, sku) unique index — the Product model has no unique
-        // constraints beyond its primary key, so target-parsing buys nothing.
-        // This matches the pattern used by POST /products and the other
-        // product/variant routes in this file.
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          return reply.code(409).send({
-            error: { code: 'CONFLICT', message: 'A variant with this SKU already exists' },
-          })
-        }
+      } catch {
+        // SKU availability was pre-validated above. Any error reaching here
+        // — including a concurrent-write race that produces P2002 between
+        // the pre-check and the transaction commit — is unexpected and
+        // mapped to 500 so it surfaces in ops signals instead of masking
+        // as a client-correctable conflict.
         return reply
           .code(500)
           .send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
