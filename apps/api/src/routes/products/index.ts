@@ -383,12 +383,17 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         })
 
         return reply.send({ data: result })
-      } catch {
-        // SKU availability was pre-validated above. Any error reaching here
-        // — including a concurrent-write race that produces P2002 between
-        // the pre-check and the transaction commit — is unexpected and
-        // mapped to 500 so it surfaces in ops signals instead of masking
-        // as a client-correctable conflict.
+      } catch (txErr) {
+        // P2002 can still reach here if the target SKU is held by a
+        // soft-deleted variant (pre-check filters deletedAt: null but the
+        // unique index is global). This is rare but client-correctable:
+        // return 409 so the caller knows to pick a different SKU.
+        // Any other error is unexpected — surface as 500.
+        if (txErr instanceof Prisma.PrismaClientKnownRequestError && txErr.code === 'P2002') {
+          return reply.code(409).send({
+            error: { code: 'CONFLICT', message: 'A variant with this SKU already exists' },
+          })
+        }
         return reply
           .code(500)
           .send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
