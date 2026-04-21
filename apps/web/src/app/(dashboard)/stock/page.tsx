@@ -213,7 +213,7 @@ export default function StockPage(): JSX.Element {
             <span className="text-xs font-mono">{row.batchNumber}</span>
             {row.expiryDate ? (
               <span className="text-xs text-muted-foreground ml-1">
-                ({new Date(row.expiryDate).toLocaleDateString(locale)})
+                ({new Date(row.expiryDate).toLocaleDateString(locale, { timeZone: 'UTC' })})
               </span>
             ) : null}
           </div>
