@@ -397,7 +397,7 @@
         "all": "All",
         "shop": "Shop systems",
         "erp": "ERP systems",
-        "warehouse": "Warehouse",
+        "warehouse": "WMS",
         "fulfiller": "Fulfiller"
       }
     }
