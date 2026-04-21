@@ -7,6 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import iconv from 'iconv-lite'
 import { z } from 'zod'
 
+import { cleanupOrphanedStockTypeDefinitions } from '../../lib/stock-utils.js'
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
@@ -1251,14 +1252,48 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
 
           const stockType = extracted.stockType?.trim() || 'available'
 
-          // Storage location is strictly matched: if the CSV names a bin we
-          // cannot resolve, the row fails rather than silently falling back
-          // to the bin-agnostic bucket. A typo would otherwise merge/overwrite
-          // stock into the wrong row with no way to reconcile later.
+          // Ensure a StockTypeDefinition exists for this key.
+          // System defaults (tenant_id IS NULL) might not be seeded on every
+          // deploy; an integration or CSV import is what decides which types
+          // this tenant actually uses. Auto-registering on first sight keeps
+          // the `/stock-types` list accurate without requiring seed SQL.
+          if (!dryRun) {
+            const existingDef = await request.db.stockTypeDefinition.findFirst({
+              where: {
+                key: stockType,
+                OR: [{ tenantId: null }, { tenantId: request.tenantId }],
+              },
+              select: { id: true },
+            })
+            if (!existingDef) {
+              // 'in_transit' → 'In Transit'. Users can rename it later; the
+              // label is only for display and the key is immutable.
+              const label = stockType
+                .split('_')
+                .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+                .join(' ')
+              await request.db.stockTypeDefinition.create({
+                data: {
+                  tenantId: request.tenantId,
+                  key: stockType,
+                  label,
+                  isSystem: false,
+                  sortOrder: 99,
+                },
+              })
+            }
+          }
+
+          // Storage location (bin) auto-create: symmetric to the parent
+          // Location auto-create above. Mistyped bin names previously ended
+          // up as silent null fallbacks; the previous strict-match version
+          // failed the whole row. Auto-creating is consistent with "CSV is
+          // authoritative for shapes the tenant will adopt" — the merchant
+          // can rename or retype later via the locations UI.
           let storageLocationId: string | null = null
           if (extracted.storageLocation?.trim()) {
             const storageName = extracted.storageLocation.trim()
-            const sl = await request.db.storageLocation.findFirst({
+            let storageLocation = await request.db.storageLocation.findFirst({
               where: {
                 tenantId: request.tenantId,
                 locationId: location.id,
@@ -1267,16 +1302,26 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
               },
               select: { id: true },
             })
-            if (sl) {
-              storageLocationId = sl.id
-            } else {
-              result.errors.push({
-                row: rowNumber,
-                sku: variant.sku,
-                reason: `Storage location not found: "${storageName}" in location "${locationName}" — create it first or correct the name`,
+            if (!storageLocation && !dryRun) {
+              storageLocation = await request.db.storageLocation.create({
+                data: {
+                  tenantId: request.tenantId,
+                  locationId: location.id,
+                  name: storageName,
+                  type: 'bin',
+                  trackInventory: true,
+                  metadata: {},
+                },
+                select: { id: true },
               })
-              continue
             }
+            if (storageLocation) {
+              storageLocationId = storageLocation.id
+            }
+            // Dry-run with missing bin: storageLocationId stays null — the
+            // import target will be the bin-agnostic bucket for preview. A
+            // real run would create the bin; the preview counts reflect that
+            // outcome loosely. No row error emitted.
           }
 
           // Batch lookup/create: only when the product has batchTracking on.
@@ -1352,6 +1397,11 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
       }
 
       if (!dryRun) {
+        // A stock type key that was auto-registered on first sight may have
+        // later been removed by a subsequent import (e.g. empty rows rolled
+        // the only usage out). Sweep orphans before writing the incident so
+        // the post-import state in stock_type_definitions is consistent.
+        await cleanupOrphanedStockTypeDefinitions(request.db, request.tenantId)
         await recordStockImportIncident(request, result)
       }
 

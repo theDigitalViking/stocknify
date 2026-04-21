@@ -23,6 +23,25 @@ export async function locationsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware)
   app.addHook('preHandler', tenantMiddleware)
 
+  // GET /storage-locations — flat list across all parent locations for a tenant.
+  // Used by the stock-page filter dropdown; the per-location variant
+  // (`/locations/:id/storage-locations`) already exists in the same file.
+  app.get('/storage-locations', async (request, reply) => {
+    try {
+      const items = await request.db.storageLocation.findMany({
+        where: { tenantId: request.tenantId, deletedAt: null },
+        select: { id: true, locationId: true, name: true, type: true },
+        orderBy: [{ locationId: 'asc' }, { name: 'asc' }],
+      })
+      return reply.send({ data: items })
+    } catch (err) {
+      request.log.error({ err }, 'storage-locations list failed')
+      return reply
+        .code(500)
+        .send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to list storage locations' } })
+    }
+  })
+
   // GET /locations — list non-deleted locations with storage location count
   app.get('/locations', async (request, reply) => {
     try {

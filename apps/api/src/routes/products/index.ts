@@ -13,6 +13,7 @@ import {
   updateProductVariantSchema,
 } from '@stocknify/shared'
 
+import { cleanupOrphanedStockTypeDefinitions } from '../../lib/stock-utils.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
 
@@ -456,6 +457,11 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
             )
         `
       })
+
+      // Outside the transaction: the stock-level cleanup above may have
+      // removed the last row for a tenant-owned stock-type definition.
+      // Sweep orphans so stock_type_definitions stays consistent.
+      await cleanupOrphanedStockTypeDefinitions(request.db, request.tenantId)
 
       return reply.code(204).send()
     } catch {

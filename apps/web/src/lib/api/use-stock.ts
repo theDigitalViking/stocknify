@@ -16,6 +16,8 @@ export interface StockRow {
   locationId: string
   locationName: string
   locationType: string
+  storageLocationId: string | null
+  storageLocationName: string | null
   quantities: Record<string, number>
   lastSyncedAt: string | null
 }

@@ -33,3 +33,28 @@ export function useCreateLocation(): UseMutationResult<Location, Error, CreateLo
     },
   })
 }
+
+export interface StorageLocationRow {
+  id: string
+  locationId: string
+  name: string
+  type: string
+}
+
+// Tenant-wide list of storage locations (bins/shelves). When `locationId` is
+// passed, the call is scoped to a single parent location via the existing
+// per-location endpoint; otherwise the flat `/storage-locations` endpoint is
+// used (powers the stock-page filter dropdown).
+export function useStorageLocations(
+  locationId?: string,
+): UseQueryResult<StorageLocationRow[]> {
+  return useQuery<StorageLocationRow[]>({
+    queryKey: ['storage-locations', locationId ?? null],
+    queryFn: () =>
+      apiFetch<StorageLocationRow[]>(
+        locationId
+          ? `/locations/${locationId}/storage-locations`
+          : '/storage-locations',
+      ),
+  })
+}

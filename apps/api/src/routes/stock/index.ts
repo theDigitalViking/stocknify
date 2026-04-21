@@ -65,12 +65,16 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         include: {
           variant: { include: { product: true } },
           location: true,
+          storageLocation: true,
         },
         orderBy: [{ variant: { sku: 'asc' } }, { location: { name: 'asc' } }],
         take: 10_000,
       })
 
-      // Group by (variantId, locationId) and aggregate quantities by stockType
+      // Group by (variantId, locationId, storageLocationId) and aggregate
+      // quantities by stockType. Including the storage-location dimension
+      // in the key splits bin-specific stock into its own rows so the
+      // frontend can filter and display per-bin without re-aggregating.
       type StockRow = {
         variantId: string
         sku: string
@@ -78,13 +82,16 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         locationId: string
         locationName: string
         locationType: string
+        storageLocationId: string | null
+        storageLocationName: string | null
         quantities: Record<string, number>
         lastSyncedAt: Date | null
       }
 
       const grouped = new Map<string, StockRow>()
       for (const level of levels) {
-        const key = `${level.variantId}:${level.locationId}`
+        // `-` sentinel distinguishes "no bin" from any real bin id.
+        const key = `${level.variantId}:${level.locationId}:${level.storageLocationId ?? '-'}`
         if (!grouped.has(key)) {
           grouped.set(key, {
             variantId: level.variantId,
@@ -93,6 +100,8 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
             locationId: level.locationId,
             locationName: level.location.name,
             locationType: level.location.type,
+            storageLocationId: level.storageLocationId,
+            storageLocationName: level.storageLocation?.name ?? null,
             quantities: {},
             lastSyncedAt: level.lastSyncedAt,
           })

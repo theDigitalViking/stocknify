@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { useLocations } from '@/lib/api/use-locations'
+import { useLocations, useStorageLocations } from '@/lib/api/use-locations'
 import { useStock, type StockRow } from '@/lib/api/use-stock'
 import { useStockTypes } from '@/lib/api/use-stock-types'
 
@@ -36,6 +36,8 @@ interface FlatStockRow {
   locationId: string
   locationName: string
   locationType: string
+  storageLocationId: string | null
+  storageLocationName: string | null
   stockType: string
   quantity: number
   lastSyncedAt: Date | null
@@ -49,6 +51,7 @@ export default function StockPage(): JSX.Element {
   const [search, setSearch] = useState('')
   const [selectedStockTypes, setSelectedStockTypes] = useState<string[]>([])
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
+  const [selectedStorageLocations, setSelectedStorageLocations] = useState<string[]>([])
   const [adjustRow, setAdjustRow] = useState<StockRow | null>(null)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>(null)
@@ -63,17 +66,28 @@ export default function StockPage(): JSX.Element {
   const { data: stockData = [], isLoading } = useStock(filters)
   const { data: stockTypes = [] } = useStockTypes()
   const { data: locations = [] } = useLocations()
+  const { data: storageLocations = [] } = useStorageLocations()
+
+  // Scope the bin dropdown to the currently-selected parent locations. With
+  // no parent filter, show every bin across every location — otherwise we
+  // offer bins the user cannot reach given their other filters.
+  const filteredStorageLocations = useMemo(() => {
+    if (selectedLocations.length === 0) return storageLocations
+    return storageLocations.filter((sl) => selectedLocations.includes(sl.locationId))
+  }, [storageLocations, selectedLocations])
 
   const flatRows: FlatStockRow[] = useMemo(() => {
     const all = stockData.flatMap((item) =>
       Object.entries(item.quantities).map(([stockType, quantity]) => ({
-        id: `${item.variantId}:${item.locationId}:${stockType}`,
+        id: `${item.variantId}:${item.locationId}:${item.storageLocationId ?? '-'}:${stockType}`,
         variantId: item.variantId,
         sku: item.sku,
         productName: item.productName,
         locationId: item.locationId,
         locationName: item.locationName,
         locationType: item.locationType,
+        storageLocationId: item.storageLocationId,
+        storageLocationName: item.storageLocationName,
         stockType,
         quantity,
         lastSyncedAt: item.lastSyncedAt ? new Date(item.lastSyncedAt) : null,
@@ -84,9 +98,17 @@ export default function StockPage(): JSX.Element {
         selectedStockTypes.length === 0 || selectedStockTypes.includes(row.stockType)
       const matchesLocation =
         selectedLocations.length === 0 || selectedLocations.includes(row.locationId)
-      return matchesStockType && matchesLocation
+      // Bin filter is opt-in — when unset, bin-agnostic rows pass through.
+      // When set, the row's `storageLocationId` must be non-null and one of
+      // the selected ids. Rows without a bin are hidden in "show me just
+      // these bins" mode because they can't satisfy the constraint.
+      const matchesStorageLocation =
+        selectedStorageLocations.length === 0 ||
+        (row.storageLocationId !== null &&
+          selectedStorageLocations.includes(row.storageLocationId))
+      return matchesStockType && matchesLocation && matchesStorageLocation
     })
-  }, [stockData, selectedStockTypes, selectedLocations])
+  }, [stockData, selectedStockTypes, selectedLocations, selectedStorageLocations])
 
   const sortedRows = useMemo(() => {
     if (!sortField || !sortDir) return flatRows
@@ -132,6 +154,7 @@ export default function StockPage(): JSX.Element {
     setSearch('')
     setSelectedStockTypes([])
     setSelectedLocations([])
+    setSelectedStorageLocations([])
   }
 
   const columns: ColumnDef<FlatStockRow>[] = [
@@ -217,6 +240,17 @@ export default function StockPage(): JSX.Element {
     return t('locationsCount', { count: selectedLocations.length })
   })()
 
+  const storageLocationFilterLabel = (() => {
+    if (selectedStorageLocations.length === 0) return t('filterStorageLocation')
+    if (selectedStorageLocations.length === 1) {
+      return (
+        storageLocations.find((sl) => sl.id === selectedStorageLocations[0])?.name ??
+        t('storageLocationsCount', { count: 1 })
+      )
+    }
+    return t('storageLocationsCount', { count: selectedStorageLocations.length })
+  })()
+
   return (
     <div>
       <PageHeader title={t('title')} />
@@ -286,6 +320,45 @@ export default function StockPage(): JSX.Element {
                 </DropdownMenuCheckboxItem>
               )
             })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 w-[200px] justify-between">
+              <span className="truncate">{storageLocationFilterLabel}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[240px]">
+            <DropdownMenuLabel>{t('filterStorageLocation')}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {filteredStorageLocations.length === 0 ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                {t('noStorageLocations')}
+              </div>
+            ) : (
+              filteredStorageLocations.map((sl) => {
+                const isChecked = selectedStorageLocations.includes(sl.id)
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={sl.id}
+                    checked={isChecked}
+                    onCheckedChange={(checked) => {
+                      setSelectedStorageLocations((prev) =>
+                        checked
+                          ? [...new Set([...prev, sl.id])]
+                          : prev.filter((x) => x !== sl.id),
+                      )
+                    }}
+                    onSelect={(e) => {
+                      e.preventDefault()
+                    }}
+                  >
+                    {sl.name}
+                  </DropdownMenuCheckboxItem>
+                )
+              })
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
