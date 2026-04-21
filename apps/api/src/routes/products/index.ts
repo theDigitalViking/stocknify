@@ -354,8 +354,28 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         return reply.send({ data: result })
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          // P2002 can come from either statement in the transaction (product
+          // row or variant row). Narrow by constraint target so the client
+          // gets an accurate message instead of a blanket "SKU exists" when
+          // some other unique index was the one that actually fired.
+          // meta.target is string (constraint name) or string[] (columns)
+          // depending on the Prisma/driver combination.
+          const target = Array.isArray(err.meta?.target)
+            ? (err.meta?.target as string[]).join(',')
+            : String(err.meta?.target ?? '')
+
+          const isSkuConflict =
+            target.includes('sku') ||
+            target.includes('product_variants_tenant_id_sku_key')
+
+          if (isSkuConflict) {
+            return reply.code(409).send({
+              error: { code: 'CONFLICT', message: 'A variant with this SKU already exists' },
+            })
+          }
+
           return reply.code(409).send({
-            error: { code: 'CONFLICT', message: 'A variant with this SKU already exists' },
+            error: { code: 'CONFLICT', message: 'A unique constraint was violated' },
           })
         }
         return reply
