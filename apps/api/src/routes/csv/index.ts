@@ -1210,20 +1210,32 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
 
           const stockType = extracted.stockType?.trim() || 'available'
 
-          // Storage location lookup is best-effort — a mistyped bin should not
-          // fail the whole row. Fall back to the bin-agnostic stock level.
+          // Storage location is strictly matched: if the CSV names a bin we
+          // cannot resolve, the row fails rather than silently falling back
+          // to the bin-agnostic bucket. A typo would otherwise merge/overwrite
+          // stock into the wrong row with no way to reconcile later.
           let storageLocationId: string | null = null
           if (extracted.storageLocation?.trim()) {
+            const storageName = extracted.storageLocation.trim()
             const sl = await request.db.storageLocation.findFirst({
               where: {
                 tenantId: request.tenantId,
                 locationId: location.id,
-                name: extracted.storageLocation.trim(),
+                name: storageName,
                 deletedAt: null,
               },
               select: { id: true },
             })
-            if (sl) storageLocationId = sl.id
+            if (sl) {
+              storageLocationId = sl.id
+            } else {
+              result.errors.push({
+                row: rowNumber,
+                sku: variant.sku,
+                reason: `Storage location not found: "${storageName}" in location "${locationName}" — create it first or correct the name`,
+              })
+              continue
+            }
           }
 
           // Batch lookup/create: only when the product has batchTracking on.
@@ -1498,11 +1510,21 @@ async function resolveVariant(
 
 // Upsert a stock level row and append a matching stock_movement record.
 // Returns 'created', 'updated', or 'skipped' (no-op when quantity is
-// unchanged). The nullable foreign keys (storageLocationId, batchId) are
-// passed as `null` — not `undefined` — so Prisma filters `IS NULL` during
-// the existing-row lookup. The underlying COALESCE-based unique index
-// (see apps/api/src/db/sql/unique-stock-levels.sql) guarantees at most one
-// row per (tenant, variant, location, storage, batch, stockType) tuple.
+// unchanged).
+//
+// Runs in a single interactive transaction:
+//   1. `SELECT ... FOR UPDATE` locks the existing row (if any) so concurrent
+//      imports against the same (tenant, variant, location, storage, batch,
+//      stockType) tuple serialize here — the previous findFirst-then-write
+//      pattern could let two callers observe the same `quantityBefore` and
+//      emit divergent movement rows.
+//   2. `IS NOT DISTINCT FROM` on the nullable FKs matches the COALESCE-based
+//      partial unique index in apps/api/src/db/sql/unique-stock-levels.sql —
+//      Postgres NULL equality semantics would otherwise find no match for
+//      bin-agnostic or batch-agnostic stock.
+//   3. stock_levels and stock_movements writes share the same transaction
+//      so the invariant "every stock change has a matching movement row"
+//      holds even on a mid-sequence DB failure.
 async function upsertStockLevel(
   db: PrismaClient,
   tenantId: string,
@@ -1517,34 +1539,64 @@ async function upsertStockLevel(
     createdBy: string | null
   },
 ): Promise<'created' | 'updated' | 'skipped'> {
-  const existing = await db.stockLevel.findFirst({
-    where: {
-      tenantId,
-      variantId: row.variantId,
-      locationId: row.locationId,
-      storageLocationId: row.storageLocationId,
-      batchId: row.batchId,
-      stockType: row.stockType,
-    },
-  })
+  return db.$transaction(async (tx) => {
+    const existingRows = await tx.$queryRaw<Array<{ id: string; quantity: string }>>`
+      SELECT id, quantity::text
+      FROM stock_levels
+      WHERE tenant_id    = ${tenantId}::uuid
+        AND variant_id   = ${row.variantId}::uuid
+        AND location_id  = ${row.locationId}::uuid
+        AND storage_location_id IS NOT DISTINCT FROM ${row.storageLocationId}::uuid
+        AND batch_id     IS NOT DISTINCT FROM ${row.batchId}::uuid
+        AND stock_type   = ${row.stockType}
+      FOR UPDATE
+    `
+    const existing = existingRows[0] ?? null
+    const newQty = new Prisma.Decimal(row.quantity)
 
-  const newQty = new Prisma.Decimal(row.quantity)
+    if (!existing) {
+      await tx.stockLevel.create({
+        data: {
+          tenantId,
+          variantId: row.variantId,
+          locationId: row.locationId,
+          storageLocationId: row.storageLocationId,
+          batchId: row.batchId,
+          stockType: row.stockType,
+          quantity: newQty,
+          source: row.source,
+          lastSyncedAt: new Date(),
+        },
+      })
+      await tx.stockMovement.create({
+        data: {
+          tenantId,
+          variantId: row.variantId,
+          locationId: row.locationId,
+          storageLocationId: row.storageLocationId,
+          batchId: row.batchId,
+          stockType: row.stockType,
+          quantityBefore: new Prisma.Decimal(0),
+          quantityAfter: newQty,
+          delta: newQty,
+          movementType: 'sync',
+          source: row.source,
+          createdBy: row.createdBy,
+        },
+      })
+      return 'created'
+    }
 
-  if (!existing) {
-    await db.stockLevel.create({
-      data: {
-        tenantId,
-        variantId: row.variantId,
-        locationId: row.locationId,
-        storageLocationId: row.storageLocationId,
-        batchId: row.batchId,
-        stockType: row.stockType,
-        quantity: newQty,
-        source: row.source,
-        lastSyncedAt: new Date(),
-      },
+    const currentQty = new Prisma.Decimal(existing.quantity)
+    if (currentQty.equals(newQty)) return 'skipped'
+
+    const delta = newQty.minus(currentQty)
+
+    await tx.stockLevel.update({
+      where: { id: existing.id },
+      data: { quantity: newQty, source: row.source, lastSyncedAt: new Date() },
     })
-    await db.stockMovement.create({
+    await tx.stockMovement.create({
       data: {
         tenantId,
         variantId: row.variantId,
@@ -1552,41 +1604,16 @@ async function upsertStockLevel(
         storageLocationId: row.storageLocationId,
         batchId: row.batchId,
         stockType: row.stockType,
-        quantityBefore: new Prisma.Decimal(0),
+        quantityBefore: currentQty,
         quantityAfter: newQty,
-        delta: newQty,
+        delta,
         movementType: 'sync',
         source: row.source,
         createdBy: row.createdBy,
       },
     })
-    return 'created'
-  }
-
-  if (existing.quantity.equals(newQty)) return 'skipped'
-
-  const delta = newQty.minus(existing.quantity)
-  await db.stockLevel.update({
-    where: { id: existing.id },
-    data: { quantity: newQty, source: row.source, lastSyncedAt: new Date() },
+    return 'updated'
   })
-  await db.stockMovement.create({
-    data: {
-      tenantId,
-      variantId: row.variantId,
-      locationId: row.locationId,
-      storageLocationId: row.storageLocationId,
-      batchId: row.batchId,
-      stockType: row.stockType,
-      quantityBefore: existing.quantity,
-      quantityAfter: newQty,
-      delta,
-      movementType: 'sync',
-      source: row.source,
-      createdBy: row.createdBy,
-    },
-  })
-  return 'updated'
 }
 
 async function recordStockImportIncident(
