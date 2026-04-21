@@ -353,29 +353,43 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
 
         return reply.send({ data: result })
       } catch (err) {
+        // NOTE: P2002 target format is driver/version-dependent. The matching
+        // below handles the three known Prisma formats (constraint name
+        // string, column string[], model-field string[]) for the variant SKU
+        // unique index defined by ProductVariant @@unique([tenantId, sku]).
+        // If Prisma changes the format in a future version, true SKU
+        // conflicts may fall through to the generic conflict message —
+        // acceptable for MVP. Add a regression test when test coverage is
+        // added (see Vor-v1.0 tasks).
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          // Exact allowlist for the variant-SKU unique index. Prisma surfaces
-          // `meta.target` as either a string (constraint name, default for
-          // Postgres) or a string[] (column names, some drivers/versions).
-          // Normalize both shapes to a single string and compare against the
-          // known identifier set — substring matching invited false positives
-          // as the schema evolves.
-          // Source of truth: ProductVariant @@unique([tenantId, sku]) in
-          //   apps/api/src/db/schema.prisma — Prisma defaults the constraint
-          //   name to `product_variants_tenant_id_sku_key`.
-          const SKU_CONSTRAINT_NAMES = new Set<string>([
-            'product_variants_tenant_id_sku_key',
-          ])
-          const SKU_COLUMN_TARGETS = new Set<string>(['sku', 'tenant_id,sku'])
-
-          const rawTarget = err.meta?.target
-          const normalizedTarget = Array.isArray(rawTarget)
-            ? rawTarget.join(',')
-            : String(rawTarget ?? '')
+          // Normalize meta.target into a lowercase token set. Prisma emits:
+          //   - a constraint name string (e.g. `product_variants_tenant_id_sku_key`)
+          //   - a column-name string[] (e.g. ['tenant_id', 'sku'])
+          //   - a model-field string[] (e.g. ['tenantId', 'sku'])
+          // We split on `_`, `,`, and whitespace so both snake_case and
+          // flat-name forms produce the same token set.
+          const raw = err.meta?.target
+          const tokens: string[] = Array.isArray(raw)
+            ? raw.map((t) => String(t).toLowerCase().trim())
+            : typeof raw === 'string'
+              ? raw.toLowerCase().trim().split(/[\s,_]+/)
+              : []
+          const tokenSet = new Set(tokens)
 
           const isSkuConflict =
-            SKU_CONSTRAINT_NAMES.has(normalizedTarget) ||
-            SKU_COLUMN_TARGETS.has(normalizedTarget)
+            // Constraint-name form — split produces every component token.
+            (tokenSet.has('product') &&
+              tokenSet.has('variants') &&
+              tokenSet.has('tenant') &&
+              tokenSet.has('id') &&
+              tokenSet.has('sku') &&
+              tokenSet.has('key')) ||
+            // Column-array form: ['tenant_id', 'sku'] or ['tenantId', 'sku'].
+            // `size <= 3` bounds the match so wider unique indexes that
+            // happen to include an `sku` column don't false-positive here.
+            (tokenSet.has('sku') &&
+              (tokenSet.has('tenant') || tokenSet.has('tenantid')) &&
+              tokenSet.size <= 3)
 
           if (isSkuConflict) {
             return reply.code(409).send({
