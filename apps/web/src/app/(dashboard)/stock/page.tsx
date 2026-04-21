@@ -2,7 +2,8 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { MoreHorizontal, Package } from 'lucide-react'
+import { MoreHorizontal, Package, Upload } from 'lucide-react'
+import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
 
@@ -290,6 +291,13 @@ export default function StockPage(): JSX.Element {
 
         <Button variant="ghost" size="sm" onClick={clearFilters}>
           {t('clearFilters')}
+        </Button>
+
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 ml-auto" asChild>
+          <Link href="/stock/import">
+            <Upload className="h-3.5 w-3.5" />
+            {t('importButton')}
+          </Link>
         </Button>
       </div>
 

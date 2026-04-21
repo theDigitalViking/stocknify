@@ -94,6 +94,10 @@
     "title": "Bestand",
     "addProduct": "Produkt hinzufügen",
     "export": "Exportieren",
+    "importButton": "Importieren",
+    "import": {
+      "title": "Bestand importieren"
+    },
     "searchPlaceholder": "SKU oder Produktname suchen\u2026",
     "filterStockType": "Bestandsart",
     "filterLocation": "Lagerort",
@@ -130,6 +134,10 @@
     "title": "Produkte",
     "addProduct": "Produkt hinzufügen",
     "importCsv": "CSV importieren",
+    "importButton": "Importieren",
+    "import": {
+      "title": "Produkte importieren"
+    },
     "searchPlaceholder": "Nach Name oder SKU suchen\u2026",
     "showDeleted": "Gelöschte anzeigen",
     "showingDeleted": "Gelöschte werden angezeigt",

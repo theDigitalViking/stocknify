@@ -94,6 +94,10 @@
     "title": "Inventory",
     "addProduct": "Add product",
     "export": "Export",
+    "importButton": "Import",
+    "import": {
+      "title": "Import stock"
+    },
     "searchPlaceholder": "Search SKU or product name\u2026",
     "filterStockType": "Stock type",
     "filterLocation": "Location",
@@ -130,6 +134,10 @@
     "title": "Products",
     "addProduct": "Add product",
     "importCsv": "Import CSV",
+    "importButton": "Import",
+    "import": {
+      "title": "Import products"
+    },
     "searchPlaceholder": "Search by name or SKU\u2026",
     "showDeleted": "Show deleted",
     "showingDeleted": "Showing deleted",

@@ -306,12 +306,6 @@ export default function ProductsPage(): JSX.Element {
   return (
     <div>
       <PageHeader title={t('title')}>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/products/import">
-            <Upload className="h-3.5 w-3.5 mr-1.5" />
-            {t('importCsv')}
-          </Link>
-        </Button>
         <Button
           size="sm"
           onClick={() => {
@@ -376,6 +370,12 @@ export default function ProductsPage(): JSX.Element {
         >
           {showDeleted ? t('showingDeleted') : t('showDeleted')}
         </button>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 ml-auto" asChild>
+          <Link href="/products/import">
+            <Upload className="h-3.5 w-3.5" />
+            {t('importButton')}
+          </Link>
+        </Button>
       </div>
 
       <DataTable

@@ -27,11 +27,20 @@ import { cn } from '@/lib/utils'
 const DEFAULT_TEMPLATE_VALUE = '__default__'
 const RESOURCE_TYPES: Array<'products' | 'stock'> = ['products', 'stock']
 
-export function CsvImportPanel(): JSX.Element {
+interface CsvImportPanelProps {
+  // Initial resource type. The panel still renders the resource-type switch,
+  // so the user can flip between products and stock from either entry point —
+  // the prop just decides where to land.
+  defaultResourceType?: 'products' | 'stock'
+}
+
+export function CsvImportPanel({
+  defaultResourceType = 'products',
+}: CsvImportPanelProps = {}): JSX.Element {
   const t = useTranslations('csv.import')
   const tResources = useTranslations('csv.templates.resourceTypes')
 
-  const [resourceType, setResourceType] = useState<'products' | 'stock'>('products')
+  const [resourceType, setResourceType] = useState<'products' | 'stock'>(defaultResourceType)
   const { data: templates = [] } = useCsvMappings({
     direction: 'import',
     resourceType,

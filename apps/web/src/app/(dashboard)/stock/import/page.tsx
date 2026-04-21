@@ -6,14 +6,14 @@ import { useTranslations } from 'next-intl'
 
 import { CsvImportPanel } from '@/components/csv/csv-import-panel'
 
-export default function ProductImportPage(): JSX.Element {
-  const t = useTranslations('products')
+export default function StockImportPage(): JSX.Element {
+  const t = useTranslations('stock')
 
   return (
     <div>
       <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
         <Link
-          href="/products"
+          href="/stock"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -24,7 +24,7 @@ export default function ProductImportPage(): JSX.Element {
       </div>
 
       <div className="px-6 py-6">
-        <CsvImportPanel defaultResourceType="products" />
+        <CsvImportPanel defaultResourceType="stock" />
       </div>
     </div>
   )
