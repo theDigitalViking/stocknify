@@ -354,19 +354,28 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         return reply.send({ data: result })
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          // P2002 can come from either statement in the transaction (product
-          // row or variant row). Narrow by constraint target so the client
-          // gets an accurate message instead of a blanket "SKU exists" when
-          // some other unique index was the one that actually fired.
-          // meta.target is string (constraint name) or string[] (columns)
-          // depending on the Prisma/driver combination.
-          const target = Array.isArray(err.meta?.target)
-            ? (err.meta?.target as string[]).join(',')
-            : String(err.meta?.target ?? '')
+          // Exact allowlist for the variant-SKU unique index. Prisma surfaces
+          // `meta.target` as either a string (constraint name, default for
+          // Postgres) or a string[] (column names, some drivers/versions).
+          // Normalize both shapes to a single string and compare against the
+          // known identifier set — substring matching invited false positives
+          // as the schema evolves.
+          // Source of truth: ProductVariant @@unique([tenantId, sku]) in
+          //   apps/api/src/db/schema.prisma — Prisma defaults the constraint
+          //   name to `product_variants_tenant_id_sku_key`.
+          const SKU_CONSTRAINT_NAMES = new Set<string>([
+            'product_variants_tenant_id_sku_key',
+          ])
+          const SKU_COLUMN_TARGETS = new Set<string>(['sku', 'tenant_id,sku'])
+
+          const rawTarget = err.meta?.target
+          const normalizedTarget = Array.isArray(rawTarget)
+            ? rawTarget.join(',')
+            : String(rawTarget ?? '')
 
           const isSkuConflict =
-            target.includes('sku') ||
-            target.includes('product_variants_tenant_id_sku_key')
+            SKU_CONSTRAINT_NAMES.has(normalizedTarget) ||
+            SKU_COLUMN_TARGETS.has(normalizedTarget)
 
           if (isSkuConflict) {
             return reply.code(409).send({
