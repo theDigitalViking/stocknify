@@ -43,7 +43,7 @@ export default function LoginPage(): JSX.Element {
       setServerError(error)
       return
     }
-    router.push('/stock')
+    router.push('/products')
     router.refresh()
   }
 

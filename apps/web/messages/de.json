@@ -30,7 +30,12 @@
     "settings": "Einstellungen",
     "signOut": "Abmelden",
     "collapse": "Sidebar einklappen",
-    "expand": "Sidebar ausklappen"
+    "expand": "Sidebar ausklappen",
+    "integrationsSub": {
+      "manual": "Manuell",
+      "automatic": "Automatisch",
+      "marketplace": "Marketplace"
+    }
   },
   "auth": {
     "signIn": "Anmelden",
@@ -346,6 +351,21 @@
         "created": "Template angelegt",
         "saveFailed": "Speichern fehlgeschlagen"
       }
+    }
+  },
+  "integrations": {
+    "manual": {
+      "title": "Manueller Im- und Export",
+      "importSection": "CSV-Import",
+      "templatesSection": "Mapping-Vorlagen"
+    },
+    "automatic": {
+      "title": "Automatisch",
+      "comingSoon": "Automatischer Im- und Export via SFTP/FTP \u2014 kommt bald."
+    },
+    "marketplace": {
+      "title": "Marketplace",
+      "comingSoon": "Verbinde externe Dienste wie Shopify, Hive, Xentral und mehr \u2014 kommt bald."
     }
   },
   "errors": {

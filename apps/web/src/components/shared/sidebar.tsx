@@ -22,16 +22,31 @@ import { signOut } from '@/lib/auth'
 import { useSidebarStore } from '@/lib/stores/sidebar'
 import { cn } from '@/lib/utils'
 
+interface SubNavItem {
+  key: 'manual' | 'automatic' | 'marketplace'
+  href: string
+}
+
 interface NavItem {
   key: 'stock' | 'products' | 'rules' | 'integrations' | 'notifications' | 'settings'
   href: string
   icon: LucideIcon
+  subItems?: SubNavItem[]
 }
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'products', href: '/products', icon: Package },
   { key: 'stock', href: '/stock', icon: BarChart2 },
-  { key: 'integrations', href: '/integrations', icon: Plug },
+  {
+    key: 'integrations',
+    href: '/integrations',
+    icon: Plug,
+    subItems: [
+      { key: 'manual', href: '/integrations/manual' },
+      { key: 'automatic', href: '/integrations/automatic' },
+      { key: 'marketplace', href: '/integrations/marketplace' },
+    ],
+  },
   { key: 'rules', href: '/rules', icon: Sliders },
   { key: 'notifications', href: '/notifications', icon: Bell },
   { key: 'settings', href: '/settings', icon: Settings },
@@ -102,21 +117,44 @@ export function Sidebar(): JSX.Element {
           const isActive = pathname.startsWith(item.href)
           const label = t(item.key)
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={isCollapsed ? label : undefined}
-              className={cn(
-                'flex items-center h-8 rounded-md text-sm transition-colors',
-                isCollapsed ? 'justify-center px-0' : 'gap-2 px-3',
-                isActive
-                  ? 'bg-accent text-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {isCollapsed ? null : <span>{label}</span>}
-            </Link>
+            <div key={item.href}>
+              <Link
+                href={item.href}
+                title={isCollapsed ? label : undefined}
+                className={cn(
+                  'flex items-center h-8 rounded-md text-sm transition-colors',
+                  isCollapsed ? 'justify-center px-0' : 'gap-2 px-3',
+                  isActive
+                    ? 'bg-accent text-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+                {isCollapsed ? null : <span>{label}</span>}
+              </Link>
+
+              {!isCollapsed && item.subItems ? (
+                <div className="mt-0.5 space-y-0.5">
+                  {item.subItems.map((sub) => {
+                    const isSubActive = pathname.startsWith(sub.href)
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        className={cn(
+                          'flex items-center h-7 rounded-md text-xs transition-colors pl-8 pr-3',
+                          isSubActive
+                            ? 'bg-accent text-foreground font-medium'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        )}
+                      >
+                        {t(`integrationsSub.${sub.key}`)}
+                      </Link>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
           )
         })}
       </nav>
