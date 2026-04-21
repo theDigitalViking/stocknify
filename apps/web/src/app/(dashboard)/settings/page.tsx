@@ -3,6 +3,7 @@
 import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
+import { MappingTemplatesPanel } from '@/components/csv/mapping-templates-panel'
 import { PageHeader } from '@/components/shared/page-header'
 import { Label } from '@/components/ui/label'
 import {
@@ -15,6 +16,9 @@ import {
 import { toast } from '@/components/ui/use-toast'
 import { useUpdateUser } from '@/lib/api/use-users'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { cn } from '@/lib/utils'
+
+type SettingsTab = 'general' | 'integrations'
 
 const LOCALE_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -24,6 +28,7 @@ const LOCALE_OPTIONS = [
 export default function SettingsPage(): JSX.Element {
   const t = useTranslations('settings')
   const currentLocale = useLocale()
+  const [tab, setTab] = useState<SettingsTab>('general')
   const [userId, setUserId] = useState<string | null>(null)
   const [locale, setLocale] = useState<string>(currentLocale)
   const update = useUpdateUser()
@@ -64,33 +69,59 @@ export default function SettingsPage(): JSX.Element {
     <div>
       <PageHeader title={t('title')} />
 
-      <div className="px-6 py-6 max-w-2xl space-y-8">
-        <section>
-          <h2 className="text-sm font-semibold text-foreground mb-4">{t('account.title')}</h2>
-          <div className="space-y-2">
-            <Label htmlFor="language" className="block">
-              {t('account.language')}
-            </Label>
-            <Select
-              value={locale}
-              onValueChange={(value) => {
-                void handleLocaleChange(value)
-              }}
+      <div className="border-b border-border px-6">
+        <div className="flex items-center gap-1">
+          {(['general', 'integrations'] as SettingsTab[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={cn(
+                'h-9 px-3 text-sm transition-colors border-b-2 -mb-px',
+                tab === key
+                  ? 'border-brand-600 text-foreground font-medium'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
             >
-              <SelectTrigger id="language" className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LOCALE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">{t('account.languageHelp')}</p>
+              {t(`tabs.${key}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-6 py-6">
+        {tab === 'general' ? (
+          <div className="max-w-2xl space-y-8">
+            <section>
+              <h2 className="text-sm font-semibold text-foreground mb-4">{t('account.title')}</h2>
+              <div className="space-y-2">
+                <Label htmlFor="language" className="block">
+                  {t('account.language')}
+                </Label>
+                <Select
+                  value={locale}
+                  onValueChange={(value) => {
+                    void handleLocaleChange(value)
+                  }}
+                >
+                  <SelectTrigger id="language" className="w-56">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOCALE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{t('account.languageHelp')}</p>
+              </div>
+            </section>
           </div>
-        </section>
+        ) : (
+          <MappingTemplatesPanel />
+        )}
       </div>
     </div>
   )

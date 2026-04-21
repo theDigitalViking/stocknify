@@ -23,7 +23,7 @@ import { useSidebarStore } from '@/lib/stores/sidebar'
 import { cn } from '@/lib/utils'
 
 interface SubNavItem {
-  key: 'manual' | 'automatic' | 'marketplace'
+  key: 'automatic' | 'marketplace'
   href: string
 }
 
@@ -42,7 +42,6 @@ const NAV_ITEMS: NavItem[] = [
     href: '/integrations',
     icon: Plug,
     subItems: [
-      { key: 'manual', href: '/integrations/manual' },
       { key: 'automatic', href: '/integrations/automatic' },
       { key: 'marketplace', href: '/integrations/marketplace' },
     ],

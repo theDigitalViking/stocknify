@@ -32,8 +32,7 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
     "integrationsSub": {
-      "manual": "Manual",
-      "automatic": "Automated",
+      "automatic": "SFTP / FTP",
       "marketplace": "Marketplace"
     }
   },
@@ -236,6 +235,10 @@
   },
   "settings": {
     "title": "Settings",
+    "tabs": {
+      "general": "General",
+      "integrations": "Integrations"
+    },
     "account": {
       "title": "Account",
       "language": "Language",
@@ -250,10 +253,6 @@
     }
   },
   "csv": {
-    "tabs": {
-      "import": "CSV Import",
-      "templates": "Mapping Templates"
-    },
     "import": {
       "title": "Import Products from CSV",
       "titleFor": "Import {resource} from CSV",
@@ -354,13 +353,8 @@
     }
   },
   "integrations": {
-    "manual": {
-      "title": "Manual Import & Export",
-      "importSection": "CSV Import",
-      "templatesSection": "Mapping Templates"
-    },
     "automatic": {
-      "title": "Automated",
+      "title": "SFTP / FTP",
       "comingSoon": "Automated import and export via SFTP/FTP \u2014 coming soon."
     },
     "marketplace": {
