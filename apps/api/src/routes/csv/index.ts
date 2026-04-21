@@ -418,6 +418,17 @@ function isProductImportField(value: string): value is ProductImportField {
   return PRODUCT_IMPORT_FIELDS.some((f) => f.key === value)
 }
 
+// Flatten a thrown value into a user-facing message, including one level of
+// `cause` when present. The row-level error path records only this string in
+// the import result, so preserving the cause chain here is the difference
+// between an actionable incident and a generic "something went wrong".
+function extractErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err)
+  return err.cause instanceof Error
+    ? `${err.message} (caused by: ${err.cause.message})`
+    : err.message
+}
+
 // Unique-violation detection across both ORM and raw SQL paths.
 //   P2002 — Prisma Client ORM unique violation (create/update via prisma.*).
 //   P2010 — raw query error; unique violations surface as SQLSTATE 23505
@@ -1014,7 +1025,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           })
           result[outcome] += 1
         } catch (err) {
-          const reason = err instanceof Error ? err.message : 'Unknown error'
+          const reason = extractErrorMessage(err)
           const rowRef = rows[i]
           const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
           result.errors.push({
@@ -1319,7 +1330,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           })
           result[outcome] += 1
         } catch (err) {
-          const reason = err instanceof Error ? err.message : 'Unknown error'
+          const reason = extractErrorMessage(err)
           const rowRef = rows[i]
           const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
           result.errors.push({ row: rowNumber, ...(sku ? { sku } : {}), reason })
@@ -1603,10 +1614,17 @@ async function upsertStockLevel(
       try {
         await tx.$executeRaw`ROLLBACK TO SAVEPOINT upsert_stock_level`
         await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
-      } catch {
-        throw new Error('Savepoint cleanup failed after insert error', {
-          cause: insertErr,
-        })
+      } catch (cleanupErr) {
+        // cleanupErr is the primary signal — it tells ops WHAT broke during
+        // the rollback (connection loss, protocol state drift, etc.). The
+        // original insertErr is attached as `cause` so the chain still
+        // reveals WHY cleanup was attempted.
+        throw new Error(
+          `Savepoint cleanup failed: ${
+            cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+          }`,
+          { cause: insertErr },
+        )
       }
       if (!isUniqueViolation(insertErr)) {
         // Unknown error: outer transaction aborts so neither the would-be
