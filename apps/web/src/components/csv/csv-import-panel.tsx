@@ -28,19 +28,22 @@ const DEFAULT_TEMPLATE_VALUE = '__default__'
 const RESOURCE_TYPES: Array<'products' | 'stock'> = ['products', 'stock']
 
 interface CsvImportPanelProps {
-  // Initial resource type. The panel still renders the resource-type switch,
-  // so the user can flip between products and stock from either entry point —
-  // the prop just decides where to land.
+  // Locked resource type. When passed, the resource-type toggle is hidden —
+  // the caller owns this decision (e.g. /products/import pins 'products').
+  // When omitted, the panel renders the switch and defaults to 'products'.
   defaultResourceType?: 'products' | 'stock'
 }
 
 export function CsvImportPanel({
-  defaultResourceType = 'products',
+  defaultResourceType,
 }: CsvImportPanelProps = {}): JSX.Element {
   const t = useTranslations('csv.import')
   const tResources = useTranslations('csv.templates.resourceTypes')
 
-  const [resourceType, setResourceType] = useState<'products' | 'stock'>(defaultResourceType)
+  const isLocked = defaultResourceType !== undefined
+  const [resourceType, setResourceType] = useState<'products' | 'stock'>(
+    defaultResourceType ?? 'products',
+  )
   const { data: templates = [] } = useCsvMappings({
     direction: 'import',
     resourceType,
@@ -102,28 +105,30 @@ export function CsvImportPanel({
         </h2>
 
         <div className="space-y-4 max-w-xl">
-          <div>
-            <label className="text-sm font-medium mb-1 block">{t('resourceTypeLabel')}</label>
-            <div className="flex gap-2">
-              {RESOURCE_TYPES.map((rt) => (
-                <button
-                  key={rt}
-                  type="button"
-                  onClick={() => {
-                    handleResourceChange(rt)
-                  }}
-                  className={cn(
-                    'h-8 px-3 rounded-md text-sm border transition-colors',
-                    resourceType === rt
-                      ? 'bg-accent border-foreground/20 text-foreground'
-                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
-                  )}
-                >
-                  {tResources(rt)}
-                </button>
-              ))}
+          {!isLocked ? (
+            <div>
+              <label className="text-sm font-medium mb-1 block">{t('resourceTypeLabel')}</label>
+              <div className="flex gap-2">
+                {RESOURCE_TYPES.map((rt) => (
+                  <button
+                    key={rt}
+                    type="button"
+                    onClick={() => {
+                      handleResourceChange(rt)
+                    }}
+                    className={cn(
+                      'h-8 px-3 rounded-md text-sm border transition-colors',
+                      resourceType === rt
+                        ? 'bg-accent border-foreground/20 text-foreground'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
+                    )}
+                  >
+                    {tResources(rt)}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div>
             <label className="text-sm font-medium mb-1 block">{t('templateLabel')}</label>

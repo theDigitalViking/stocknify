@@ -305,17 +305,7 @@ export default function ProductsPage(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title={t('title')}>
-        <Button
-          size="sm"
-          onClick={() => {
-            setAddOpen(true)
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          {t('addProduct')}
-        </Button>
-      </PageHeader>
+      <PageHeader title={t('title')} />
 
       {selectedIds.size > 0 ? (
         <div className="px-6 py-2 border-b border-border bg-accent flex items-center justify-between">
@@ -370,12 +360,24 @@ export default function ProductsPage(): JSX.Element {
         >
           {showDeleted ? t('showingDeleted') : t('showDeleted')}
         </button>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 ml-auto" asChild>
-          <Link href="/products/import">
-            <Upload className="h-3.5 w-3.5" />
-            {t('importButton')}
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2 ml-auto">
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" asChild>
+            <Link href="/products/import">
+              <Upload className="h-3.5 w-3.5" />
+              {t('importButton')}
+            </Link>
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              setAddOpen(true)
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('addProduct')}
+          </Button>
+        </div>
       </div>
 
       <DataTable
