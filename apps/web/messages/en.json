@@ -131,6 +131,10 @@
     "addProduct": "Add product",
     "importCsv": "Import CSV",
     "searchPlaceholder": "Search by name or SKU\u2026",
+    "showDeleted": "Show deleted",
+    "showingDeleted": "Showing deleted",
+    "deletedAt": "Deleted at",
+    "deletedBy": "Deleted by",
     "columns": {
       "name": "Product",
       "sku": "SKU",
@@ -160,7 +164,13 @@
       "integrationType": "Type",
       "integrationStatus": "Status",
       "integrationExternalId": "External ID",
-      "integrationsEmpty": "No integrations linked yet. They will appear here once integrations are active."
+      "integrationsEmpty": "No integrations linked yet. They will appear here once integrations are active.",
+      "editProduct": "Edit product",
+      "deleteProduct": "Delete product",
+      "deleteConfirmTitle": "Delete product?",
+      "deleteConfirmDescription": "This will delete the product and all its stock levels. This action cannot be undone.",
+      "deleteConfirm": "Delete",
+      "batchTrackingBlockedToast": "Cannot deactivate batch tracking while batch stock levels exist for this product."
     },
     "form": {
       "addTitle": "Add product",
@@ -188,7 +198,9 @@
       "createFailed": "Create failed",
       "updateFailed": "Update failed",
       "createFailedGeneric": "Failed to create product",
-      "updateFailedGeneric": "Failed to update product"
+      "updateFailedGeneric": "Failed to update product",
+      "lockedByIntegration": "Locked by integration",
+      "barcodeLockedHelp": "EAN/Barcode cannot be changed while this product is connected to an integration."
     },
     "units": {
       "piece": "Piece",

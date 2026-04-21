@@ -102,6 +102,7 @@ model User {
   createdMovements   StockMovement[] @relation("CreatedBy")
   partnerUsers       PartnerUser[]
   acknowledgedIncidents Incident[]   @relation("AcknowledgedIncidents")
+  deletedProducts    Product[]       @relation("DeletedProducts")
 
   @@index([tenantId])
   @@map("users")
@@ -152,11 +153,13 @@ model Product {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+  deletedBy     String?   @map("deleted_by") @db.Uuid
 
   // Relations
-  tenant   Tenant           @relation(fields: [tenantId], references: [id])
-  variants ProductVariant[]
-  batches  Batch[]
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  variants      ProductVariant[]
+  batches       Batch[]
+  deletedByUser User?            @relation("DeletedProducts", fields: [deletedBy], references: [id])
 
   @@index([tenantId])
   @@map("products")

@@ -131,6 +131,10 @@
     "addProduct": "Produkt hinzufügen",
     "importCsv": "CSV importieren",
     "searchPlaceholder": "Nach Name oder SKU suchen\u2026",
+    "showDeleted": "Gelöschte anzeigen",
+    "showingDeleted": "Gelöschte werden angezeigt",
+    "deletedAt": "Gelöscht am",
+    "deletedBy": "Gelöscht von",
     "columns": {
       "name": "Produkt",
       "sku": "SKU",
@@ -160,7 +164,13 @@
       "integrationType": "Typ",
       "integrationStatus": "Status",
       "integrationExternalId": "Externe ID",
-      "integrationsEmpty": "Noch keine Integrationen verknüpft. Sobald Integrationen aktiv sind, werden sie hier angezeigt."
+      "integrationsEmpty": "Noch keine Integrationen verknüpft. Sobald Integrationen aktiv sind, werden sie hier angezeigt.",
+      "editProduct": "Produkt bearbeiten",
+      "deleteProduct": "Produkt löschen",
+      "deleteConfirmTitle": "Produkt löschen?",
+      "deleteConfirmDescription": "Das Produkt und alle zugehörigen Bestände werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "deleteConfirm": "Löschen",
+      "batchTrackingBlockedToast": "Batch-Tracking kann nicht deaktiviert werden, solange Chargenbestände vorhanden sind."
     },
     "form": {
       "addTitle": "Produkt hinzufügen",
@@ -188,7 +198,9 @@
       "createFailed": "Anlegen fehlgeschlagen",
       "updateFailed": "Aktualisierung fehlgeschlagen",
       "createFailedGeneric": "Produkt konnte nicht angelegt werden",
-      "updateFailedGeneric": "Produkt konnte nicht aktualisiert werden"
+      "updateFailedGeneric": "Produkt konnte nicht aktualisiert werden",
+      "lockedByIntegration": "Durch Integration gesperrt",
+      "barcodeLockedHelp": "EAN/Barcode kann nicht geändert werden, solange das Produkt mit einer Integration verbunden ist."
     },
     "units": {
       "piece": "Stück",

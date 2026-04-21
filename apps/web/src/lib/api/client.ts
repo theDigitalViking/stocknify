@@ -16,6 +16,20 @@ interface ApiEnvelope<T> {
   meta?: Record<string, unknown>
 }
 
+// Error thrown by apiFetch when the backend returns a structured error envelope.
+// Preserves the error `code` so callers can branch on specific failures
+// (e.g. BATCH_STOCK_EXISTS) instead of string-matching the message.
+export class ApiError extends Error {
+  readonly code: string
+  readonly status: number
+  constructor(message: string, code: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+    this.status = status
+  }
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = await getAuthHeader()
   const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/v1${path}`, {
@@ -37,17 +51,25 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   const contentLength = res.headers.get('content-length')
   if (contentLength === '0' || !contentType?.includes('application/json')) {
     if (!res.ok) {
-      throw new Error(`Request failed with status ${String(res.status)}`)
+      throw new ApiError(
+        `Request failed with status ${String(res.status)}`,
+        'HTTP_ERROR',
+        res.status,
+      )
     }
     return undefined as T
   }
 
   const json = (await res.json()) as ApiEnvelope<T>
   if (!res.ok) {
-    throw new Error(json.error?.message ?? `Request failed with status ${String(res.status)}`)
+    throw new ApiError(
+      json.error?.message ?? `Request failed with status ${String(res.status)}`,
+      json.error?.code ?? 'HTTP_ERROR',
+      res.status,
+    )
   }
-  if (json.error) throw new Error(json.error.message)
-  if (json.data === undefined) throw new Error(`Malformed response from ${path}`)
+  if (json.error) throw new ApiError(json.error.message, json.error.code, res.status)
+  if (json.data === undefined) throw new ApiError(`Malformed response from ${path}`, 'MALFORMED_RESPONSE', res.status)
   return json.data
 }
 

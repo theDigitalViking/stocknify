@@ -1,6 +1,7 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Lock } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
@@ -26,34 +27,48 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
-import { useUpdateProduct, type ProductWithCount } from '@/lib/api/use-products'
+import { ApiError } from '@/lib/api/client'
+import {
+  useUpdateProduct,
+  type ProductDetail,
+  type ProductWithCount,
+} from '@/lib/api/use-products'
 
 const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
 
 const editProductSchema = z.object({
   name: z.string().min(1, 'nameRequired').max(500),
-  barcode: z.string().min(1, 'barcodeRequired').max(255),
+  barcode: z.string().max(255).optional().default(''),
   unit: z.string().default('piece'),
   batchTracking: z.boolean().default(false),
   description: z.string().optional(),
-  category: z.string().optional(),
 })
 
 type EditProductFormValues = z.infer<typeof editProductSchema>
-type FormError = 'nameRequired' | 'barcodeRequired'
+type FormError = 'nameRequired'
+
+// Accept both the list-view shape (ProductWithCount — minimal variant fields)
+// and the detail-view shape (ProductDetail). The dialog only reads fields that
+// both types share, so structural typing handles the rest.
+type EditableProduct = ProductWithCount | ProductDetail
 
 interface EditProductDialogProps {
-  product: ProductWithCount | null
+  product: EditableProduct | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  // When true, SKU + barcode are read-only and the UI surfaces a lock hint.
+  // Only the detail page knows this — from the list view we pass undefined.
+  hasExternalReferences?: boolean
 }
 
 export function EditProductDialog({
   product,
   open,
   onOpenChange,
+  hasExternalReferences = false,
 }: EditProductDialogProps): JSX.Element {
   const t = useTranslations('products.form')
+  const tDetail = useTranslations('products.detail')
   const tUnits = useTranslations('products.units')
   const tCommon = useTranslations('common')
   const update = useUpdateProduct()
@@ -63,6 +78,7 @@ export function EditProductDialog({
     control,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<EditProductFormValues>({
     resolver: zodResolver(editProductSchema),
@@ -72,7 +88,6 @@ export function EditProductDialog({
       unit: 'piece',
       batchTracking: false,
       description: '',
-      category: '',
     },
   })
 
@@ -84,7 +99,6 @@ export function EditProductDialog({
         unit: product.unit,
         batchTracking: product.batchTracking,
         description: product.description ?? '',
-        category: product.category ?? '',
       })
     }
   }, [product, reset])
@@ -95,19 +109,35 @@ export function EditProductDialog({
       await update.mutateAsync({
         id: product.id,
         name: values.name.trim(),
-        barcode: values.barcode.trim(),
+        // Barcode is locked when hasExternalReferences — do not send a change
+        // even if the controlled input somehow produced one.
+        ...(hasExternalReferences
+          ? {}
+          : { barcode: values.barcode.trim() }),
         unit: values.unit,
         batchTracking: values.batchTracking,
         description: values.description?.trim() || undefined,
-        category: values.category?.trim() || undefined,
       })
       toast({ title: t('updated'), description: values.name })
       onOpenChange(false)
     } catch (err) {
+      // Special-case the batch-tracking guard so the UI can revert the switch
+      // and show a targeted explanation instead of the generic failure toast.
+      if (err instanceof ApiError && err.code === 'BATCH_STOCK_EXISTS') {
+        setValue('batchTracking', product.batchTracking)
+        toast({
+          title: t('updateFailed'),
+          description: tDetail('batchTrackingBlockedToast'),
+          variant: 'destructive',
+        })
+        return
+      }
       const message = err instanceof Error ? err.message : t('updateFailedGeneric')
       toast({ title: t('updateFailed'), description: message, variant: 'destructive' })
     }
   }
+
+  const sku = product?.variants[0]?.sku ?? ''
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -128,17 +158,34 @@ export function EditProductDialog({
           </div>
 
           <div>
+            <Label className="mb-1 block">{t('sku')}</Label>
+            <div className="flex items-center gap-2">
+              <code className="text-sm font-mono bg-muted px-2 py-1 rounded">{sku || '—'}</code>
+              {hasExternalReferences ? (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  {t('lockedByIntegration')}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div>
             <Label htmlFor="edit-barcode" className="mb-1 block">
-              {t('barcode')} <span className="text-red-500">*</span>
+              {t('barcode')}
             </Label>
             <Input
               id="edit-barcode"
               placeholder={t('barcodePlaceholder')}
               className="font-mono"
+              disabled={hasExternalReferences}
               {...register('barcode')}
             />
-            {errors.barcode ? (
-              <p className="text-xs text-red-600 mt-1">{t(errors.barcode.message as FormError)}</p>
+            {hasExternalReferences ? (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                {t('barcodeLockedHelp')}
+              </p>
             ) : null}
           </div>
 
@@ -175,17 +222,6 @@ export function EditProductDialog({
               render={({ field }) => (
                 <Switch checked={field.value} onCheckedChange={field.onChange} />
               )}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="edit-category" className="mb-1 block">
-              {t('category')}
-            </Label>
-            <Input
-              id="edit-category"
-              placeholder={t('categoryPlaceholder')}
-              {...register('category')}
             />
           </div>
 

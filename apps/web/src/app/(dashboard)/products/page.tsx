@@ -1,6 +1,6 @@
 'use client'
 
-import { formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
 import { CheckCircle2, Package, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import Link from 'next/link'
@@ -23,6 +23,7 @@ import {
   useProducts,
   type ProductWithCount,
 } from '@/lib/api/use-products'
+import { cn } from '@/lib/utils'
 
 const UNIT_KEYS = ['piece', 'kg', 'liter', 'box', 'pallet'] as const
 type UnitKey = (typeof UNIT_KEYS)[number]
@@ -39,6 +40,7 @@ export default function ProductsPage(): JSX.Element {
   const dateLocale = locale === 'de' ? deLocale : undefined
 
   const [search, setSearch] = useState('')
+  const [showDeleted, setShowDeleted] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [toEdit, setToEdit] = useState<ProductWithCount | null>(null)
   const [toDelete, setToDelete] = useState<ProductWithCount | null>(null)
@@ -51,6 +53,7 @@ export default function ProductsPage(): JSX.Element {
     search: search || undefined,
     sortBy: sortField ?? undefined,
     sortDir: sortDir ?? undefined,
+    showDeleted: showDeleted || undefined,
   })
   const deleteMany = useDeleteProducts()
 
@@ -126,7 +129,7 @@ export default function ProductsPage(): JSX.Element {
     }
   }
 
-  const columns: ColumnDef<ProductWithCount>[] = [
+  const baseColumns: ColumnDef<ProductWithCount>[] = [
     {
       header: (
         <input
@@ -222,37 +225,70 @@ export default function ProductsPage(): JSX.Element {
       ),
       sortField: 'createdAt',
     },
+  ]
+
+  const deletedColumns: ColumnDef<ProductWithCount>[] = [
     {
-      header: '',
-      accessor: (row) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            aria-label={`${t('form.editTitle')}: ${row.name}`}
-            onClick={() => {
-              setToEdit(row)
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-            aria-label={`${t('deleteConfirm.confirm')}: ${row.name}`}
-            onClick={() => {
-              setToDelete(row)
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ),
-      className: 'text-right w-20',
+      header: t('deletedAt'),
+      accessor: (row) =>
+        row.deletedAt ? (
+          <span className="text-xs text-muted-foreground">
+            {format(new Date(row.deletedAt), 'dd.MM.yyyy', {
+              ...(dateLocale ? { locale: dateLocale } : {}),
+            })}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+    {
+      header: t('deletedBy'),
+      accessor: (row) => {
+        const u = row.deletedByUser
+        if (!u) return <span className="text-xs text-muted-foreground">—</span>
+        const label = u.fullName ?? u.email
+        return <span className="text-xs text-muted-foreground">{label}</span>
+      },
     },
   ]
+
+  const actionsColumn: ColumnDef<ProductWithCount> = {
+    header: '',
+    accessor: (row) => (
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label={`${t('form.editTitle')}: ${row.name}`}
+          onClick={() => {
+            setToEdit(row)
+          }}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+          aria-label={`${t('deleteConfirm.confirm')}: ${row.name}`}
+          onClick={() => {
+            setToDelete(row)
+          }}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    ),
+    className: 'text-right w-20',
+  }
+
+  // Deleted rows: swap the trailing action column for deletedAt + deletedBy.
+  // Editing or re-deleting soft-deleted products does not make sense today, so
+  // the per-row actions are simply omitted.
+  const columns: ColumnDef<ProductWithCount>[] = showDeleted
+    ? [...baseColumns, ...deletedColumns]
+    : [...baseColumns, actionsColumn]
 
   return (
     <div>
@@ -312,6 +348,21 @@ export default function ProductsPage(): JSX.Element {
             setSearch(e.target.value)
           }}
         />
+        <button
+          type="button"
+          onClick={() => {
+            setShowDeleted((v) => !v)
+            setSelectedIds(new Set())
+          }}
+          className={cn(
+            'h-8 px-3 text-xs rounded-md border transition-colors',
+            showDeleted
+              ? 'border-red-300 bg-red-50 text-red-700'
+              : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          {showDeleted ? t('showingDeleted') : t('showDeleted')}
+        </button>
       </div>
 
       <DataTable

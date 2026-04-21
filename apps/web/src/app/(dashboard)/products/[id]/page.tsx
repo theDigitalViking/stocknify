@@ -2,26 +2,61 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { CheckCircle2, ChevronLeft } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
+import { useState } from 'react'
 
+import { EditProductDialog } from '@/components/products/edit-product-dialog'
 import { ProductSourceIcons } from '@/components/products/product-source-icons'
 import { PageHeader } from '@/components/shared/page-header'
-import { useProduct } from '@/lib/api/use-products'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { toast } from '@/components/ui/use-toast'
+import { useDeleteProduct, useProduct } from '@/lib/api/use-products'
 import { cn } from '@/lib/utils'
 
 export default function ProductDetailPage(): JSX.Element {
   const params = useParams<{ id: string }>()
   const id = params.id
+  const router = useRouter()
   const t = useTranslations('products')
   const tDetail = useTranslations('products.detail')
   const tUnits = useTranslations('products.units')
+  const tCommon = useTranslations('common')
   const locale = useLocale()
   const dateLocale = locale === 'de' ? deLocale : undefined
 
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
   const { data: product, isLoading, error } = useProduct(id)
+  const del = useDeleteProduct()
+
+  async function handleDelete(): Promise<void> {
+    if (!product) return
+    try {
+      await del.mutateAsync(product.id)
+      toast({ title: tDetail('deleteConfirmTitle'), description: product.name })
+      router.push('/products')
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : tDetail('deleteConfirmDescription')
+      toast({
+        title: tDetail('deleteConfirmTitle'),
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }
 
   if (isLoading) {
     return (
@@ -77,7 +112,29 @@ export default function ProductDetailPage(): JSX.Element {
               <p className="text-sm text-muted-foreground mt-1">{product.description}</p>
             ) : null}
           </div>
-          <ProductSourceIcons metadata={product.metadata} />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <ProductSourceIcons metadata={product.metadata} />
+            <button
+              type="button"
+              onClick={() => {
+                setEditOpen(true)
+              }}
+              title={tDetail('editProduct')}
+              className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmOpen(true)
+              }}
+              title={tDetail('deleteProduct')}
+              className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 mt-4">
@@ -213,6 +270,42 @@ export default function ProductDetailPage(): JSX.Element {
           </table>
         </div>
       </section>
+
+      <EditProductDialog
+        product={product}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        hasExternalReferences={product.hasExternalReferences}
+      />
+
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{tDetail('deleteConfirmTitle')}</DialogTitle>
+            <DialogDescription>{tDetail('deleteConfirmDescription')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false)
+              }}
+              disabled={del.isPending}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void handleDelete()
+              }}
+              disabled={del.isPending}
+            >
+              {del.isPending ? tCommon('deleting') : tDetail('deleteConfirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

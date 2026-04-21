@@ -15,9 +15,17 @@ export interface DefaultVariant {
   barcode: string | null
 }
 
+export interface DeletedByUser {
+  id: string
+  email: string
+  fullName: string | null
+}
+
 export interface ProductWithCount extends Product {
   _count: { variants: number }
   variants: DefaultVariant[] // first variant only — `take: 1` in backend
+  // Only present when the list is fetched with showDeleted=true.
+  deletedByUser?: DeletedByUser | null
 }
 
 export interface ProductFilters {
@@ -26,6 +34,7 @@ export interface ProductFilters {
   perPage?: number
   sortBy?: string
   sortDir?: 'asc' | 'desc'
+  showDeleted?: boolean
 }
 
 export function useProducts(filters: ProductFilters = {}): UseQueryResult<ProductWithCount[]> {
@@ -49,6 +58,7 @@ export interface ProductDetailVariant {
 
 export interface ProductDetail extends Product {
   variants: ProductDetailVariant[]
+  hasExternalReferences: boolean
 }
 
 export function useProduct(id: string | null): UseQueryResult<ProductDetail> {

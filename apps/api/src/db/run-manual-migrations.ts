@@ -46,6 +46,8 @@ const MANUAL_SQL_FILES = [
   'add-integration-marketplace-fields.sql',
   // v6b — unique active marketplace integration per tenant
   'unique-active-marketplace-integration.sql',
+  // v7 — deleted_by on products
+  'add-product-deleted-by.sql',
 ];
 
 // Idempotent seed files — safe to re-run via ON CONFLICT DO NOTHING

@@ -30,6 +30,7 @@ const createProductBodySchema = z.object({
 
 const listQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
+  showDeleted: z.enum(['true', 'false']).optional(),
 })
 
 // PATCH /products body. barcode updates the default variant (not the product).
@@ -46,19 +47,20 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware)
   app.addHook('preHandler', tenantMiddleware)
 
-  // GET /products — list with active variant count, optional ?search=
+  // GET /products — list with active variant count, optional ?search=, ?showDeleted=
   app.get('/products', async (request, reply) => {
     try {
       const query = listQuerySchema.safeParse(request.query)
       if (!query.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: query.error.message } })
       }
-      const { page, perPage, search } = query.data
+      const { page, perPage, search, showDeleted: showDeletedRaw } = query.data
       const skip = (page - 1) * perPage
+      const showDeleted = showDeletedRaw === 'true'
 
       const where: Prisma.ProductWhereInput = {
         tenantId: request.tenantId,
-        deletedAt: null,
+        deletedAt: showDeleted ? { not: null } : null,
       }
       if (search) {
         where.OR = [
@@ -71,6 +73,21 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         ]
       }
 
+      // Deleted products: show all variants (including soft-deleted) so the row
+      // still has an SKU to display. Active products: only non-deleted variants.
+      const variantsInclude = showDeleted
+        ? {
+            orderBy: { createdAt: 'asc' as const },
+            take: 1,
+            select: { id: true, sku: true, barcode: true },
+          }
+        : {
+            where: { isActive: true, deletedAt: null },
+            orderBy: { createdAt: 'asc' as const },
+            take: 1,
+            select: { id: true, sku: true, barcode: true },
+          }
+
       const [products, total] = await Promise.all([
         request.db.product.findMany({
           where,
@@ -81,12 +98,14 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
             _count: {
               select: { variants: { where: { isActive: true, deletedAt: null } } },
             },
-            variants: {
-              where: { isActive: true, deletedAt: null },
-              orderBy: { createdAt: 'asc' },
-              take: 1, // only the default (first) variant for the list view
-              select: { id: true, sku: true, barcode: true },
-            },
+            variants: variantsInclude,
+            ...(showDeleted
+              ? {
+                  deletedByUser: {
+                    select: { id: true, email: true, fullName: true },
+                  },
+                }
+              : {}),
           },
         }),
         request.db.product.count({ where }),
@@ -164,7 +183,23 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } })
       }
 
-      return reply.send({ data: product })
+      // Flag whether this product is linked to an external integration (any
+      // variant with a row in external_references). The frontend uses this to
+      // lock SKU and barcode fields on the edit dialog.
+      const externalRefCount = await request.db.externalReference.count({
+        where: {
+          tenantId: request.tenantId,
+          resourceType: 'product_variant',
+          resourceId: { in: product.variants.map((v) => v.id) },
+        },
+      })
+
+      return reply.send({
+        data: {
+          ...product,
+          hasExternalReferences: externalRefCount > 0,
+        },
+      })
     } catch {
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
     }
@@ -189,6 +224,38 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       })
       if (!existing) {
         return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } })
+      }
+
+      // Guard: batchTracking can only be deactivated when no batch-linked
+      // stock levels exist. Otherwise we would orphan rows whose batchId no
+      // longer carries semantic meaning.
+      if (parse.data.batchTracking === false && existing.batchTracking === true) {
+        const variantIds = (
+          await request.db.productVariant.findMany({
+            where: { productId: id, tenantId: request.tenantId, deletedAt: null },
+            select: { id: true },
+          })
+        ).map((v) => v.id)
+
+        if (variantIds.length > 0) {
+          const batchStockCount = await request.db.stockLevel.count({
+            where: {
+              tenantId: request.tenantId,
+              variantId: { in: variantIds },
+              batchId: { not: null },
+            },
+          })
+
+          if (batchStockCount > 0) {
+            return reply.code(409).send({
+              error: {
+                code: 'BATCH_STOCK_EXISTS',
+                message:
+                  'Cannot deactivate batch tracking while batch stock levels exist for this product.',
+              },
+            })
+          }
+        }
       }
 
       // barcode lives on the default variant, not the product — route it separately.
@@ -235,15 +302,37 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const now = new Date()
+      const deletedBy = request.userId
+
+      // Capture variant ids before the soft-delete so we can hard-delete their
+      // stock levels in the same transaction. StockLevel has no deletedAt; we
+      // remove the rows outright so downstream syncs do not republish them.
+      const variantIds = (
+        await request.db.productVariant.findMany({
+          where: { productId: id, tenantId: request.tenantId },
+          select: { id: true },
+        })
+      ).map((v) => v.id)
+
       await request.db.$transaction([
         request.db.product.update({
           where: { id },
-          data: { deletedAt: now },
+          data: { deletedAt: now, deletedBy },
         }),
         request.db.productVariant.updateMany({
           where: { productId: id, tenantId: request.tenantId, deletedAt: null },
           data: { deletedAt: now },
         }),
+        ...(variantIds.length > 0
+          ? [
+              request.db.stockLevel.deleteMany({
+                where: {
+                  tenantId: request.tenantId,
+                  variantId: { in: variantIds },
+                },
+              }),
+            ]
+          : []),
       ])
 
       return reply.code(204).send()
