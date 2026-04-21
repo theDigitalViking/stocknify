@@ -114,6 +114,7 @@
       "product": "Produkt",
       "warehouse": "Lager",
       "storageLocation": "Lagerplatz",
+      "batch": "Charge",
       "stockType": "Bestandsart",
       "quantity": "Menge",
       "lastSynced": "Zuletzt synchronisiert"

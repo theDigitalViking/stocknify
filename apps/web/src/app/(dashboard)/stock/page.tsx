@@ -206,6 +206,23 @@ export default function StockPage(): JSX.Element {
       sortField: 'storageLocationName',
     },
     {
+      header: t('columns.batch'),
+      accessor: (row) =>
+        row.batchNumber ? (
+          <div>
+            <span className="text-xs font-mono">{row.batchNumber}</span>
+            {row.expiryDate ? (
+              <span className="text-xs text-muted-foreground ml-1">
+                ({new Date(row.expiryDate).toLocaleDateString(locale)})
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+      sortField: 'batchNumber',
+    },
+    {
       header: t('columns.stockType'),
       accessor: (row) => {
         const meta = stockTypeByKey.get(row.stockType)

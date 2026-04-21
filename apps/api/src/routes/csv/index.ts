@@ -1264,48 +1264,59 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           // catch-P2010/23505 savepoint pattern from CODING_GUIDELINES 3b/3c
           // so the race collapses into the expected "already exists" branch.
           if (!dryRun) {
-            // 'in_transit' → 'In Transit'. Users can rename it later; the
-            // label is only for display and the key is immutable.
-            const label = stockType
-              .split('_')
-              .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-              .join(' ')
-            await request.db.$transaction(async (tx) => {
-              await tx.$executeRaw`SAVEPOINT stock_type_upsert`
-              try {
-                await tx.$executeRaw`
-                  INSERT INTO stock_type_definitions (
-                    id, tenant_id, key, label, is_system, sort_order, created_at, updated_at
-                  ) VALUES (
-                    gen_random_uuid(),
-                    ${request.tenantId}::uuid,
-                    ${stockType},
-                    ${label},
-                    false,
-                    99,
-                    now(),
-                    now()
-                  )
-                `
-                await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
-              } catch (insertErr) {
-                try {
-                  await tx.$executeRaw`ROLLBACK TO SAVEPOINT stock_type_upsert`
-                  await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
-                } catch (cleanupErr) {
-                  throw new Error(
-                    `Savepoint cleanup failed: ${
-                      cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
-                    }`,
-                    { cause: insertErr },
-                  )
-                }
-                if (!isUniqueViolation(insertErr)) throw insertErr
-                // Unique violation: definition already exists (either a
-                // system default or a concurrent import just created it).
-                // Either way, proceed to the stock write.
-              }
+            // Prefer an existing system default (tenantId = null) over
+            // creating a tenant-owned row. Without this check, every import
+            // that surfaces a standard key like 'available' or 'reserved'
+            // would append a duplicate tenant-scoped definition alongside
+            // the system row — the UNIQUE(tenant_id, key) constraint allows
+            // it because NULL tenant_id is a distinct bucket.
+            const systemRow = await request.db.stockTypeDefinition.findFirst({
+              where: { key: stockType, tenantId: null },
+              select: { id: true },
             })
+            if (!systemRow) {
+              // 'in_transit' → 'In Transit'. Users can rename it later; the
+              // label is only for display and the key is immutable.
+              const label = stockType
+                .split('_')
+                .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+                .join(' ')
+              await request.db.$transaction(async (tx) => {
+                await tx.$executeRaw`SAVEPOINT stock_type_upsert`
+                try {
+                  await tx.$executeRaw`
+                    INSERT INTO stock_type_definitions (
+                      id, tenant_id, key, label, is_system, sort_order, created_at, updated_at
+                    ) VALUES (
+                      gen_random_uuid(),
+                      ${request.tenantId}::uuid,
+                      ${stockType},
+                      ${label},
+                      false,
+                      99,
+                      now(),
+                      now()
+                    )
+                  `
+                  await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
+                } catch (insertErr) {
+                  try {
+                    await tx.$executeRaw`ROLLBACK TO SAVEPOINT stock_type_upsert`
+                    await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
+                  } catch (cleanupErr) {
+                    throw new Error(
+                      `Savepoint cleanup failed: ${
+                        cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+                      }`,
+                      { cause: insertErr },
+                    )
+                  }
+                  if (!isUniqueViolation(insertErr)) throw insertErr
+                  // Unique violation: a concurrent import just created the
+                  // tenant-scoped definition. Proceed to the stock write.
+                }
+              })
+            }
           }
 
           // Storage location (bin) auto-create: symmetric to the parent

@@ -114,6 +114,7 @@
       "product": "Product",
       "warehouse": "Warehouse",
       "storageLocation": "Storage location",
+      "batch": "Batch",
       "stockType": "Stock Type",
       "quantity": "Quantity",
       "lastSynced": "Last synced"
