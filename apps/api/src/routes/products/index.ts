@@ -319,32 +319,49 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // sku + barcode live on the default variant, not the product — route
-      // them separately. Either of them triggers a single variant fetch that
-      // the subsequent update calls share.
+      // them separately. Both the product row update and the variant update
+      // run inside a single interactive transaction so a unique-SKU conflict
+      // (P2002) on the variant write rolls back the product-field changes
+      // instead of leaving a partial edit behind.
       const { sku, barcode, ...productFields } = parse.data
 
-      const product = await request.db.product.update({
-        where: { id },
-        data: omitUndefined(productFields) as unknown as Prisma.ProductUpdateInput,
-      })
+      try {
+        const result = await request.db.$transaction(async (tx) => {
+          const product = await tx.product.update({
+            where: { id },
+            data: omitUndefined(productFields) as unknown as Prisma.ProductUpdateInput,
+          })
 
-      if (sku !== undefined || barcode !== undefined) {
-        const defaultVariant = await request.db.productVariant.findFirst({
-          where: { productId: id, tenantId: request.tenantId, deletedAt: null },
-          orderBy: { createdAt: 'asc' },
+          if (sku !== undefined || barcode !== undefined) {
+            const defaultVariant = await tx.productVariant.findFirst({
+              where: { productId: id, tenantId: request.tenantId, deletedAt: null },
+              orderBy: { createdAt: 'asc' },
+            })
+            if (defaultVariant) {
+              await tx.productVariant.update({
+                where: { id: defaultVariant.id },
+                data: {
+                  ...(sku !== undefined ? { sku } : {}),
+                  ...(barcode !== undefined ? { barcode } : {}),
+                },
+              })
+            }
+          }
+
+          return product
         })
-        if (defaultVariant) {
-          await request.db.productVariant.update({
-            where: { id: defaultVariant.id },
-            data: {
-              ...(sku !== undefined ? { sku } : {}),
-              ...(barcode !== undefined ? { barcode } : {}),
-            },
+
+        return reply.send({ data: result })
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          return reply.code(409).send({
+            error: { code: 'CONFLICT', message: 'A variant with this SKU already exists' },
           })
         }
+        return reply
+          .code(500)
+          .send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
       }
-
-      return reply.send({ data: product })
     } catch {
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
     }
