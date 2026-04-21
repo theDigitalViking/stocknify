@@ -1594,8 +1594,20 @@ async function upsertStockLevel(
       // aborted state until `ROLLBACK TO SAVEPOINT` restores it. Doing a
       // bare `RELEASE SAVEPOINT` while aborted would itself fail and mask
       // the original error. Always ROLLBACK first, then RELEASE.
-      await tx.$executeRaw`ROLLBACK TO SAVEPOINT upsert_stock_level`
-      await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
+      //
+      // Cleanup itself runs in a nested try/catch so a ROLLBACK/RELEASE
+      // failure (e.g. connection interruption) does not shadow the original
+      // insertErr. If cleanup fails we rethrow a wrapped error that carries
+      // the original as `cause` — observability over brevity. Per coding
+      // guideline 3d.
+      try {
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT upsert_stock_level`
+        await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
+      } catch {
+        throw new Error('Savepoint cleanup failed after insert error', {
+          cause: insertErr,
+        })
+      }
       if (!isUniqueViolation(insertErr)) {
         // Unknown error: outer transaction aborts so neither the would-be
         // stock-level row nor the would-be movement row land.
