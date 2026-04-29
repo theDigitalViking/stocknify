@@ -52,11 +52,16 @@ coverage/
 .kamal/secrets
 
 # Prompts (AI coding agent prompts — not for version control)
-prompts/
+prompts/*
 # Ausnahme: Templates bleiben im Repo
 !prompts/TEMPLATE_RESULT.md
 !prompts/TEMPLATE_CODEX_REVIEW.md
 !prompts/TEMPLATE_REVIEW_RESULT.md
+# Ausnahme: Memory Bank (Workflow-Zustand zwischen Cycles, git-tracked)
+!prompts/_state/
+!prompts/_state/**
+!prompts/_templates/
+!prompts/_templates/**
 
 # Claude Code local settings (machine-specific, never commit)
 .claude/settings.local.json
