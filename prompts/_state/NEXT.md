@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-04-29 (post-Codex-review FIXES6-retro)
+**Last updated:** 2026-04-29 (post PROJECT.md refresh)
 
 ---
 
@@ -14,10 +14,7 @@ The narrow Codex finding from this cycle (`5606dd4`) sanitized only the savepoin
 ### B. CSV stock export (with separate export-template flow)
 Symmetrical to import but the dialog flow is different — no upload step. User defines which Stocknify fields to export, in which order, with which header name. Export templates need a new schema flag (or separate table) to keep them disjoint from import templates. Decision context already captured in DECISIONS 2026-04-18.
 
-### C. Refresh PROJECT.md
-Static SoT predates everything from 2026-04-21+. Phase 4 section needs the encoding + stock-import additions, the post-FIXES6 import-button/route + stock-page column work, marketplace polish, the new system-key precheck, and the row-reason sanitization. "Last updated" needs bumping. Cheap cycle, mostly docs.
-
-### D. Stock-overview navigation polish
+### C. Stock-overview navigation polish
 - Stock overview: SKU click → product detail page.
 - Product detail page: stock overview block.
 - Stock overview: single-view (eye icon).

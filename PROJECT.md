@@ -288,9 +288,12 @@ table. `stock_levels` gets an optional `batch_id`. Batches carry `batch_number`,
 PostgreSQL does not treat NULL as equal in standard UNIQUE constraints, which
 would allow duplicate batch-agnostic or bin-agnostic rows. A custom unique index
 using COALESCE replaces the standard constraint. This index is defined in
-`apps/api/src/db/migrations/manual/unique-stock-levels.sql` and must be applied
-after the initial Prisma migration. Prisma schema carries a comment referencing
-this file.
+`apps/api/src/db/sql/unique-stock-levels.sql` and is applied automatically by
+`run-manual-migrations.ts` post-deploy. Prisma schema carries a comment
+referencing this file. Prisma upserts on `stock_levels` must filter nullable
+FKs (`storage_location_id`, `batch_id`) with `null` rather than `undefined` to
+match the COALESCE buckets — see DECISIONS 2026-04-21 (CSV stock-level FK
+semantics).
 
 **Stock movements are explicit:** Every change to `stock_levels` produces a
 `stock_movements` record with `movement_type`, optional `reason`, and optional
@@ -314,7 +317,7 @@ To prevent invalid rule configurations (e.g. a `stock_level` rule without an
 operator), a CHECK constraint enforces that `operator` and `threshold` are
 non-null when `condition_type = 'stock_level'`, and `days_threshold` is non-null
 when `condition_type = 'days_until_expiry'`. Defined in
-`apps/api/src/db/migrations/manual/rules-check-constraint.sql`.
+`apps/api/src/db/sql/rules-check-constraint.sql`.
 
 **Batch-agnostic stock is a first-class concept:** A product with
 `batch_tracking = true` can still have stock records with `batch_id = NULL`.
@@ -495,14 +498,25 @@ stock_movements
 integrations
   id UUID PK
   tenant_id UUID FK -> tenants
-  type TEXT NOT NULL                   -- shopify | woocommerce | xentral | hive | byrd | zenfulfillment
+  type TEXT NOT NULL                   -- shopify | woocommerce | xentral | hive | byrd | zenfulfillment | csv
   name TEXT NOT NULL
   status TEXT NOT NULL DEFAULT 'pending' -- pending | active | error | paused
-  credentials JSONB NOT NULL DEFAULT '{}' -- AES-256 encrypted
+  credentials JSONB NOT NULL DEFAULT '{}' -- legacy; new credentials live in integration_credentials
   config JSONB NOT NULL DEFAULT '{}'
   last_sync_at TIMESTAMPTZ
   last_error TEXT
   sync_interval_minutes INT DEFAULT 15
+  sync_direction TEXT DEFAULT 'shop_to_fulfiller' -- 'shop_to_fulfiller' | 'fulfiller_to_shop'
+  -- Health tracking (updated after every sync job)
+  health_status TEXT NOT NULL DEFAULT 'unknown' -- 'healthy' | 'degraded' | 'failing' | 'paused' | 'unknown'
+  last_successful_sync_at TIMESTAMPTZ
+  last_error_at TIMESTAMPTZ
+  consecutive_failures INT NOT NULL DEFAULT 0
+  -- Marketplace / enablement
+  is_enabled BOOLEAN NOT NULL DEFAULT true   -- false = installed but disabled
+  marketplace_key TEXT                        -- set when installed from the marketplace catalog
+  logo_url TEXT
+  category TEXT                               -- 'shop' | 'erp' | 'warehouse' | 'fulfiller'
   created_at TIMESTAMPTZ
   updated_at TIMESTAMPTZ
   deleted_at TIMESTAMPTZ
@@ -598,6 +612,23 @@ notification_deliveries
   created_at TIMESTAMPTZ
 ```
 
+### Tables defined in other sections
+
+Several Phase-4 tables ship in `apps/api/src/db/schema.prisma` but are documented
+in their feature section instead of being duplicated here. The table is the
+authoritative pointer:
+
+| Table | Documented in |
+|-------|---------------|
+| `external_references` | §15 Product Identity & Cross-System Mapping |
+| `integration_attribute_definitions`, `integration_attribute_values` | §15 |
+| `csv_mapping_templates` | §17 CSV Integration & Mapping |
+| `integration_credentials` | §17 |
+| `integration_schedules` | §17 |
+| `notification_templates` | §14 Internationalisation |
+| `incidents` | §22.2 Incidents |
+| `partners`, `partner_users` | §19 Partner & Reseller Program |
+
 ---
 
 ## 6. API Design
@@ -638,10 +669,21 @@ GET    /locations
 POST   /locations
 PATCH  /locations/:id
 DELETE /locations/:id
+GET    /storage-locations
+POST   /locations/:id/storage-locations
+PATCH  /locations/:id/storage-locations/:sid
+DELETE /locations/:id/storage-locations/:sid
 GET    /stock
 GET    /stock/:variantId
 PUT    /stock
 GET    /stock/movements
+GET    /stock-types
+POST   /stock-types
+PATCH  /stock-types/:id
+DELETE /stock-types/:id
+POST   /products/:id/variants
+PATCH  /products/:id/variants/:vid
+DELETE /products/:id/variants/:vid
 GET    /integrations
 POST   /integrations
 GET    /integrations/:id
@@ -649,6 +691,20 @@ PATCH  /integrations/:id
 DELETE /integrations/:id
 POST   /integrations/:id/sync
 GET    /integrations/:id/status
+# Marketplace
+GET    /integrations/marketplace/catalog
+POST   /integrations/marketplace/:key/install
+DELETE /integrations/marketplace/:key/uninstall
+# CSV import + mapping templates
+POST   /integrations/csv/init
+GET    /csv-mappings
+POST   /csv-mappings
+GET    /csv-mappings/:id
+PATCH  /csv-mappings/:id
+DELETE /csv-mappings/:id
+POST   /csv-mappings/preview
+POST   /integrations/csv/import/products
+POST   /integrations/csv/import/stock
 GET    /rules
 POST   /rules
 GET    /rules/:id
@@ -713,6 +769,26 @@ interface AbstractConnector {
 | BigBlue | Fulfiller/Source | P2 | REST |
 | Magento | Shop/Source | P3 | REST |
 | ShipBob | Fulfiller/Source | P3 | REST |
+
+### Marketplace + Identity-Lock
+
+The Marketplace UI at `/integrations/marketplace` is the user-facing surface for
+installing, enabling and disabling integrations. Cards on the page reflect the
+tenant's installed integrations; the App-Store modal (categories `shop`, `erp`,
+`wms`, `fulfiller`) lists the catalog and triggers `POST
+/integrations/marketplace/:key/install`. The install dialog itself is a generic
+shell — it collects a name and shows a placeholder settings block; per-integration
+OAuth/API-key forms are intentionally future work (DECISIONS 2026-04-21:
+"Marketplace install dialog is a generic shell").
+
+Product SKU and Barcode are identity-locked once a product is bound to an
+automated source. The lock fires when either (a) `metadata.source ∈ LOCKED_SOURCES
+= {sftp, ftp}`, or (b) any row exists in `external_references` with
+`resource_type = 'product_variant'` for that variant. PATCH requests that try to
+mutate SKU or Barcode under the lock return `409 PRODUCT_IDENTITY_LOCKED`.
+CSV-imported products (`metadata.source = 'csv'`) are explicitly NOT locked
+because CSV is a user-mediated import where corrections must remain possible
+(DECISIONS 2026-04-21: "Product identity-lock").
 
 ### Sync Strategy
 
@@ -967,6 +1043,12 @@ NEXT_PUBLIC_SENTRY_DSN=https://...
 **Backend:** Hetzner via Kamal — zero-downtime container swap, health check on `GET /health`.
 
 **CI/CD:** Type check → lint → unit tests → build → deploy staging → E2E tests → deploy production (manual approval).
+
+**Database migrations + seeds:** SQL files in `apps/api/src/db/sql/` (RLS
+policies, idempotent seeds, partial unique indexes, check constraints) are
+applied automatically post-deploy by `apps/api/src/db/run-manual-migrations.ts`,
+executed by GitHub Actions. No manual Supabase SQL editor steps. See
+DECISIONS 2026-04-14 ("Manual SQL via auto-runner") for rationale.
 
 ---
 
@@ -1944,5 +2026,5 @@ PATCH  /admin/incidents/:id        Incident verwalten
 
 ---
 
-*Last updated: 2026-04-18*
-*Version: 0.6.0 — Phase 3B/3C abgeschlossen (Frontend, i18n) + Frontend-Verbesserungen (Sidebar, Responsive, Sortierung, Bulk-Delete) + Phase 4: CSV-Import Backend + Frontend (Mapping Templates, Produkt-Import, OOM-Fix, Upload-UI, Mapping-Editor)*
+*Last updated: 2026-04-29*
+*Version: 0.7.0 — Phase 4: CSV import (products + stock, encoding support), Marketplace + App Store, product identity-lock, automated post-deploy migrations*

@@ -2,7 +2,7 @@
 
 > Live snapshot of where the project is. Updated automatically by Claude Code at the end of every prompt run, plus manually by Claude (Chat) after reviews. Read this first at the start of every session.
 
-**Last updated:** 2026-04-29 (Codex review of CSV stock import FIXES6 retro — HEAD `5606dd4`)
+**Last updated:** 2026-04-29 (PROJECT.md refresh to Phase 4 reality)
 **Active phase:** Phase 4 — CSV import/export
 **Live URL:** https://app.stocknify.app
 **API health:** https://api.stocknify.app/v1/health
@@ -24,6 +24,7 @@
   - **Stock-type system-key precheck:** import no longer creates duplicate tenant-scoped rows for system keys (e.g. `available`, `reserved`); see DECISIONS 2026-04-21 (precheck).
   - **Batch column on stock page** (batch number + locale-formatted expiry); expiry rendered timezone-safe via `YYYY-MM-DD` parsing to avoid off-by-one in negative UTC offsets.
 - **CSV import row error reasons sanitized (2026-04-29, commit `5606dd4`).** Both savepoint-cleanup catches (`upsertStockLevel` + stock-type precheck) now throw `AggregateError(stable message, [cleanupErr, insertErr])` instead of embedding `cleanupErr.message` directly. `result.errors[].reason` no longer leaks driver/SQL internals to API callers. Both row-loop catches now also call `request.log.error({ err, row })` so the full cause chain reaches server-side logs via pino's err serializer. Resolves the high-severity Codex finding from the FIXES6 retro review.
+- **PROJECT.md refreshed to Phase 4 reality (2026-04-29).** Section 5 `integrations` block gained marketplace + health fields (`is_enabled`, `marketplace_key`, `logo_url`, `category`, `health_status`, `last_successful_sync_at`, `last_error_at`, `consecutive_failures`, `sync_direction`); SQL paths corrected to `apps/api/src/db/sql/`. New "Tables defined in other sections" pointer table maps `external_references`/`csv_mapping_templates`/`integration_credentials`/`integration_schedules`/`notification_templates`/`incidents`/`partners` to their feature sections. Section 6 endpoint list grew CSV (`/csv-mappings*`, `/integrations/csv/*`) + Marketplace (`/integrations/marketplace/*`) clusters, plus `/storage-locations`, `/stock-types`, and `/products/:id/variants*`. Section 7 gained a Marketplace + identity-lock subsection. Section 13 documents auto-runner SQL deployment. Last-updated bumped to 2026-04-29; version → 0.7.0.
 - **Marketplace + App Store is live (2026-04-21).** Page at `/integrations/marketplace` with installed-integration cards (logo, name, category, status badge, enable/disable Switch). "Add integration" opens the App-Store modal — category sidebar (all / shop / erp / wms / fulfiller), search, install button. `MarketplaceInstallDialog` is a generic install shell with a name input and a placeholder settings block (per-integration OAuth/API-key UI is future work). `IntegrationLogoPlaceholder` SVG fallback for entries without a logo. Hooks: `useMarketplaceCatalog`, `useInstallIntegration`, `useToggleIntegration`. New `Badge` UI primitive. **Marketplace polish shipped (commit `c37acca`):** WMS category label + fixed App-Store modal height. Identity-lock for product SKU/EAN: a `LOCKED_SOURCES = {sftp, ftp}` set + any external reference triggers a 409 `PRODUCT_IDENTITY_LOCKED` on PATCH. CSV-imported products are explicitly NOT locked.
 - Sidebar is collapsible (desktop) + mobile drawer + responsive top bar.
 - Navigation order: Produkte → Bestand → Integrationen → Regeln → Benachrichtigungen → Einstellungen.
@@ -37,13 +38,13 @@ Nothing.
 
 ## What's uncommitted
 
-User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files + `test-data/bestandsimport_test.csv`) and `WORKFLOW.md` (added "Bootstrap prompt for Claude (Chat)" section). Untracked: `test-data/`. HEAD = `5606dd4` "fix: sanitize csv import row reasons + log row failures (codex review FIXES6 retro)".
+User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files + `test-data/bestandsimport_test.csv`) and `WORKFLOW.md` (added "Bootstrap prompt for Claude (Chat)" section). Untracked: `test-data/`. HEAD after this cycle's commit = `docs(project): refresh PROJECT.md to match deployed Phase 4 reality`.
 
 ## Critical paths
 
 | File | Role |
 |------|------|
-| `PROJECT.md` | Single source of truth, architecture (static; stale, see KNOWN_TODOS) |
+| `PROJECT.md` | Single source of truth, architecture |
 | `apps/api/src/routes/csv/index.ts` | All CSV backend routes + `parseCsvStreaming` + stock-type system-key precheck |
 | `apps/api/src/lib/supabase-admin.ts` | Shared `getSupabaseAdmin()` helper |
 | `apps/api/src/routes/auth/index.ts` | Auth webhook (production-ready) |

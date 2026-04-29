@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-29 (Codex review FIXES6 retro)
+**Last updated:** 2026-04-29 (PROJECT.md refresh)
 
 ---
 
@@ -39,5 +39,4 @@
 
 ## Documentation
 
-- **`PROJECT.md` is stale** — last updated 2026-04-18, predates encoding support and stock import. Refresh in a docs cycle.
 - **No regression tests anywhere in the CSV pipeline** — recurrent across all CSV cycles. No Fastify test harness in repo. Once one exists, target: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip.
