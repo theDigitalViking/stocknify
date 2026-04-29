@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-29 (PROJECT.md refresh)
+**Last updated:** 2026-04-29 (PROJECT.md refresh — §17 schema-drift item appended)
 
 ---
 
@@ -40,3 +40,4 @@
 ## Documentation
 
 - **No regression tests anywhere in the CSV pipeline** — recurrent across all CSV cycles. No Fastify test harness in repo. Once one exists, target: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip.
+- **PROJECT.md §17 `csv_mapping_templates` schema drift** — block doesn't document `sample_data`, `is_locked`, `marketplace_key` columns that exist in `schema.prisma`. Out of size scope for the 2026-04-29 refresh; canonical reading is `schema.prisma`. Refresh next time §17 is touched. *(Surfaced 2026-04-29, RESULT_REFRESH_PROJECT_MD.md "Skipped or deferred".)*

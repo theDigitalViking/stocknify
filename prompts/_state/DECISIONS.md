@@ -4,11 +4,23 @@
 
 ---
 
+## 2026-04-29 — Push policy: Claude Code pushes `develop`; Sebastian merges to `main`
+
+**Decision:** Claude Code runs `git push` to `origin/develop` at the end of a cycle, after the Memory Bank update is committed and (if applicable) Codex review has passed. Sebastian merges `develop` → `main` manually when the accumulated state is review-ready; that merge is the production-deploy gate. Claude Code never pushes to `main` directly. Hotfix flow is unchanged (Sebastian-only, out-of-band).
+
+**Rationale:** With Codex adversarial review running before the push and the `develop` → `main` merge serving as a second human gate, Sebastian's earlier per-push manual step (DECISIONS 2026-04-15) was a redundant ceremony. The merge gate is sufficient — production deploy is still gated on a deliberate human action — and removing the per-push step lets cycles close themselves without a hand-off back to Sebastian for every commit.
+
+**Alternatives considered:** Keep manual push on `develop` for symmetry — rejected as redundant given the merge gate. Allow Claude Code to merge `develop` → `main` after passing tests — rejected; the production gate must be explicitly human.
+
+**Supersedes (in part):** DECISIONS 2026-04-15 ("Deployment ordering"). The strict ordering of *commit → push → deploy* still holds; what changes is **who** runs the push on `develop`. The earlier rationale ("manual push is the only review gate") no longer applies because Codex review and the merge step now serve that role.
+
 ## 2026-04-29 — Memory Bank workflow
 
 **Decision:** State between Claude.ai chat sessions lives in `prompts/_state/` (STATE, NEXT, DECISIONS, KNOWN_TODOS), not in chat handover summaries. One Claude.ai chat = one cycle. Claude (Chat) writes prompt files directly into the repo via Filesystem MCP. Claude Code updates the memory bank at the end of every run and flips the Notion status to ✅ Ausgeführt. Sebastian only pushes manually.
 
 **Rationale:** Long Claude.ai chats degrade context and tool reliability. Moving state into the repo also makes it visible to git, diffable, and resilient to chat resets.
+
+**Note (2026-04-29 same day):** The "Sebastian only pushes manually" clause is superseded by the push-policy decision above. Memory Bank workflow itself is unchanged.
 
 ## 2026-04-21 — Product identity-lock: source-aware + LOCKED_SOURCES set
 
@@ -85,6 +97,8 @@
 **Decision:** The strict order is (1) Claude Code commits → (2) Sebastian manually runs `git push` → (3) CI/CD auto-deploys. Claude Code never runs `git push`.
 
 **Rationale:** Manual push is the only review gate that catches mistakes after Codex review. Removing it removes the gate.
+
+**Superseded in part by 2026-04-29 push-policy decision** (above): on `develop`, Claude Code now runs `git push` itself after Codex review; the production gate moved to Sebastian's manual `develop` → `main` merge. Order *commit → push → deploy* still holds.
 
 ## 2026-04-14 — Manual SQL via auto-runner
 
