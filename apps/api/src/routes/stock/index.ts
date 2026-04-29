@@ -85,6 +85,7 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
       // stockType but keeps the other three.
       type StockRow = {
         variantId: string
+        productId: string
         sku: string
         productName: string
         locationId: string
@@ -111,6 +112,7 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         if (!grouped.has(key)) {
           grouped.set(key, {
             variantId: level.variantId,
+            productId: level.variant.productId,
             sku: level.variant.sku,
             productName: level.variant.product.name,
             locationId: level.locationId,
