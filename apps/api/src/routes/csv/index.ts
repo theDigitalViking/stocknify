@@ -1368,19 +1368,19 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
               select: { id: true, batchTracking: true },
             })
             if (product?.batchTracking) {
+              // Validate expiryDate up front so the row error fires
+              // consistently across dry-run, real-import, and existing-batch
+              // paths. Empty / undefined rawExpiry still resolves silently —
+              // that's the documented "no expiry provided" path.
+              const rawExpiry = extracted.expiryDate?.trim()
+              const parsedExpiry = rawExpiry ? new Date(rawExpiry) : null
+              if (rawExpiry && (!parsedExpiry || isNaN(parsedExpiry.getTime()))) {
+                throw new InvalidDateError({ field: 'expiryDate', value: rawExpiry })
+              }
               let batch = await request.db.batch.findFirst({
                 where: { tenantId: request.tenantId, productId: product.id, batchNumber },
               })
               if (!batch && !dryRun) {
-                const rawExpiry = extracted.expiryDate?.trim()
-                const parsedExpiry = rawExpiry ? new Date(rawExpiry) : null
-                if (rawExpiry && (!parsedExpiry || isNaN(parsedExpiry.getTime()))) {
-                  // Invalid date for a batched product is now an explicit row
-                  // error instead of silent null. Empty / undefined rawExpiry
-                  // still resolves silently — that's the documented "no
-                  // expiry provided" path.
-                  throw new InvalidDateError({ field: 'expiryDate', value: rawExpiry })
-                }
                 batch = await request.db.batch.create({
                   data: {
                     tenantId: request.tenantId,
