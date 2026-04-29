@@ -2,7 +2,7 @@
 
 > Live snapshot of where the project is. Updated automatically by Claude Code at the end of every prompt run, plus manually by Claude (Chat) after reviews. Read this first at the start of every session.
 
-**Last updated:** 2026-04-30 (Stock-overview navigation polish — SKU link + Quick-View sheet)
+**Last updated:** 2026-04-30 (CSV row-error sanitization broadened — custom error classes + Prisma code mapping)
 **Active phase:** Phase 4 — CSV import/export
 **Live URL:** https://app.stocknify.app
 **API health:** https://api.stocknify.app/v1/health
@@ -27,6 +27,7 @@
 - **PROJECT.md refreshed to Phase 4 reality (2026-04-29).** Section 5 `integrations` block gained marketplace + health fields (`is_enabled`, `marketplace_key`, `logo_url`, `category`, `health_status`, `last_successful_sync_at`, `last_error_at`, `consecutive_failures`, `sync_direction`); SQL paths corrected to `apps/api/src/db/sql/`. New "Tables defined in other sections" pointer table maps `external_references`/`csv_mapping_templates`/`integration_credentials`/`integration_schedules`/`notification_templates`/`incidents`/`partners` to their feature sections. Section 6 endpoint list grew CSV (`/csv-mappings*`, `/integrations/csv/*`) + Marketplace (`/integrations/marketplace/*`) clusters, plus `/storage-locations`, `/stock-types`, and `/products/:id/variants*`. Section 7 gained a Marketplace + identity-lock subsection. Section 13 documents auto-runner SQL deployment. Last-updated bumped to 2026-04-29; version → 0.7.0.
 - **Marketplace polish 2 (2026-04-29).** Install dialog name is now persisted: `POST /integrations/marketplace/:key/install` accepts an optional `{ name }` body (Zod-validated), resolves to `parsed.data?.name?.trim() || entry.name`, and stores it on `Integration.name`. Marketplace cards expose a `MoreVertical` dropdown → confirm-dialog → `useUninstallIntegration` calling `DELETE /integrations/marketplace/:key/uninstall`. `useToggleIntegration` now passes an `onError` callback that shows a destructive toast with `t('toggleFailed')`; success path stays silent. All three logo render sites (card, install dialog, app-store modal — via a new inline `CatalogLogo` component) fall back to `IntegrationLogoPlaceholder` on `<img>` `onError` instead of vanishing. New i18n keys (`actions`, `uninstall*`, `toggleFailed`) shipped in en + de. PATCH name-immutability for marketplace integrations stays — rename-after-install is a separate cycle. See DECISIONS 2026-04-29 (Marketplace install name is now persisted).
 - **Stock-overview navigation polish (2026-04-30).** SKU is now a link to the product detail page; an Eye-Button next to the row dropdown opens a right-side Quick-View sheet (product meta header — SKU, Barcode, Einheit, batch-tracking — plus the existing `ProductStockTable` and a "Zum Produkt" footer link). `GET /stock` response now includes `productId` (Prisma include already loaded `variant.product`). New shadcn `Sheet` primitive at `apps/web/src/components/ui/sheet.tsx` (Radix Dialog under the hood with `cva` slide variants) and a new `StockQuickViewSheet` component. New i18n keys under `stock.quickView` (en + de).
+- **CSV row-error sanitization broadened (2026-04-30).** New `apps/api/src/lib/csv-errors.ts` with `VariantNotFoundError`, `InvalidNumberError`, `InvalidDateError`, `StockLevelInvariantError` classes and a `sanitizeRowError` helper. Both per-row catches in `csv/index.ts` now route through the sanitizer; `result.errors[].reason` is whitelisted to actionable strings (variant not found, invalid number, invalid date, P2002 concurrent write, P2000 length, P2025 missing record) or the generic `'Data integrity violation — see server logs'` fallback. Invalid `expiryDate` for batched products is now an explicit row error instead of silent null. UUID-leaking invariant message in `upsertStockLevel` is gone — IDs travel only on the `StockLevelInvariantError` instance, captured server-side via pino's err serializer. The legacy `extractErrorMessage` helper had zero remaining callers and was removed. Closes Codex's broad-scope follow-up to commit `5606dd4`.
 - **Product detail page already renders `<ProductStockTable productId={id} />` (corrective entry).** This was in place from an earlier cycle; STATE.md previously didn't reflect it. Confirmed during the 2026-04-30 stock-overview polish pre-flight.
 - **Marketplace + App Store is live (2026-04-21).** Page at `/integrations/marketplace` with installed-integration cards (logo, name, category, status badge, enable/disable Switch). "Add integration" opens the App-Store modal — category sidebar (all / shop / erp / wms / fulfiller), search, install button. `MarketplaceInstallDialog` is a generic install shell with a name input and a placeholder settings block (per-integration OAuth/API-key UI is future work). `IntegrationLogoPlaceholder` SVG fallback for entries without a logo. Hooks: `useMarketplaceCatalog`, `useInstallIntegration`, `useToggleIntegration`. New `Badge` UI primitive. **Marketplace polish shipped (commit `c37acca`):** WMS category label + fixed App-Store modal height. Identity-lock for product SKU/EAN: a `LOCKED_SOURCES = {sftp, ftp}` set + any external reference triggers a 409 `PRODUCT_IDENTITY_LOCKED` on PATCH. CSV-imported products are explicitly NOT locked.
 - Sidebar is collapsible (desktop) + mobile drawer + responsive top bar.
@@ -41,14 +42,15 @@ Nothing.
 
 ## What's uncommitted
 
-User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = stock-overview navigation polish (backend `GET /stock` productId, frontend SKU link + Eye-Button + Sheet primitive + Quick-View sheet) + memory bank chore.
+User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = CSV row-error sanitization (new `lib/csv-errors.ts` + `csv/index.ts` wiring) + memory bank chore.
 
 ## Critical paths
 
 | File | Role |
 |------|------|
 | `PROJECT.md` | Single source of truth, architecture |
-| `apps/api/src/routes/csv/index.ts` | All CSV backend routes + `parseCsvStreaming` + stock-type system-key precheck |
+| `apps/api/src/routes/csv/index.ts` | All CSV backend routes + `parseCsvStreaming` + stock-type system-key precheck + sanitized row errors |
+| `apps/api/src/lib/csv-errors.ts` | Custom row-error classes + `sanitizeRowError` whitelist for CSV imports |
 | `apps/api/src/lib/supabase-admin.ts` | Shared `getSupabaseAdmin()` helper |
 | `apps/api/src/routes/auth/index.ts` | Auth webhook (production-ready) |
 | `apps/api/src/db/schema.prisma` | Schema v4 |
