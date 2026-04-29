@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-29 (PROJECT.md refresh — §17 schema-drift item appended)
+**Last updated:** 2026-04-29 (Marketplace polish 2 — 4 frontend items resolved, rename-after-install added)
 
 ---
 
@@ -28,11 +28,8 @@
 - **`?confirmed=true`** URL parameter — not stripped after refresh.
 - **Stock page** — no bulk-select / bulk-delete yet.
 - **CSV mapping editor delimiter detection** — does not re-run after user override; hint stays after override.
-- **Marketplace install name is cosmetic** — `MarketplaceInstallDialog` collects a name but the backend's install endpoint doesn't accept it. Typed name only appears in the success toast. Backend follow-up needed to persist per-tenant labels (probably on `Integration.name`).
 - **Marketplace settings block is a placeholder** — per-integration OAuth / API-key form is future work, scoped out of the install-dialog shell.
-- **No marketplace uninstall UI** — backend has `DELETE /integrations/marketplace/:key/uninstall` but no UI hook calls it. Toggle only enables/disables.
-- **Marketplace toggle has no failure feedback** — `useToggleIntegration` invalidates on success but failure is silent (no toast, no rollback).
-- **`<img>` `onError` on the marketplace card** falls back to invisible square instead of `IntegrationLogoPlaceholder`. Small follow-up.
+- **Marketplace integration rename after install** — backend PATCH still rejects `name` for marketplace integrations (the "name and config are immutable on marketplace integrations" 400). Decide whether to lift the constraint for marketplace rows or build a dedicated rename endpoint. Tracked in DECISIONS 2026-04-29 (install-name persistence).
 - **`LOCKED_SOURCES` duplicated** in two frontend files + backend (`apps/api/src/routes/products/index.ts`). Cross-referenced via comments. If a third automated source is added (e.g. EDI), all three sites must change. Promote to `packages/shared/constants/` if list grows.
 - **`metadata.source` is mutable via PATCH** — the identity-lock guard reads `metadata.source`, but the same PATCH can rewrite `metadata` itself. A determined caller can flip `metadata.source = 'manual'` and then mutate SKU. Decide whether `metadata.source` should be immutable or guarded.
 - **List-view identity-lock is incomplete** — list endpoint doesn't return `hasExternalReferences`, so the dialog only locks on source-based criteria from the list page. Backend still 409s on save; UX gap.

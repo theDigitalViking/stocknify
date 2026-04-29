@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-04-29 — Marketplace install name is now persisted
+
+**Decision:** The name field on `MarketplaceInstallDialog` is no longer cosmetic. The frontend sends `{ name }` in the install request body, and the backend persists `parsed.data?.name?.trim() || entry.name` to `Integration.name`. Empty string, whitespace-only, and missing body all fall through to the catalog default. Renaming after install is still blocked by the existing PATCH constraint on marketplace integrations — that's a separate cycle.
+
+**Rationale:** Multi-instance integrations (two Shopify stores, two Hive warehouses) need distinguishable names from day one. The cosmetic-name compromise from 2026-04-21 was acceptable when the marketplace shell was new and per-tenant install state was thin; with `ALREADY_INSTALLED` 409 currently blocking multiple installs of the same `marketplaceKey`, the install-time name still gives operators a slot to label what the integration is for and is the cheapest path to multi-instance once the unique constraint relaxes. No schema change.
+
+**Supersedes (in part):** DECISIONS 2026-04-21 ("Marketplace install dialog is a generic shell") — the cosmetic-name clause. The settings-block-is-a-placeholder clause from that entry stands.
+
 ## 2026-04-29 — Push policy: Claude Code pushes `develop`; Sebastian merges to `main`
 
 **Decision:** Claude Code runs `git push` to `origin/develop` at the end of a cycle, after the Memory Bank update is committed and (if applicable) Codex review has passed. Sebastian merges `develop` → `main` manually when the accumulated state is review-ready; that merge is the production-deploy gate. Claude Code never pushes to `main` directly. Hotfix flow is unchanged (Sebastian-only, out-of-band).
