@@ -16,7 +16,9 @@ A **cycle** is one focused unit of change — typically a single feature, fix, o
 
 At the start of a new Claude.ai chat, paste this single sentence:
 
-> Stocknify-Cycle. Lies `WORKFLOW.md`, `prompts/_state/STATE.md` und `prompts/_state/NEXT.md` via Filesystem MCP, dann reden wir über den nächsten Cycle.
+```
+Stocknify-Cycle. Lies `WORKFLOW.md`, `prompts/_state/STATE.md` und `prompts/_state/NEXT.md` via Filesystem MCP, dann reden wir über den nächsten Cycle.
+```
 
 Claude (Chat) reads the memory bank itself — no copy-paste of file contents needed. Sebastian only sends the trigger; everything else is automatic. The trigger is German because conversation with Sebastian is German; file content stays English.
 
@@ -26,18 +28,22 @@ Claude (Chat) reads the memory bank itself — no copy-paste of file contents ne
 
 At the start of every Claude Code session, paste this prompt with `<NAME>` replaced by the current prompt's filename (without the `.md` extension and without the `PROMPT_` prefix is fine — full path also works):
 
-> You're running a Stocknify cycle. Before doing anything else:
->
-> 0. **Branch check.** Verify you're on `develop`: `git rev-parse --abbrev-ref HEAD`. If you're on `main` or another branch, run `git checkout develop` (or `git checkout -b develop` if it doesn't exist locally yet — but it should). All cycle commits land on `develop`. Never commit or push to `main`.
-> 1. Read `WORKFLOW.md` (this file)
-> 2. Read `prompts/_state/STATE.md`
-> 3. Read `prompts/_state/NEXT.md`
-> 4. Read `prompts/_state/DECISIONS.md`
-> 5. Read `prompts/_state/KNOWN_TODOS.md`
->
-> Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed and (if applicable) Codex review has passed, run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step.
+```
+You're running a Stocknify cycle. Before doing anything else:
+
+0. Branch check. Verify you're on `develop`: `git rev-parse --abbrev-ref HEAD`. If you're on `main` or another branch, run `git checkout develop` (or `git checkout -b develop` if it doesn't exist locally yet — but it should). All cycle commits land on `develop`. Never commit or push to `main`.
+1. Read `WORKFLOW.md` (this file)
+2. Read `prompts/_state/STATE.md`
+3. Read `prompts/_state/NEXT.md`
+4. Read `prompts/_state/DECISIONS.md`
+5. Read `prompts/_state/KNOWN_TODOS.md`
+
+Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed and (if applicable) Codex review has passed, run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step.
+```
 
 Claude (Chat) hands this prompt over with the filename pre-filled at the start of every cycle, so Sebastian never has to remember it. The bootstrap stays the same for frontend, backend, or any other type of cycle — file-specific context lives inside the referenced PROMPT file, not in the bootstrap.
+
+**Formatting rule for Claude (Chat):** when handing copy-paste content to Sebastian in chat — bootstrap prompts, shell commands, snippets, anything he needs to extract verbatim — always render it as a fenced code block (```` ``` ````) or inline code, never as a Markdown blockquote (`>`). Blockquotes are painful to copy on both mobile and desktop because the leading marker and indentation get selected with the text. This applies to all Stocknify chat sessions.
 
 ---
 
