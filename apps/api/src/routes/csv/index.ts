@@ -7,6 +7,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import iconv from 'iconv-lite'
 import { z } from 'zod'
 
+import {
+  InvalidDateError,
+  StockLevelInvariantError,
+  sanitizeRowError,
+} from '../../lib/csv-errors.js'
 import { cleanupOrphanedStockTypeDefinitions } from '../../lib/stock-utils.js'
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js'
 import { authMiddleware } from '../../middleware/auth.js'
@@ -417,17 +422,6 @@ function buildExtractor(
 
 function isProductImportField(value: string): value is ProductImportField {
   return PRODUCT_IMPORT_FIELDS.some((f) => f.key === value)
-}
-
-// Flatten a thrown value into a user-facing message, including one level of
-// `cause` when present. The row-level error path records only this string in
-// the import result, so preserving the cause chain here is the difference
-// between an actionable incident and a generic "something went wrong".
-function extractErrorMessage(err: unknown): string {
-  if (!(err instanceof Error)) return String(err)
-  return err.cause instanceof Error
-    ? `${err.message} (caused by: ${err.cause.message})`
-    : err.message
 }
 
 // Unique-violation detection across both ORM and raw SQL paths.
@@ -1027,7 +1021,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           result[outcome] += 1
         } catch (err) {
           request.log.error({ err, row: rowNumber }, 'csv import: row failed')
-          const reason = extractErrorMessage(err)
+          const reason = sanitizeRowError(err)
           const rowRef = rows[i]
           const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
           result.errors.push({
@@ -1246,7 +1240,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
             result.errors.push({
               row: rowNumber,
               sku: variant.sku,
-              reason: `Invalid quantity: "${quantityRaw}"`,
+              reason: `Invalid number for field "quantity": "${quantityRaw}"`,
             })
             continue
           }
@@ -1380,13 +1374,19 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
               if (!batch && !dryRun) {
                 const rawExpiry = extracted.expiryDate?.trim()
                 const parsedExpiry = rawExpiry ? new Date(rawExpiry) : null
+                if (rawExpiry && (!parsedExpiry || isNaN(parsedExpiry.getTime()))) {
+                  // Invalid date for a batched product is now an explicit row
+                  // error instead of silent null. Empty / undefined rawExpiry
+                  // still resolves silently — that's the documented "no
+                  // expiry provided" path.
+                  throw new InvalidDateError({ field: 'expiryDate', value: rawExpiry })
+                }
                 batch = await request.db.batch.create({
                   data: {
                     tenantId: request.tenantId,
                     productId: product.id,
                     batchNumber,
-                    expiryDate:
-                      parsedExpiry && !isNaN(parsedExpiry.getTime()) ? parsedExpiry : null,
+                    expiryDate: parsedExpiry,
                     metadata: {},
                   },
                 })
@@ -1428,7 +1428,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           result[outcome] += 1
         } catch (err) {
           request.log.error({ err, row: rowNumber }, 'csv stock import: row failed')
-          const reason = extractErrorMessage(err)
+          const reason = sanitizeRowError(err)
           const rowRef = rows[i]
           const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
           result.errors.push({ row: rowNumber, ...(sku ? { sku } : {}), reason })
@@ -1775,12 +1775,14 @@ async function upsertStockLevel(
     const existing = existingRows[0]
     if (!existing) {
       // Invariant violation: a P2002 was just raised for this tuple, so the
-      // row must exist. Throwing surfaces this through the per-row error
-      // path rather than silently miscounting as 'skipped'.
-      throw new Error(
-        `Stock level invariant violated: P2002 was thrown but row not found for ` +
-          `variant=${row.variantId} location=${row.locationId} stockType=${row.stockType}`,
-      )
+      // row must exist. The IDs ride along on the error object (pino's err
+      // serializer captures readonly props) but the public message is the
+      // safe fallback string.
+      throw new StockLevelInvariantError({
+        variantId: row.variantId,
+        locationId: row.locationId,
+        stockType: row.stockType,
+      })
     }
 
     const currentQty = new Prisma.Decimal(existing.quantity)
