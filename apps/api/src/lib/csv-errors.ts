@@ -77,7 +77,12 @@ export function sanitizeRowError(err: unknown): string {
     return err.message
   }
   if (err instanceof AggregateError) {
-    return err.message
+    // Don't pass through err.message — even though current callers (the
+    // savepoint-cleanup paths in csv/index.ts) use hardcoded safe strings,
+    // the sanitizer must enforce its own contract regardless of caller
+    // discipline. The full AggregateError (including its `errors` array)
+    // still reaches pino logs via request.log.error.
+    return 'Internal cleanup error during import — see server logs'
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') return PRISMA_CODE_MESSAGES.P2002 as string
