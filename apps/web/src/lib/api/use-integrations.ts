@@ -32,11 +32,30 @@ export function useMarketplaceCatalog(): UseQueryResult<MarketplaceCatalogEntry[
   })
 }
 
-export function useInstallIntegration(): UseMutationResult<unknown, Error, string> {
+export interface InstallIntegrationInput {
+  key: string
+  name?: string
+}
+
+export function useInstallIntegration(): UseMutationResult<unknown, Error, InstallIntegrationInput> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ key, name }: InstallIntegrationInput) =>
+      apiFetch<unknown>(`/integrations/marketplace/${key}/install`, {
+        method: 'POST',
+        body: name ? JSON.stringify({ name }) : undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
+    },
+  })
+}
+
+export function useUninstallIntegration(): UseMutationResult<unknown, Error, string> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (key: string) =>
-      apiFetch<unknown>(`/integrations/marketplace/${key}/install`, { method: 'POST' }),
+      apiFetch<unknown>(`/integrations/marketplace/${key}/uninstall`, { method: 'DELETE' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
     },

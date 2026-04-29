@@ -21,6 +21,23 @@ type Category = 'all' | 'shop' | 'erp' | 'warehouse' | 'fulfiller'
 
 const CATEGORIES: Category[] = ['all', 'shop', 'erp', 'warehouse', 'fulfiller']
 
+function CatalogLogo({ name, logoUrl }: { name: string; logoUrl: string }): JSX.Element {
+  const [failed, setFailed] = useState(false)
+  if (logoUrl && !failed) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name}
+        className="h-8 w-8 object-contain"
+        onError={() => {
+          setFailed(true)
+        }}
+      />
+    )
+  }
+  return <IntegrationLogoPlaceholder name={name} size={28} />
+}
+
 interface MarketplaceAppStoreModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -115,15 +132,7 @@ export function MarketplaceAppStoreModal({
                         className="rounded-lg border border-border p-4 flex gap-3"
                       >
                         <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-                          {integration.logoUrl ? (
-                            <img
-                              src={integration.logoUrl}
-                              alt={integration.name}
-                              className="h-8 w-8 object-contain"
-                            />
-                          ) : (
-                            <IntegrationLogoPlaceholder name={integration.name} size={28} />
-                          )}
+                          <CatalogLogo name={integration.name} logoUrl={integration.logoUrl} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground">{integration.name}</p>

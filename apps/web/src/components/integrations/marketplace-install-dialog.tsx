@@ -38,19 +38,27 @@ export function MarketplaceInstallDialog({
   const tCommon = useTranslations('common')
   const install = useInstallIntegration()
   const [name, setName] = useState('')
+  const [logoFailed, setLogoFailed] = useState(false)
 
   // Reset the name each time the dialog opens against a different
   // integration. Without this, reopening against a second entry would show
   // the first entry's typed-over name.
   useEffect(() => {
-    if (open) setName(integration?.name ?? '')
+    if (open) {
+      setName(integration?.name ?? '')
+      setLogoFailed(false)
+    }
   }, [open, integration?.key, integration?.name])
 
   async function handleInstall(): Promise<void> {
     if (!integration) return
+    const trimmed = name.trim()
     try {
-      await install.mutateAsync(integration.key)
-      toast({ title: t('installSuccess', { name: name || integration.name }) })
+      await install.mutateAsync({
+        key: integration.key,
+        name: trimmed || undefined,
+      })
+      toast({ title: t('installSuccess', { name: trimmed || integration.name }) })
       onInstalled?.()
       onOpenChange(false)
     } catch {
@@ -66,11 +74,14 @@ export function MarketplaceInstallDialog({
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
             <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {integration.logoUrl ? (
+              {integration.logoUrl && !logoFailed ? (
                 <img
                   src={integration.logoUrl}
                   alt={integration.name}
                   className="h-8 w-8 object-contain"
+                  onError={() => {
+                    setLogoFailed(true)
+                  }}
                 />
               ) : (
                 <IntegrationLogoPlaceholder name={integration.name} size={28} />
