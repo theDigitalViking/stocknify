@@ -32,11 +32,12 @@ At the start of every Claude Code session, paste this prompt with `<NAME>` repla
 You're running a Stocknify cycle. Before doing anything else:
 
 0. Branch check. Verify you're on `develop`: `git rev-parse --abbrev-ref HEAD`. If you're on `main` or another branch, run `git checkout develop` (or `git checkout -b develop` if it doesn't exist locally yet — but it should). All cycle commits land on `develop`. Never commit or push to `main`.
-1. Read `WORKFLOW.md` (this file)
-2. Read `prompts/_state/STATE.md`
-3. Read `prompts/_state/NEXT.md`
-4. Read `prompts/_state/DECISIONS.md`
-5. Read `prompts/_state/KNOWN_TODOS.md`
+1. Carry-over commit. Run `git status --porcelain`. If there are uncommitted changes in any of these whitelisted paths — `prompts/_state/`, `prompts/PROMPT_*.md`, `prompts/results/`, `WORKFLOW.md`, `PROJECT.md` — stage and commit ONLY those paths with the message `chore(memory-bank): carry over updates from prior chat session`. Do NOT touch other uncommitted paths (`.gitignore`, `test-data/`, anything outside the whitelist). If the whitelist is empty, skip this step silently. See WORKFLOW.md § Carry-over commits.
+2. Read `WORKFLOW.md` (this file)
+3. Read `prompts/_state/STATE.md`
+4. Read `prompts/_state/NEXT.md`
+5. Read `prompts/_state/DECISIONS.md`
+6. Read `prompts/_state/KNOWN_TODOS.md`
 
 Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed and (if applicable) Codex review has passed, run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step.
 ```
@@ -96,6 +97,30 @@ The production-deploy gate is Sebastian's manual `develop` → `main` merge, not
 
 ### 7. Chat close
 Chat closes. The next cycle opens a fresh chat.
+
+---
+
+## Carry-over commits
+
+Between cycles, Claude (Chat) updates memory-bank files (most often `NEXT.md`, sometimes `STATE.md` / `DECISIONS.md` / `WORKFLOW.md` / `PROJECT.md`) directly via Filesystem MCP. Claude (Chat) cannot push, so those updates land as uncommitted changes in Sebastian's working tree.
+
+To prevent these from accumulating or forcing Sebastian to commit by hand, every Claude Code cycle starts with a **carry-over commit**: a single chore-commit that picks up only the whitelisted memory-bank paths and lands them on `develop` before the cycle's actual work begins.
+
+**Whitelist (only these paths are eligible for carry-over):**
+
+- `prompts/_state/` — STATE, NEXT, DECISIONS, KNOWN_TODOS
+- `prompts/PROMPT_*.md` — new prompt files written by Claude (Chat)
+- `prompts/results/` — result files (rare for Chat, but possible)
+- `WORKFLOW.md`
+- `PROJECT.md`
+
+**Anything outside the whitelist is left alone** — that includes `.gitignore`, `test-data/`, untracked directories, code edits, anything Sebastian might have in flight. The whitelist is intentionally narrow so a forgotten WIP can never accidentally ride along.
+
+**Commit message is fixed:** `chore(memory-bank): carry over updates from prior chat session`. One commit per cycle start, regardless of how many files. If multiple cycles' worth of carry-over has accumulated (shouldn't happen, but safe-by-default), they still collapse into one commit.
+
+**If the whitelist is empty**, the step is a no-op and is skipped silently — no empty commit, no log noise.
+
+The carry-over commit pushes alongside the cycle's own commits at the end of the cycle, in the same `git push origin develop`.
 
 ---
 
