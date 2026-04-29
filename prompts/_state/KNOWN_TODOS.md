@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-29 (Marketplace polish 2 — 4 frontend items resolved, rename-after-install added)
+**Last updated:** 2026-04-29 (Marketplace polish 2 + Codex re-review deferrals)
 
 ---
 
@@ -30,6 +30,7 @@
 - **CSV mapping editor delimiter detection** — does not re-run after user override; hint stays after override.
 - **Marketplace settings block is a placeholder** — per-integration OAuth / API-key form is future work, scoped out of the install-dialog shell.
 - **Marketplace integration rename after install** — backend PATCH still rejects `name` for marketplace integrations (the "name and config are immutable on marketplace integrations" 400). Decide whether to lift the constraint for marketplace rows or build a dedicated rename endpoint. Tracked in DECISIONS 2026-04-29 (install-name persistence).
+- **Marketplace mutation toasts under masked-success transport failures** — `useInstallIntegration` / `useUninstallIntegration` / `useToggleIntegration` already invalidate `marketplace-catalog` on `onSettled` (commit `28e2827`), so cache converges. The remaining UX gap: when a transport error masks a successful server commit, the destructive failure toast still fires before the catalog refetch confirms the actual state. Codex (2026-04-29 re-review) recommends a pre/post-state-diff layer to choose toast text from the refreshed catalog. Classified as ergonomics/MVP-irrelevant per DECISIONS 2026-04-16.
 - **`LOCKED_SOURCES` duplicated** in two frontend files + backend (`apps/api/src/routes/products/index.ts`). Cross-referenced via comments. If a third automated source is added (e.g. EDI), all three sites must change. Promote to `packages/shared/constants/` if list grows.
 - **`metadata.source` is mutable via PATCH** — the identity-lock guard reads `metadata.source`, but the same PATCH can rewrite `metadata` itself. A determined caller can flip `metadata.source = 'manual'` and then mutate SKU. Decide whether `metadata.source` should be immutable or guarded.
 - **List-view identity-lock is incomplete** — list endpoint doesn't return `hasExternalReferences`, so the dialog only locks on source-based criteria from the list page. Backend still 409s on save; UX gap.
