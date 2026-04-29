@@ -23,6 +23,12 @@ const updateIntegrationSchema = z
   })
   .strict()
 
+const installBodySchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+  })
+  .strict()
+
 const keyParamSchema = z.object({ key: z.string().min(1).max(100) })
 const idParamSchema = z.object({ id: z.string().uuid() })
 
@@ -132,6 +138,18 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         .code(404)
         .send({ error: { code: 'NOT_FOUND', message: 'Marketplace integration not found' } })
     }
+    // Body is optional. When present, only `name` is accepted; whitespace-only
+    // and missing values both fall through to the catalog default.
+    const bodyRaw = request.body
+    const parsedBody = bodyRaw === undefined || bodyRaw === null
+      ? { success: true as const, data: {} as { name?: string } }
+      : installBodySchema.safeParse(bodyRaw)
+    if (!parsedBody.success) {
+      return reply
+        .code(400)
+        .send({ error: { code: 'VALIDATION_ERROR', message: parsedBody.error.message } })
+    }
+    const resolvedName = parsedBody.data.name?.trim() || entry.name
     try {
       const conflict = await request.db.integration.findFirst({
         where: {
@@ -154,7 +172,7 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         data: {
           tenantId: request.tenantId,
           type: entry.key,
-          name: entry.name,
+          name: resolvedName,
           marketplaceKey: entry.key,
           logoUrl: entry.logoUrl,
           category: entry.category,
