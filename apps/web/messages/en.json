@@ -109,6 +109,13 @@
     "clearFilters": "Clear",
     "manualAdjust": "Manual adjust",
     "viewMovements": "View movements",
+    "quickView": {
+      "openTitle": "Quick view",
+      "description": "Stock for {productName}",
+      "descriptionLoading": "Loading stock",
+      "openProduct": "Open product",
+      "errorLoadingProduct": "Could not load product."
+    },
     "columns": {
       "sku": "SKU",
       "product": "Product",

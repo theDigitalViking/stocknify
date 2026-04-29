@@ -109,6 +109,13 @@
     "clearFilters": "Zurücksetzen",
     "manualAdjust": "Manuell anpassen",
     "viewMovements": "Bewegungen anzeigen",
+    "quickView": {
+      "openTitle": "Schnellansicht",
+      "description": "Bestand für {productName}",
+      "descriptionLoading": "Bestand wird geladen",
+      "openProduct": "Zum Produkt",
+      "errorLoadingProduct": "Produkt konnte nicht geladen werden."
+    },
     "columns": {
       "sku": "SKU",
       "product": "Produkt",

@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { MoreHorizontal, Package, Upload } from 'lucide-react'
+import { Eye, MoreHorizontal, Package, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { QuantityCell } from '@/components/shared/quantity-cell'
 import type { SortDir } from '@/components/shared/sortable-header'
 import { ManualAdjustDialog } from '@/components/stock/manual-adjust-dialog'
+import { StockQuickViewSheet } from '@/components/stock/stock-quick-view-sheet'
 import { StockTypeBadge } from '@/components/stock/stock-type-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,6 +32,7 @@ import { useStockTypes } from '@/lib/api/use-stock-types'
 interface FlatStockRow {
   id: string
   variantId: string
+  productId: string
   sku: string
   productName: string
   locationId: string
@@ -56,6 +58,7 @@ export default function StockPage(): JSX.Element {
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [selectedStorageLocations, setSelectedStorageLocations] = useState<string[]>([])
   const [adjustRow, setAdjustRow] = useState<StockRow | null>(null)
+  const [quickViewProductId, setQuickViewProductId] = useState<string | null>(null)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>(null)
 
@@ -90,6 +93,7 @@ export default function StockPage(): JSX.Element {
           stockType,
         ].join(':'),
         variantId: item.variantId,
+        productId: item.productId,
         sku: item.sku,
         productName: item.productName,
         locationId: item.locationId,
@@ -186,7 +190,14 @@ export default function StockPage(): JSX.Element {
   const columns: ColumnDef<FlatStockRow>[] = [
     {
       header: t('columns.sku'),
-      accessor: (row) => <span className="font-mono text-xs">{row.sku}</span>,
+      accessor: (row) => (
+        <Link
+          href={`/products/${row.productId}`}
+          className="font-mono text-xs text-foreground hover:underline"
+        >
+          {row.sku}
+        </Link>
+      ),
       sortField: 'sku',
     },
     { header: t('columns.product'), accessor: 'productName', sortField: 'productName' },
@@ -254,32 +265,45 @@ export default function StockPage(): JSX.Element {
     {
       header: '',
       accessor: (row) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onSelect={() => {
-                const key = [
-                  row.variantId,
-                  row.locationId,
-                  row.storageLocationId ?? '-',
-                  row.batchId ?? '-',
-                ].join(':')
-                const agg = aggregatedByKey.get(key)
-                if (agg) setAdjustRow(agg)
-              }}
-            >
-              {t('manualAdjust')}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled>{t('viewMovements')}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title={t('quickView.openTitle')}
+            onClick={() => {
+              setQuickViewProductId(row.productId)
+            }}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => {
+                  const key = [
+                    row.variantId,
+                    row.locationId,
+                    row.storageLocationId ?? '-',
+                    row.batchId ?? '-',
+                  ].join(':')
+                  const agg = aggregatedByKey.get(key)
+                  if (agg) setAdjustRow(agg)
+                }}
+              >
+                {t('manualAdjust')}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>{t('viewMovements')}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       ),
-      className: 'text-right w-12',
+      className: 'text-right w-20',
     },
   ]
 
@@ -454,6 +478,13 @@ export default function StockPage(): JSX.Element {
         open={adjustRow !== null}
         onOpenChange={(open) => {
           if (!open) setAdjustRow(null)
+        }}
+      />
+
+      <StockQuickViewSheet
+        productId={quickViewProductId}
+        onOpenChange={(open) => {
+          if (!open) setQuickViewProductId(null)
         }}
       />
     </div>

@@ -11,6 +11,7 @@ import { apiFetch, toQueryString } from './client'
 
 export interface StockRow {
   variantId: string
+  productId: string
   sku: string
   productName: string
   locationId: string
