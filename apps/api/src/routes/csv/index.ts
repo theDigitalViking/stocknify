@@ -1026,6 +1026,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           })
           result[outcome] += 1
         } catch (err) {
+          request.log.error({ err, row: rowNumber }, 'csv import: row failed')
           const reason = extractErrorMessage(err)
           const rowRef = rows[i]
           const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
@@ -1304,11 +1305,13 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
                     await tx.$executeRaw`ROLLBACK TO SAVEPOINT stock_type_upsert`
                     await tx.$executeRaw`RELEASE SAVEPOINT stock_type_upsert`
                   } catch (cleanupErr) {
-                    throw new Error(
-                      `Savepoint cleanup failed: ${
-                        cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
-                      }`,
-                      { cause: insertErr },
+                    // Stable user-facing message; both errors travel in the
+                    // AggregateError's `errors` array so server-side logs
+                    // (pino err serializer) capture the full chain without
+                    // leaking driver/SQL details into result.errors[].reason.
+                    throw new AggregateError(
+                      [cleanupErr, insertErr],
+                      'Savepoint cleanup failed during stock-type upsert',
                     )
                   }
                   if (!isUniqueViolation(insertErr)) throw insertErr
@@ -1424,6 +1427,7 @@ export async function csvRoutes(app: FastifyInstance): Promise<void> {
           })
           result[outcome] += 1
         } catch (err) {
+          request.log.error({ err, row: rowNumber }, 'csv stock import: row failed')
           const reason = extractErrorMessage(err)
           const rowRef = rows[i]
           const sku = rowRef ? extractSkuFallback(headers, rowRef) : undefined
@@ -1715,14 +1719,14 @@ async function upsertStockLevel(
         await tx.$executeRaw`RELEASE SAVEPOINT upsert_stock_level`
       } catch (cleanupErr) {
         // cleanupErr is the primary signal — it tells ops WHAT broke during
-        // the rollback (connection loss, protocol state drift, etc.). The
-        // original insertErr is attached as `cause` so the chain still
-        // reveals WHY cleanup was attempted.
-        throw new Error(
-          `Savepoint cleanup failed: ${
-            cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
-          }`,
-          { cause: insertErr },
+        // the rollback (connection loss, protocol state drift, etc.).
+        // insertErr is preserved as a peer so the chain still reveals WHY
+        // cleanup was attempted. AggregateError keeps `.message` stable so
+        // result.errors[].reason does not leak driver/SQL details; the full
+        // chain reaches server-side logs via pino's err serializer.
+        throw new AggregateError(
+          [cleanupErr, insertErr],
+          'Savepoint cleanup failed during stock import',
         )
       }
       if (!isUniqueViolation(insertErr)) {
