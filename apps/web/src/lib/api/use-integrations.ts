@@ -45,7 +45,9 @@ export function useInstallIntegration(): UseMutationResult<unknown, Error, Insta
         method: 'POST',
         body: name ? JSON.stringify({ name }) : undefined,
       }),
-    onSuccess: () => {
+    // Invalidate on settle (success + error) so the UI converges with the
+    // server even when a transport error masks a successful commit.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
     },
   })
@@ -56,7 +58,9 @@ export function useUninstallIntegration(): UseMutationResult<unknown, Error, str
   return useMutation({
     mutationFn: (key: string) =>
       apiFetch<unknown>(`/integrations/marketplace/${key}/uninstall`, { method: 'DELETE' }),
-    onSuccess: () => {
+    // Invalidate on settle (success + error) so the UI converges with the
+    // server even when a transport error masks a successful commit.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
     },
   })
@@ -75,7 +79,9 @@ export function useToggleIntegration(): UseMutationResult<unknown, Error, Toggle
         method: 'PATCH',
         body: JSON.stringify({ isEnabled }),
       }),
-    onSuccess: () => {
+    // Invalidate on settle (success + error) so the UI converges with the
+    // server even when a transport error masks a successful commit.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
     },
   })
