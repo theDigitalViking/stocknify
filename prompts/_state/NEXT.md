@@ -2,24 +2,20 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-04-29
+**Last updated:** 2026-04-29 (post-Codex-review FIXES6-retro)
 
 ---
 
-## ⚠️ Cycle-planning needed
-
-The last cycle (`STOCK_FIXES2_REVIEW2` / batch-expiry UTC fix, commit `e86cc7b`) was 8 days ago. The previous handover summary's "next steps" are largely stale: CSV encoding, CSV stock import, marketplace polish (`c37acca`), CSV required-field rework, `batchTracking` rename, sidebar logo link, and CSV dialog focus-ring clipping have all shipped. Sebastian and Claude (Chat) should pick the next cycle from the candidates below at the start of the next session.
-
 ## 🔴 Likely-next candidates (ordered by gut-feel ROI)
 
-### A. CSV stock export (with separate export-template flow)
+### A. CSV import: broader user-facing reason sanitization (deferred from FIXES6 retro — Codex finding 1, broader scope)
+The narrow Codex finding from this cycle (`5606dd4`) sanitized only the savepoint-cleanup error path — `result.errors[].reason` for non-cleanup row errors (Prisma constraint violations, raw SQL parse errors, location/variant resolution errors that wrap a driver error) still passes raw `err.message` content from `extractErrorMessage`. To fully close the info-disclosure surface a sanitization layer is needed: classify by error shape (Prisma error code, `AggregateError`, plain `Error`) and map to a stable user-facing message; keep full chain on the server log only. Estimated >30 LOC and a design call about how granular operator-facing messages should be (e.g. "row N: barcode not found" vs "row N: data integrity violation"). Out of size budget for the retro cycle. Affected file: `apps/api/src/routes/csv/index.ts` plus likely a small `lib/error-sanitize.ts` helper.
+
+### B. CSV stock export (with separate export-template flow)
 Symmetrical to import but the dialog flow is different — no upload step. User defines which Stocknify fields to export, in which order, with which header name. Export templates need a new schema flag (or separate table) to keep them disjoint from import templates. Decision context already captured in DECISIONS 2026-04-18.
 
-### B. Refresh PROJECT.md
-Static SoT predates everything from 2026-04-21+. Phase 4 section needs the encoding + stock-import additions, the post-FIXES6 import-button/route + stock-page column work, marketplace polish, and the new system-key precheck. "Last updated" needs bumping. Cheap cycle, mostly docs.
-
-### C. Codex review of CSV stock import FIXES6 (if not yet done)
-Confirm with Sebastian whether the review was run on 04-21. If not: short cycle to run `/codex:adversarial-review --base HEAD~6 stock import` and triage. Note that 4 subsequent cycles built on FIXES6 without surfacing a regression — review priority is lower than it would have been on the day of.
+### C. Refresh PROJECT.md
+Static SoT predates everything from 2026-04-21+. Phase 4 section needs the encoding + stock-import additions, the post-FIXES6 import-button/route + stock-page column work, marketplace polish, the new system-key precheck, and the row-reason sanitization. "Last updated" needs bumping. Cheap cycle, mostly docs.
 
 ### D. Stock-overview navigation polish
 - Stock overview: SKU click → product detail page.

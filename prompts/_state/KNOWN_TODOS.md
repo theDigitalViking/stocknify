@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-29
+**Last updated:** 2026-04-29 (Codex review FIXES6 retro)
 
 ---
 
@@ -17,7 +17,7 @@
 - **CSV stock import: storage-location fallback is silent** — typo'd bin name falls back to bin-agnostic row without warning. Could mask config errors.
 - **CSV stock import: dry-run "created" mismatch for batched rows** — dry-run skips batch creation, so batched rows always look "created" in dry-run even when a real run would update.
 - **CSV stock import: `batchTracking=false` silently drops batch columns** — CSV with a batch column for a non-batched product has the value ignored without warning.
-- **CSV stock import: cause chain only one level deep** — `extractErrorMessage` unwraps `.cause` once. Deeper chains lose context in row-level `reason`.
+- **CSV stock import: cause chain only one level deep** — `extractErrorMessage` unwraps `.cause` once. Deeper chains lose context in row-level `reason`. *(2026-04-29: Codex flagged this in the FIXES6 retro. Mooted on the user-facing path by commit `5606dd4` which sanitizes `reason` regardless of depth; server-side `request.log.error({ err })` now captures the full chain via pino's err serializer. Helper itself remains shallow, kept as-is — non-blocking for current users.)*
 - **CSV imports: no partial-progress recovery** — a 10k-row import dying at row 5k leaves the first 5k written and returns 500 with no replay path. Replay/checkpoint mechanism out of scope for MVP.
 - **GET /stock in-memory grouping** — should move to DB-level pagination at scale.
 - **Product sort** — backend ignores `sortBy` / `sortDir`; frontend sorts client-side.
