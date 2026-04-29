@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-29 (Marketplace polish 2 + Codex re-review deferrals)
+**Last updated:** 2026-04-30 (Stock-overview polish + Codex deferral)
 
 ---
 
@@ -34,6 +34,7 @@
 - **`LOCKED_SOURCES` duplicated** in two frontend files + backend (`apps/api/src/routes/products/index.ts`). Cross-referenced via comments. If a third automated source is added (e.g. EDI), all three sites must change. Promote to `packages/shared/constants/` if list grows.
 - **`metadata.source` is mutable via PATCH** — the identity-lock guard reads `metadata.source`, but the same PATCH can rewrite `metadata` itself. A determined caller can flip `metadata.source = 'manual'` and then mutate SKU. Decide whether `metadata.source` should be immutable or guarded.
 - **List-view identity-lock is incomplete** — list endpoint doesn't return `hasExternalReferences`, so the dialog only locks on source-based criteria from the list page. Backend still 409s on save; UX gap.
+- **Stock list `productId` deploy-skew window** — the stock-overview SKU link and Quick-View Eye-Button hard-require `row.productId` from `GET /stock`. During a staggered Vercel/Hetzner deploy where the web ships before the API (or the API is rolled back), `productId` is `undefined`, producing `/products/undefined` 404s on SKU click and an empty Quick-View. Codex (2026-04-30) recommends a defensive `if (!row.productId)` guard that disables both affordances. Classified as deployment ergonomics per DECISIONS 2026-04-16. Self-resolves once the API redeploys; revisit if a real user hits the gap.
 
 ## Documentation
 
