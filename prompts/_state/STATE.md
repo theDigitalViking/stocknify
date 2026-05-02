@@ -44,7 +44,7 @@ Nothing.
 
 ## What's uncommitted
 
-User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = Test-Harness Foundation (Vitest config, Postgres-in-Docker, harness helpers, smoke tests, CI service container) + memory bank update.
+User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = Test-Harness Foundation + Codex hardening pass (DB-guard tightening, mixed-tenant-table reset, dotenv override) + memory bank update.
 
 ## Critical paths
 

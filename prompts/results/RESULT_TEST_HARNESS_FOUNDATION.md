@@ -78,7 +78,18 @@ Test Files  1 passed (1)
 
 ## Codex review
 
-Pending — to be run before push per the prompt requirement. Focus areas: auth-helper prod-leakage, DB safety guard URL parsing, TRUNCATE list completeness, CI service-container connectivity, dotenv ordering vs config.ts import.
+Run via `/codex:adversarial-review --base origin/develop test harness security and correctness`. Verdict: **needs-attention** with 4 findings.
+
+Classification per DECISIONS 2026-04-16:
+
+| # | Severity | Area | Classification | Action |
+|---|----------|------|----------------|--------|
+| 1 | high | CI Test step `continue-on-error: true` | Deployment ergonomics / explicit design | **Deferred** — KNOWN_TODOS + NEXT.md backlog already track the post-5-cycles flip-to-blocking. The soft-fail window is the deliberate bedding-in choice from the testing-strategy decision. |
+| 2 | high | DB safety guard validates host+port only | Data Integrity | **Fixed** in commit `22de54d` — added strict protocol allowlist (`postgres:`/`postgresql:`) and required pathname `/stocknify_test`. A forwarded prod DB on localhost:5433 can no longer pass the guard. |
+| 3 | medium | TRUNCATE misses tenant-scoped rows in `stock_type_definitions` + `notification_templates` | Correctness | **Fixed** in commit `22de54d` — added a `MIXED_TENANT_TABLES` reset that `DELETE … WHERE tenant_id IS NOT NULL` after the main truncate, preserving system defaults. |
+| 4 | medium | `dotenv.config(...)` without `override: true` | Security/Correctness | **Fixed** in commit `22de54d` — both `vitest.config.ts` and `global-setup.ts` now pass `override: true`. A real `SUPABASE_JWT_SECRET` exported in the parent shell can no longer shadow `.env.test`. |
+
+Smoke suite re-run after fixes: 2 passed in 1.23s. No second Codex round triggered — fix surface was confined to two files (`global-setup.ts`, `db.ts`) and `vitest.config.ts`, mechanical changes with the existing tests as the regression check.
 
 ## Memory Bank updates
 

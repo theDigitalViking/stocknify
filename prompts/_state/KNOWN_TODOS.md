@@ -24,7 +24,7 @@
 
 - **Worker-schema isolation** — defer until backend test count > ~50 or sequential runs exceed 60s. Single-DB sequential is the deliberate current choice (DECISIONS 2026-05-02).
 - **Frontend test infrastructure (React Testing Library)** — unchanged from existing entry; defer until backend test discipline has held for ≥3 cycles.
-- **CI test-blocking flip** — Test step is currently `continue-on-error: true`. Flip to blocking after 5 cycles where the harness has been used. Tracked in NEXT.md backlog.
+- **CI test-blocking flip** — Test step is currently `continue-on-error: true`. Flip to blocking after 5 cycles where the harness has been used. Tracked in NEXT.md backlog. *(Codex 2026-05-02 flagged this `[high]`; deferred per DECISIONS 2026-04-16 — soft-fail window is the explicit operational choice for the harness's bedding-in period, documented in DECISIONS 2026-05-02 (test-DB strategy) and NEXT.md.)*
 - **Vitest UI / `--ui` mode** — not configured. Add when a future cycle needs it.
 - **RLS-isolation tests** — Prisma in tests connects as the table owner (`test` user in Docker), which bypasses RLS by default (RLS is `ENABLE`d, not `FORCE`d on these tables). Smoke test does not exercise cross-tenant isolation. When RLS-coverage tests are needed, either add a non-owner test role or `FORCE ROW LEVEL SECURITY` on the migrated tables.
 
