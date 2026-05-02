@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stocknify-test-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: stocknify_test
+    volumes:
+      - stocknify-test-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d stocknify_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  stocknify-test-db-data:

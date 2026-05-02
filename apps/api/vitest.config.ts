@@ -1,15 +1,21 @@
+import { fileURLToPath } from 'node:url'
+
+import dotenv from 'dotenv'
 import { defineConfig } from 'vitest/config'
+
+dotenv.config({ path: fileURLToPath(new URL('./.env.test', import.meta.url)) })
 
 export default defineConfig({
   test: {
-    globals: true,
+    globals: false,
     environment: 'node',
-    include: ['src/**/*.{test,spec}.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'lcov'],
-      include: ['src/**/*.ts'],
-      exclude: ['src/db/**', 'src/index.ts'],
+    include: ['src/**/*.test.ts'],
+    pool: 'forks',
+    poolOptions: {
+      forks: { singleFork: true },
     },
+    globalSetup: ['./src/test/global-setup.ts'],
+    setupFiles: ['./src/test/setup.ts'],
+    testTimeout: 15000,
   },
 })
