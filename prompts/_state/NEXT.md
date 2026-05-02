@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-02 (Cycle A in flight; Test-Harness-Foundation cycle inserted before Cycle B per Sebastian's testing-strategy decision)
+**Last updated:** 2026-05-02 (Cycle A done in prior chat; Cycle TH — Test-Harness Foundation — is the active cycle; prompt written, awaiting Claude Code execution)
 
 ---
 
@@ -25,35 +25,20 @@ Details siehe Notiz in KNOWN_TODOS.md unter "Testing strategy".
 
 ## 🟢 Active cycle (currently in chat)
 
-### Cycle A — Marketplace install-name render fix
-- **Type:** Fix
-- **Surface:** Backend, `apps/api/src/routes/integrations/index.ts`, `GET /integrations/marketplace/catalog`
-- **Diagnosis (from Chat-side pre-flight):** The catalog listing endpoint doesn't `select` the persisted `Integration.name` from the DB and unconditionally returns the static catalog default. The install endpoint persists `resolvedName` correctly — bug is purely on the read path.
-- **Fix:** two-line edit. Add `name: true` to the `select`, change `name: entry.name` to `name: row?.name ?? entry.name` in the response mapper.
-- **Estimate:** XS, < 15 LOC. Codex skipped (no security/data-integrity surface). Tests skipped (Test-Harness-Foundation comes next, not here).
-- **Prompt:** `prompts/PROMPT_MARKETPLACE_NAME_FIX.md`
-- **Notion:** https://www.notion.so/35424fe1d88a816dab56d4bc34d2f356
+### Cycle TH — Test-Harness Foundation
+- **Type:** Infrastructure
+- **Status:** Prompt geschrieben (`prompts/PROMPT_TEST_HARNESS_FOUNDATION.md`); Test-DB-Strategie entschieden (Postgres in Docker, single DB, sequential — chat-side decision, geht im selben Cycle in DECISIONS.md). Wartet auf Claude-Code-Execution.
+- **Surface:** Backend infra. New: `apps/api/docker-compose.test.yml`, `apps/api/.env.test`, `apps/api/vitest.config.ts`, `apps/api/src/test/**`, `.github/workflows/ci.yml` (services block + test step env). Reuses `buildApp()` from `server.ts` (already test-ready).
+- **Scope locked in prompt:** Postgres-16-in-Docker auf Port 5433, single test-DB `stocknify_test`, Vitest sequential (`pool: 'forks'`, `singleFork: true`), `TRUNCATE … RESTART IDENTITY CASCADE` in `beforeEach`, real HS256 JWTs signed mit Test-Secret aus `.env.test` (no NODE_ENV bypasses in prod code), zwei Smoke-Tests (`GET /v1/health` + `GET /v1/products` mit signed JWT für frischen Tenant). CI gets services-Block + `continue-on-error: true` auf dem Test-Step (initial non-blocking).
+- **Out of scope (locked):** Worker-schema isolation (deferred — single-DB sequential reicht für <50 Tests), frontend test infra, retroaktive Coverage für bestehende Features, generic Prisma mocks, E2E/Playwright, coverage thresholds, NODE_ENV-test bypass branches in production code.
+- **Estimate:** M (4–8h).
+- **Codex review:** Yes — auth-helper + DB-safety-guard + truncate-list completeness + CI-service-container connectivity.
+- **Prompt:** `prompts/PROMPT_TEST_HARNESS_FOUNDATION.md`
+- **Notion:** https://www.notion.so/35424fe1d88a8166b93fd3f5a42d6032
 
 ---
 
 ## 🟡 Queued cycles (next chat opens these in order)
-
-### Cycle TH — Test-Harness Foundation (NEW, inserted before Cycle B)
-- **Type:** Infrastructure
-- **Why now:** Stocknify ships features faster than it tests them. Codex Review + Vercel Preview catch a lot but not runtime regressions. Cycle B introduces a deliberate behaviour-change in `upsertStockLevel` (idempotent skip removed) — a perfect first pilot test, but only if the harness exists. This cycle puts the harness in place so Cycle B can be the first cycle that ships with a test.
-- **Scope:**
-  - **Test-app factory** — `apps/api/src/test/build-app.ts` exporting `buildTestApp()` that returns a Fastify instance configured for in-process testing (no `listen`, light-touch plugin registration mirroring `server.ts`).
-  - **Test-DB strategy** — dedicated Postgres schema per Vitest worker (`vitest_w<N>`), Prisma-applied via `prisma migrate deploy` in `globalSetup`, `TRUNCATE ... RESTART IDENTITY` between tests via `beforeEach`. RLS stays enforced — tests set `app.current_tenant_id` explicitly via the same mechanism the prod tenantMiddleware uses. Decision point: dedicated test-DB on Supabase (cheap) vs. Postgres in Docker for CI vs. testcontainers. Document the choice in `DECISIONS.md`.
-  - **Auth mock** — test helper that fakes a verified Supabase JWT for a given `tenantId` + `userId`, bypasses signature verification only when `NODE_ENV=test`. Strict guard: never reachable in prod.
-  - **Smoke test** — one passing test that exercises `GET /health` plus one tenant-scoped read (e.g. `GET /products` with seeded fixture) to prove the harness is wired end-to-end.
-  - **CI integration** — extend `.github/workflows/ci.yml` (or wherever tests run) to run `pnpm -C apps/api test` after typecheck and before build. Non-blocking initially (failing test = warning, not red CI). Flip to blocking after 5 cycles in NEXT.md tracking.
-- **Out of scope (explicit):**
-  - **Frontend test infra.** Web app gets nothing in this cycle. Different concern, different ROI, future cycle.
-  - **Tests for existing features.** No retroactive coverage. Cycle B is the first feature cycle that ships with a test.
-  - **Mock factories beyond auth.** Don't build a generic Prisma mock — tests run against a real test-DB with real RLS, not a mocked one. That's the whole point.
-  - **E2E / Playwright.** Out of scope. Decision: only after onboarding-flow has been stable for ≥30 days.
-- **Estimate:** M (4–8 hours of Claude Code work). Includes the harness, the smoke test, the CI hook, and a `DECISIONS.md` entry documenting the test-DB choice.
-- **Codex review:** Yes — infra cycle, security-adjacent (auth mock), worth the round.
 
 ### Cycle B — Bestände-Tabelle Polish + Re-Upload Behavior
 - **Type:** Fix + small refactor (now also: first cycle that ships with a Backend test)
