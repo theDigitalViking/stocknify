@@ -55,6 +55,7 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         select: {
           id: true,
           marketplaceKey: true,
+          name: true,
           isEnabled: true,
           createdAt: true,
         },
@@ -67,7 +68,7 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         const row = byKey.get(entry.key)
         return {
           key: entry.key,
-          name: entry.name,
+          name: row?.name ?? entry.name,
           description: entry.description,
           category: entry.category,
           logoUrl: entry.logoUrl,
