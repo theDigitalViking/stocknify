@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-05-02 — Test-DB strategy: Postgres in Docker, single DB, sequential
+
+**Decision:** Backend tests run against a Postgres 16 container managed via `apps/api/docker-compose.test.yml` locally and via GitHub Actions service container in CI. Single test database (`stocknify_test`); Vitest runs sequentially (`pool: 'forks'`, `singleFork: true`) with `TRUNCATE … RESTART IDENTITY CASCADE` of all tenant-scoped tables in `beforeEach`. Worker-schema isolation is explicitly deferred.
+
+**Rationale:** Stocknify has zero tests today and projected growth is <15 backend tests across the next ~3 months (Cycles B/D/E plus incremental coverage). At that volume, sequential execution against a single DB is faster end-to-end than worker-schema setup + per-worker migrate, and dramatically simpler. Schema isolation becomes worth its complexity around 50+ tests; until then, single-DB sequential is the right tradeoff.
+
+**Alternatives considered:**
+- Dedicated Supabase test-DB — rejected: network-bound CI runs are slower, vendor lock-in for test infra, prod/test infrastructure entanglement.
+- Testcontainers — rejected: per-suite container startup overhead is real and not justified at current test volume.
+- Worker-schema isolation on a single Postgres instance — deferred: correct future destination if test count grows past ~50, but premature now. Tracked in KNOWN_TODOS.
+
+**Implementation note:** Test JWTs are real HS256 tokens signed with `SUPABASE_JWT_SECRET` from `.env.test` and verified through the same `@fastify/jwt` plugin production uses — no `NODE_ENV === 'test'` bypass branches exist in production code. The test secret is just a different value of the same env var.
+
 ## 2026-04-29 — Marketplace install name is now persisted
 
 **Decision:** The name field on `MarketplaceInstallDialog` is no longer cosmetic. The frontend sends `{ name }` in the install request body, and the backend persists `parsed.data?.name?.trim() || entry.name` to `Integration.name`. Empty string, whitespace-only, and missing body all fall through to the catalog default. Renaming after install is still blocked by the existing PATCH constraint on marketplace integrations — that's a separate cycle.

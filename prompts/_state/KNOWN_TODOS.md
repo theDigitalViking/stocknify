@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-02 (Testing strategy decision recorded; first concrete test backlog seeded)
+**Last updated:** 2026-05-02 (Test-Harness Foundation shipped — deferred extensions tracked below)
 
 ---
 
@@ -19,6 +19,14 @@
 - No coverage thresholds. No TDD enforcement. No retrofit-tests-for-existing-code initiatives. Adding tests for an old feature is a deliberate cycle, not a side-effect.
 - E2E (Playwright) is explicitly out of scope until the onboarding flow has been stable for ≥30 days.
 - Frontend test infra (React Testing Library) is out of scope until backend test discipline has held for ≥3 cycles post-TH. Tracked in NEXT.md backlog.
+
+**Harness status (2026-05-02):** in place. Vitest harness lives at `apps/api/src/test/`, Postgres 16 in Docker on port 5433, `pnpm -C apps/api test` runs sequentially after `pnpm -C apps/api test:up`. Smoke suite green. Deferred extensions:
+
+- **Worker-schema isolation** — defer until backend test count > ~50 or sequential runs exceed 60s. Single-DB sequential is the deliberate current choice (DECISIONS 2026-05-02).
+- **Frontend test infrastructure (React Testing Library)** — unchanged from existing entry; defer until backend test discipline has held for ≥3 cycles.
+- **CI test-blocking flip** — Test step is currently `continue-on-error: true`. Flip to blocking after 5 cycles where the harness has been used. Tracked in NEXT.md backlog.
+- **Vitest UI / `--ui` mode** — not configured. Add when a future cycle needs it.
+- **RLS-isolation tests** — Prisma in tests connects as the table owner (`test` user in Docker), which bypasses RLS by default (RLS is `ENABLE`d, not `FORCE`d on these tables). Smoke test does not exercise cross-tenant isolation. When RLS-coverage tests are needed, either add a non-owner test role or `FORCE ROW LEVEL SECURITY` on the migrated tables.
 
 **Pending test coverage** (will be picked up by feature cycles or a future dedicated cleanup):
 - **`upsertStockLevel` behaviour change** (Cycle B) — identical-quantity upsert must still append a `stock_movements` row. First test under the new harness.

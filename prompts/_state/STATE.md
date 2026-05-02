@@ -2,7 +2,7 @@
 
 > Live snapshot of where the project is. Updated automatically by Claude Code at the end of every prompt run, plus manually by Claude (Chat) after reviews. Read this first at the start of every session.
 
-**Last updated:** 2026-05-02 (Marketplace install-name render fix — catalog endpoint now returns persisted Integration.name)
+**Last updated:** 2026-05-02 (Test-Harness Foundation shipped — Backend has a Vitest harness against Postgres-in-Docker; smoke test green)
 **Active phase:** Phase 4 — CSV import/export
 **Live URL:** https://app.stocknify.app
 **API health:** https://api.stocknify.app/v1/health
@@ -11,6 +11,7 @@
 
 ## What's deployed and working
 
+- **Test-Harness Foundation shipped (2026-05-02).** Backend now has a Vitest harness against Postgres 16 in Docker (`apps/api/docker-compose.test.yml`, port 5433, named volume + healthcheck). `apps/api/.env.test` carries every var `config.ts` requires (incl. `SUPABASE_WEBHOOK_SECRET`, 64-hex `CREDENTIALS_ENCRYPTION_KEY`). `vitest.config.ts` runs sequentially (`pool: 'forks'`, `singleFork: true`) with dotenv loading `.env.test` before any test imports config. `src/test/global-setup.ts` runs `prisma migrate deploy` + the manual-migration runner; refuses to migrate against any DB other than `localhost`/`127.0.0.1:5433`. `src/test/setup.ts` truncates all 25 tenant-scoped tables in `beforeEach` (verified against `schema.prisma`). Helpers: `buildTestApp()`, `signTestJwt()` + `authedHeaders()` (real HS256 tokens — no `NODE_ENV==='test'` bypass anywhere in production code), `createTestTenant()`, shared `testDb` Prisma client. Smoke suite `src/test/smoke.test.ts` has two green tests: `GET /v1/health` (no auth, 200) + `GET /v1/products` for a fresh tenant (signed JWT, 200 + empty array). New scripts: `test:up`, `test:down`, `test:setup`. CI gets a `postgres:16-alpine` service container on 5433 and `continue-on-error: true` on the Test step (initial non-blocking window per testing-strategy decision; flip-to-blocking tracked in NEXT.md backlog after 5 cycles).
 - **Marketplace install-name render fix (2026-05-02).** `GET /integrations/marketplace/catalog` now selects `Integration.name` and falls back to the static catalog default only when no installed row exists. Persisted custom names entered at install time now appear on the marketplace cards. Two-line read-path fix in `apps/api/src/routes/integrations/index.ts` (added `name: true` to the `select`; changed `name: entry.name` to `name: row?.name ?? entry.name` in the response mapper). Closes Bug #1 of the 2026-04-30 frontend triage.
 - All Phase 3A/3B/3C work shipped: auth webhook, tenant provisioning, dashboard, products, stock, integrations skeleton, rules placeholder, notifications placeholder, settings.
 - **Phase 4 CSV product import is live** — backend (mapping templates CRUD, preview, import with EAN/SKU matching, dry-run, error report, OOM-safe streaming parser) and frontend (integrations page with two tabs, drag-and-drop upload, mapping template editor with 2-step flow + live preview, `/products/import` route).
@@ -43,7 +44,7 @@ Nothing.
 
 ## What's uncommitted
 
-User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = marketplace catalog name fix (`apps/api/src/routes/integrations/index.ts`, two lines) + memory bank update.
+User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = Test-Harness Foundation (Vitest config, Postgres-in-Docker, harness helpers, smoke tests, CI service container) + memory bank update.
 
 ## Critical paths
 
@@ -66,6 +67,12 @@ User-intentional edits sit in working tree on `.gitignore` (extended ignore list
 | `apps/web/src/components/ui/sheet.tsx` | shadcn Sheet primitive (Radix Dialog + cva slide variants) |
 | `apps/web/src/components/shared/sidebar.tsx` | Collapsible sidebar |
 | `apps/web/src/middleware.ts` | Supabase SSR auth + root → /products |
+| `apps/api/docker-compose.test.yml` | Postgres-in-Docker test DB (port 5433) |
+| `apps/api/vitest.config.ts` | Vitest harness config — sequential, .env.test, globalSetup |
+| `apps/api/src/test/build-app.ts` | `buildTestApp()` factory |
+| `apps/api/src/test/auth.ts` | Test JWT signer (`signTestJwt`, `authedHeaders`) |
+| `apps/api/src/test/db.ts` | Tenant-table truncate + `createTestTenant` helper |
+| `apps/api/src/test/smoke.test.ts` | Harness proof-of-life suite |
 
 ## Infrastructure
 

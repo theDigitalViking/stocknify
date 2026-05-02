@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-02 (Cycle A done in prior chat; Cycle TH — Test-Harness Foundation — is the active cycle; prompt written, awaiting Claude Code execution)
+**Last updated:** 2026-05-02 (Cycle TH — Test-Harness Foundation — shipped; Cycle B is next up)
 
 ---
 
@@ -25,16 +25,7 @@ Details siehe Notiz in KNOWN_TODOS.md unter "Testing strategy".
 
 ## 🟢 Active cycle (currently in chat)
 
-### Cycle TH — Test-Harness Foundation
-- **Type:** Infrastructure
-- **Status:** Prompt geschrieben (`prompts/PROMPT_TEST_HARNESS_FOUNDATION.md`); Test-DB-Strategie entschieden (Postgres in Docker, single DB, sequential — chat-side decision, geht im selben Cycle in DECISIONS.md). Wartet auf Claude-Code-Execution.
-- **Surface:** Backend infra. New: `apps/api/docker-compose.test.yml`, `apps/api/.env.test`, `apps/api/vitest.config.ts`, `apps/api/src/test/**`, `.github/workflows/ci.yml` (services block + test step env). Reuses `buildApp()` from `server.ts` (already test-ready).
-- **Scope locked in prompt:** Postgres-16-in-Docker auf Port 5433, single test-DB `stocknify_test`, Vitest sequential (`pool: 'forks'`, `singleFork: true`), `TRUNCATE … RESTART IDENTITY CASCADE` in `beforeEach`, real HS256 JWTs signed mit Test-Secret aus `.env.test` (no NODE_ENV bypasses in prod code), zwei Smoke-Tests (`GET /v1/health` + `GET /v1/products` mit signed JWT für frischen Tenant). CI gets services-Block + `continue-on-error: true` auf dem Test-Step (initial non-blocking).
-- **Out of scope (locked):** Worker-schema isolation (deferred — single-DB sequential reicht für <50 Tests), frontend test infra, retroaktive Coverage für bestehende Features, generic Prisma mocks, E2E/Playwright, coverage thresholds, NODE_ENV-test bypass branches in production code.
-- **Estimate:** M (4–8h).
-- **Codex review:** Yes — auth-helper + DB-safety-guard + truncate-list completeness + CI-service-container connectivity.
-- **Prompt:** `prompts/PROMPT_TEST_HARNESS_FOUNDATION.md`
-- **Notion:** https://www.notion.so/35424fe1d88a8166b93fd3f5a42d6032
+Nothing — next chat opens Cycle B.
 
 ---
 
