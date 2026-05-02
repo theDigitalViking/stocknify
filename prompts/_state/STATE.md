@@ -2,7 +2,7 @@
 
 > Live snapshot of where the project is. Updated automatically by Claude Code at the end of every prompt run, plus manually by Claude (Chat) after reviews. Read this first at the start of every session.
 
-**Last updated:** 2026-04-30 (CSV row-error sanitization broadened — custom error classes + Prisma code mapping)
+**Last updated:** 2026-05-02 (Marketplace install-name render fix — catalog endpoint now returns persisted Integration.name)
 **Active phase:** Phase 4 — CSV import/export
 **Live URL:** https://app.stocknify.app
 **API health:** https://api.stocknify.app/v1/health
@@ -11,6 +11,7 @@
 
 ## What's deployed and working
 
+- **Marketplace install-name render fix (2026-05-02).** `GET /integrations/marketplace/catalog` now selects `Integration.name` and falls back to the static catalog default only when no installed row exists. Persisted custom names entered at install time now appear on the marketplace cards. Two-line read-path fix in `apps/api/src/routes/integrations/index.ts` (added `name: true` to the `select`; changed `name: entry.name` to `name: row?.name ?? entry.name` in the response mapper). Closes Bug #1 of the 2026-04-30 frontend triage.
 - All Phase 3A/3B/3C work shipped: auth webhook, tenant provisioning, dashboard, products, stock, integrations skeleton, rules placeholder, notifications placeholder, settings.
 - **Phase 4 CSV product import is live** — backend (mapping templates CRUD, preview, import with EAN/SKU matching, dry-run, error report, OOM-safe streaming parser) and frontend (integrations page with two tabs, drag-and-drop upload, mapping template editor with 2-step flow + live preview, `/products/import` route).
 - **CSV encoding support is live (2026-04-18).** `iconv-lite` decodes ISO-8859-1 / Windows-1252 / UTF-8 buffers before the streaming parser. Encoding source precedence: template > request field > `'utf-8'` default. Unknown encodings silently fall back to UTF-8 (see KNOWN_TODOS).
@@ -42,7 +43,7 @@ Nothing.
 
 ## What's uncommitted
 
-User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = CSV row-error sanitization (new `lib/csv-errors.ts` + `csv/index.ts` wiring) + memory bank chore.
+User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = marketplace catalog name fix (`apps/api/src/routes/integrations/index.ts`, two lines) + memory bank update.
 
 ## Critical paths
 
