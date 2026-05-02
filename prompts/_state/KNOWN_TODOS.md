@@ -2,7 +2,30 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-04-30 (CSV row-error sanitization broadened — P2002 + cause-chain TODOs resolved)
+**Last updated:** 2026-05-02 (Testing strategy decision recorded; first concrete test backlog seeded)
+
+---
+
+## Testing strategy
+
+> Sebastian and Claude (Chat) settled on a hybrid approach (Option D) on 2026-05-02. The full discussion is in chat history; the operational shape lives here so future cycles inherit it without re-deciding.
+
+**Decision:** Stocknify ships features faster than it tests them today. Rather than retroactively building coverage or stalling Phase 4 for a test-first rebuild, the project introduces test infrastructure incrementally, anchored to actual feature cycles.
+
+**Rules going forward:**
+- A dedicated `TEST_HARNESS_FOUNDATION` cycle (Cycle TH in NEXT.md) lands the Backend Fastify test harness before the next feature cycle (Cycle B). Without that cycle, no backend tests exist and there is nothing to add tests *to*.
+- After Cycle TH, every cycle that touches Backend code ships at least one test for the touched endpoint or service surface. Frontend cycles stay test-free for now.
+- Test failures are warnings, not red CI, for the first 5 cycles after Cycle TH. After that, flip to blocking. The grace window protects against harness-bedding-in friction.
+- No coverage thresholds. No TDD enforcement. No retrofit-tests-for-existing-code initiatives. Adding tests for an old feature is a deliberate cycle, not a side-effect.
+- E2E (Playwright) is explicitly out of scope until the onboarding flow has been stable for ≥30 days.
+- Frontend test infra (React Testing Library) is out of scope until backend test discipline has held for ≥3 cycles post-TH. Tracked in NEXT.md backlog.
+
+**Pending test coverage** (will be picked up by feature cycles or a future dedicated cleanup):
+- **`upsertStockLevel` behaviour change** (Cycle B) — identical-quantity upsert must still append a `stock_movements` row. First test under the new harness.
+- **`POST /products/:id/restore`** (Cycle D) — restore happy path, restore-on-active edge case, RLS isolation across tenants.
+- **`GET /stock/movements`** (Cycle E) — filter combinations, RLS isolation, license-tier date-cap enforcement.
+- **CSV row-error sanitization** (`sanitizeRowError` in `apps/api/src/lib/csv-errors.ts`) — whitelist contract, P2002/P2010+23505/foreign-key paths, `StockLevelInvariantError` UUID-leak prevention. Already documented under "Documentation" below; promoted up here for visibility once the harness exists.
+- **CSV pipeline regressions** — recurrent gap from every CSV cycle to date. Target tests: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip.
 
 ---
 
@@ -36,6 +59,6 @@
 
 ## Documentation
 
-- **No regression tests anywhere in the CSV pipeline** — recurrent across all CSV cycles. No Fastify test harness in repo. Once one exists, target: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip.
+- **No regression tests anywhere in the CSV pipeline** — recurrent across all CSV cycles. No Fastify test harness in repo. Once one exists, target: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip. **Update 2026-05-02:** harness-foundation cycle is queued (Cycle TH in NEXT.md); CSV regression tests will land progressively in subsequent cycles per the Testing strategy section above.
 - **PROJECT.md §17 `csv_mapping_templates` schema drift** — block doesn't document `sample_data`, `is_locked`, `marketplace_key` columns that exist in `schema.prisma`. Out of size scope for the 2026-04-29 refresh; canonical reading is `schema.prisma`. Refresh next time §17 is touched. *(Surfaced 2026-04-29, RESULT_REFRESH_PROJECT_MD.md "Skipped or deferred".)*
 - **CSV row-error sanitization regression coverage** — `sanitizeRowError` (in `apps/api/src/lib/csv-errors.ts`) has a clear whitelist + generic-fallback contract but no test asserts it. When a Fastify test harness lands, target tests: P2002 → `'Row skipped — concurrent write detected'`; raw P2010+23505 → same; arbitrary `Error('Foreign key…')` → `'Data integrity violation — see server logs'` fallback; `StockLevelInvariantError` carries variant/location/stockType but `error.message` has no UUIDs. The `isWhitelistedError` predicate is exported alongside for assertion convenience.
