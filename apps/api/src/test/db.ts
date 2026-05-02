@@ -2,10 +2,8 @@ import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
 
-// Tenant-scoped tables — verified against apps/api/src/db/schema.prisma.
-// System tables (stock_type_definitions, notification_templates, partners,
-// _prisma_migrations) are seeded once in globalSetup and intentionally
-// excluded from per-test truncation.
+// Tables that are wholly tenant-scoped — verified against
+// apps/api/src/db/schema.prisma. Truncated in full between tests.
 const TENANT_TABLES = [
   'tenants',
   'users',
@@ -34,15 +32,29 @@ const TENANT_TABLES = [
   'partner_users',
 ] as const
 
+// Tables that hold both system defaults (tenant_id IS NULL — seeded once and
+// must persist) and tenant-specific overrides (tenant_id IS NOT NULL — must
+// be reset between tests). We DELETE only the tenant-scoped rows here.
+const MIXED_TENANT_TABLES = ['stock_type_definitions', 'notification_templates'] as const
+
 export const testDb = new PrismaClient()
 
 export async function truncateAllTenantTables(client: PrismaClient = testDb): Promise<void> {
-  const stmt = `TRUNCATE TABLE ${TENANT_TABLES.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`
+  const truncateStmt = `TRUNCATE TABLE ${TENANT_TABLES.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`
   try {
-    await client.$executeRawUnsafe(stmt)
+    await client.$executeRawUnsafe(truncateStmt)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    throw new Error(`[test] TRUNCATE failed: ${message}\nStatement: ${stmt}`)
+    throw new Error(`[test] TRUNCATE failed: ${message}\nStatement: ${truncateStmt}`)
+  }
+  for (const table of MIXED_TENANT_TABLES) {
+    const stmt = `DELETE FROM "${table}" WHERE tenant_id IS NOT NULL`
+    try {
+      await client.$executeRawUnsafe(stmt)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`[test] tenant-row reset failed: ${message}\nStatement: ${stmt}`)
+    }
   }
 }
 

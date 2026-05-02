@@ -3,7 +3,10 @@ import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
 import { defineConfig } from 'vitest/config'
 
-dotenv.config({ path: fileURLToPath(new URL('./.env.test', import.meta.url)) })
+dotenv.config({
+  path: fileURLToPath(new URL('./.env.test', import.meta.url)),
+  override: true,
+})
 
 export default defineConfig({
   test: {
