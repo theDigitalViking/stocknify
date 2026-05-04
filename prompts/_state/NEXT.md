@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-04 (Cycle C shipped; Cycle D is next up)
+**Last updated:** 2026-05-04 (Cycle D prompt written, ready for Claude Code)
 
 ---
 
@@ -10,27 +10,24 @@
 
 Stabilization-Track ist **abgeschlossen**, alle drei Cycles seit 2026-04-29 (Marketplace polish 2, Stock-overview navigation polish, CSV row-error sanitization broadened) sind auf `main` gemerged.
 
-Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen** (Marketplace install-name Bug war im Backend-Catalog-Endpoint). **Test-Harness Foundation ist abgeschlossen** (Vitest + Postgres-in-Docker, Smoke-Tests grün). **Cycle B ist abgeschlossen** (commit `fc5036a`, 2026-05-04 — `upsertStockLevel` extrahiert + identische-Menge schreibt jetzt eine `stock_movements`-Row mit `delta=0`, `ManualAdjustDialog` raus, Charge/MHD-Spalten gesplittet, Drei-Punkte-Menü zu einem Icon kollabiert, Bestandswert-Spalte als Platzhalter; erster Test unter dem TH-Harness). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`, 2026-05-04 — Produkt-Detail-Header reduziert auf Name/Beschreibung/Einheit/Charge-Indikator, Source-Icon raus aus dem Header, Edit/Delete als beschriftete Buttons, Source-Spalte in der Variantentabelle, Variantenwahl steuert jetzt reaktiv `ProductStockTable`. R0-Bonus: `apps/api/src/db/migrations/` aus `.gitignore` entfernt — CI-Test-Harness fand vorher keine Migrations und blieb still grün durch `continue-on-error`).
+Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen.** **Test-Harness Foundation ist abgeschlossen.** **Cycle B ist abgeschlossen** (commit `fc5036a`). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`).
 
 **Testing-Strategie (2026-05-02, hybrid Option D):** Ab Cycle B gilt: jeder Cycle mit Backend-Touch bringt mind. 1 Test für das angefasste Endpoint-Surface mit. Frontend-Tests bleiben out of scope. Details: DECISIONS.md 2026-05-02.
 
 ---
 
-## 🟢 Active cycle (currently in chat)
+## 🟢 Active cycle (prompt written, ready for Claude Code)
 
-Nothing — next chat opens Cycle D.
+### Cycle D — Produkte-Liste Polish + Soft-Delete Restore
+- **Prompt:** `prompts/PROMPT_CYCLE_D_PRODUKTE_LISTE_RESTORE.md`
+- **Notion:** https://www.notion.so/35624fe1d88a8185bfd0c8b5a273f2c8
+- **Items:** R1 restore endpoint, R2 includeDeleted query param, R3 backend tests (happy path + already-active 404 + cross-tenant + variant cascade), R4 Eye icon in list, R5 show deleted + restore UI
+- **Estimate:** S–M
+- **Effort:** `xhigh` (default — new endpoint with RLS + mandatory tests)
 
 ---
 
 ## 🟡 Queued cycles (next chat opens these in order)
-
-### Cycle D — Produkte-Liste Polish + Soft-Delete Restore
-- **Type:** Feature (Reaktivierung) + small UI
-- **Items:**
-  - **#2** Soft-deleted Produkte reaktivierbar machen. Backend: `POST /products/:id/restore` (oder PATCH mit `deletedAt: null`). Frontend: Toggle „inkl. gelöschte" oder eigener Tab + Reaktivieren-Button.
-  - **#3** Detail-Icon (Eye) in der Aktionsspalte der Produkte-Liste.
-  - **NEU: Backend test for `POST /products/:id/restore`.** New endpoint = mandatory test.
-- **Estimate:** S–M
 
 ### Cycle E — Bestands-Verlauf + Chargen-Liste
 - **Type:** Feature (größtes Stück, sauber als letztes)
@@ -46,16 +43,16 @@ Nothing — next chat opens Cycle D.
 
 - **Frontend test infra cycle** — React Testing Library setup for the Web app, prioritized to hooks (`useMarketplaceCatalog`, `useImportStock`, `useDeleteProducts`) over UI components. Decision deferred until backend test discipline has held for ≥3 cycles post-TH.
 - **CI test-blocking flip** — after 5 cycles where the harness has been used, change CI from "tests are warnings" to "test failure = red CI". Tracked here as a future tightening; current default keeps the harness from blocking shipping during its bedding-in period.
-- **Idee #16 — Import-Undo.** Kompletten CSV-Import (Produkt oder Bestand) rückgängig machen können. Verortung in der UI noch offen — vermutlich auf der Detailseite eines Imports oder im Verlauf. Implementierung non-trivial: braucht eine `import_id` oder ähnliches als FK auf `stock_movements` / `products`, plus Rollback-Endpoint, plus Affordance in der UI. Geparkt bis Sebastian die Verortung klärt.
-- **CSV stock export** — Schema-Decision (export-template flow distinct from import templates per DECISIONS 2026-04-18) + Full-Stack-Cycle. 2–3 Cycles.
+- **Idee #16 — Import-Undo.** Kompletten CSV-Import (Produkt oder Bestand) rückgängig machen können. Verortung in der UI noch offen. Geparkt bis Sebastian die Verortung klärt.
+- **CSV stock export** — Schema-Decision + Full-Stack-Cycle. 2–3 Cycles.
 - **CSV i18n migration** — Move row-error reasons from English literals to translatable error codes.
 - **CSV mapping editor: re-run delimiter detection after user override.**
 - **Server-side sorting** (currently client-side; backend ignores `sortBy` / `sortDir`).
 - **Bulk-select + bulk-delete für Stock page.**
-- **Marketplace mutation toasts under masked-success transport failures** — pre/post-state-diff layer (Codex 2026-04-29 round-2 deferral).
-- **Marketplace integration rename after install** — PATCH constraint lift oder dedicated rename endpoint.
+- **Marketplace mutation toasts under masked-success transport failures.**
+- **Marketplace integration rename after install.**
 - **Identity-lock list-view completeness** — `hasExternalReferences` auf List-Endpoint.
-- **Stock list `productId` deploy-skew defensive guard** (Codex 2026-04-30 deferral).
-- **CSV stock import: storage-location silent fallback** (KNOWN_TODOS — narrow surface, MVP-tolerable).
+- **Stock list `productId` deploy-skew defensive guard.**
+- **CSV stock import: storage-location silent fallback.**
 - **CSV stock import: dry-run "created" mismatch for batched rows.**
 - **CSV stock import: `batchTracking=false` silently drops batch columns.**
