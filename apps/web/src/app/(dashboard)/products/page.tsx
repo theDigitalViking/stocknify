@@ -2,7 +2,7 @@
 
 import { format, formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { CheckCircle2, Package, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { CheckCircle2, Eye, Package, Pencil, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -12,6 +12,7 @@ import { BulkDeleteDialog } from '@/components/products/bulk-delete-dialog'
 import { DeleteProductDialog } from '@/components/products/delete-product-dialog'
 import { EditProductDialog } from '@/components/products/edit-product-dialog'
 import { ProductSourceIcons } from '@/components/products/product-source-icons'
+import { RestoreProductDialog } from '@/components/products/restore-product-dialog'
 import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import type { SortDir } from '@/components/shared/sortable-header'
@@ -57,6 +58,7 @@ export default function ProductsPage(): JSX.Element {
   const [addOpen, setAddOpen] = useState(false)
   const [toEdit, setToEdit] = useState<ProductWithCount | null>(null)
   const [toDelete, setToDelete] = useState<ProductWithCount | null>(null)
+  const [toRestore, setToRestore] = useState<ProductWithCount | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [sortField, setSortField] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export default function ProductsPage(): JSX.Element {
     search: search || undefined,
     sortBy: sortField ?? undefined,
     sortDir: sortDir ?? undefined,
-    showDeleted: showDeleted || undefined,
+    includeDeleted: showDeleted || undefined,
   })
   const deleteMany = useDeleteProducts()
 
@@ -102,12 +104,17 @@ export default function ProductsPage(): JSX.Element {
     setSortDir(dir)
   }
 
-  const allSelected = sortedProducts.length > 0 && selectedIds.size === sortedProducts.length
+  const selectableProducts = useMemo(
+    () => sortedProducts.filter((p) => p.deletedAt === null),
+    [sortedProducts],
+  )
+  const allSelected =
+    selectableProducts.length > 0 && selectedIds.size === selectableProducts.length
   const someSelected = selectedIds.size > 0 && !allSelected
 
   function toggleAll(checked: boolean): void {
     if (checked) {
-      setSelectedIds(new Set(sortedProducts.map((p) => p.id)))
+      setSelectedIds(new Set(selectableProducts.map((p) => p.id)))
     } else {
       setSelectedIds(new Set())
     }
@@ -158,26 +165,48 @@ export default function ProductsPage(): JSX.Element {
           className="h-4 w-4 rounded border-border cursor-pointer accent-brand-600"
         />
       ),
-      accessor: (row) => (
-        <input
-          type="checkbox"
-          aria-label={tBulk('selectRow', { name: row.name })}
-          checked={selectedIds.has(row.id)}
-          onChange={(e) => {
-            toggleOne(row.id, e.target.checked)
-          }}
-          className="h-4 w-4 rounded border-border cursor-pointer accent-brand-600"
-        />
-      ),
+      accessor: (row) =>
+        row.deletedAt ? (
+          // Soft-deleted rows are excluded from bulk-delete (DELETE would 404
+          // on them) and from select-all. Render an inert spacer so the
+          // column still aligns.
+          <span aria-hidden className="inline-block h-4 w-4" />
+        ) : (
+          <input
+            type="checkbox"
+            aria-label={tBulk('selectRow', { name: row.name })}
+            checked={selectedIds.has(row.id)}
+            onChange={(e) => {
+              toggleOne(row.id, e.target.checked)
+            }}
+            className="h-4 w-4 rounded border-border cursor-pointer accent-brand-600"
+          />
+        ),
       className: 'w-10',
     },
     {
       header: t('columns.name'),
-      accessor: (row) => (
-        <Link href={`/products/${row.id}`} className="text-foreground hover:underline">
-          {row.name}
-        </Link>
-      ),
+      accessor: (row) => {
+        const isDeleted = row.deletedAt !== null
+        return (
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/products/${row.id}`}
+              className={cn(
+                'hover:underline',
+                isDeleted ? 'text-muted-foreground line-through' : 'text-foreground',
+              )}
+            >
+              {row.name}
+            </Link>
+            {isDeleted ? (
+              <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-700">
+                {t('deletedBadge')}
+              </span>
+            ) : null}
+          </div>
+        )
+      },
       sortField: 'name',
     },
     {
@@ -267,40 +296,71 @@ export default function ProductsPage(): JSX.Element {
 
   const actionsColumn: ColumnDef<ProductWithCount> = {
     header: '',
-    accessor: (row) => (
-      <div className="flex items-center justify-end gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          aria-label={`${t('form.editTitle')}: ${row.name}`}
-          onClick={() => {
-            setToEdit(row)
-          }}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-          aria-label={`${t('deleteConfirm.confirm')}: ${row.name}`}
-          onClick={() => {
-            setToDelete(row)
-          }}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    ),
-    className: 'text-right w-20',
+    accessor: (row) => {
+      const isDeleted = row.deletedAt !== null
+      return (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label={`${t('viewDetails')}: ${row.name}`}
+            asChild
+          >
+            <Link href={`/products/${row.id}`} title={t('viewDetails')}>
+              <Eye className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+          {isDeleted ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+              aria-label={`${t('restore')}: ${row.name}`}
+              title={t('restore')}
+              onClick={() => {
+                setToRestore(row)
+              }}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={`${t('form.editTitle')}: ${row.name}`}
+                onClick={() => {
+                  setToEdit(row)
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                aria-label={`${t('deleteConfirm.confirm')}: ${row.name}`}
+                onClick={() => {
+                  setToDelete(row)
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      )
+    },
+    className: 'text-right w-28',
   }
 
-  // Deleted rows: swap the trailing action column for deletedAt + deletedBy.
-  // Editing or re-deleting soft-deleted products does not make sense today, so
-  // the per-row actions are simply omitted.
+  // When the toggle is on we mix deleted rows into the list and show
+  // deletedAt/deletedBy alongside the actions. Bulk-delete checkboxes still
+  // apply to the active rows; the actions column adapts per row.
   const columns: ColumnDef<ProductWithCount>[] = showDeleted
-    ? [...baseColumns, ...deletedColumns]
+    ? [...baseColumns, ...deletedColumns, actionsColumn]
     : [...baseColumns, actionsColumn]
 
   return (
@@ -411,6 +471,14 @@ export default function ProductsPage(): JSX.Element {
         open={toDelete !== null}
         onOpenChange={(open) => {
           if (!open) setToDelete(null)
+        }}
+      />
+      <RestoreProductDialog
+        productId={toRestore?.id ?? null}
+        productName={toRestore?.name ?? null}
+        open={toRestore !== null}
+        onOpenChange={(open) => {
+          if (!open) setToRestore(null)
         }}
       />
       <BulkDeleteDialog

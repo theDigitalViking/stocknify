@@ -144,6 +144,9 @@
     "showingDeleted": "Showing deleted",
     "deletedAt": "Deleted at",
     "deletedBy": "Deleted by",
+    "deletedBadge": "Deleted",
+    "viewDetails": "View details",
+    "restore": "Restore",
     "columns": {
       "name": "Product",
       "sku": "SKU",
@@ -237,6 +240,15 @@
       "deleted": "Product deleted",
       "deleteFailed": "Delete failed",
       "deleteFailedGeneric": "Failed to delete product"
+    },
+    "restoreConfirm": {
+      "title": "Restore product?",
+      "description": "This will restore \"{name}\" and bring back its variants.",
+      "confirm": "Restore",
+      "restoring": "Restoring…",
+      "restored": "Product restored",
+      "restoreFailed": "Restore failed",
+      "restoreFailedGeneric": "Failed to restore product"
     },
     "bulk": {
       "selectAll": "Select all",

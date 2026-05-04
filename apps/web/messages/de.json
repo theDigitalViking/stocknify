@@ -144,6 +144,9 @@
     "showingDeleted": "Gelöschte werden angezeigt",
     "deletedAt": "Gelöscht am",
     "deletedBy": "Gelöscht von",
+    "deletedBadge": "Gelöscht",
+    "viewDetails": "Details anzeigen",
+    "restore": "Wiederherstellen",
     "columns": {
       "name": "Produkt",
       "sku": "SKU",
@@ -237,6 +240,15 @@
       "deleted": "Produkt gelöscht",
       "deleteFailed": "Löschen fehlgeschlagen",
       "deleteFailedGeneric": "Produkt konnte nicht gelöscht werden"
+    },
+    "restoreConfirm": {
+      "title": "Produkt wiederherstellen?",
+      "description": "Damit wird „{name}“ wiederhergestellt und die zugehörigen Varianten reaktiviert.",
+      "confirm": "Wiederherstellen",
+      "restoring": "Wird wiederhergestellt…",
+      "restored": "Produkt wiederhergestellt",
+      "restoreFailed": "Wiederherstellen fehlgeschlagen",
+      "restoreFailedGeneric": "Produkt konnte nicht wiederhergestellt werden"
     },
     "bulk": {
       "selectAll": "Alle auswählen",

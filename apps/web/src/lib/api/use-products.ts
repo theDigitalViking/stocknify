@@ -24,7 +24,7 @@ export interface DeletedByUser {
 export interface ProductWithCount extends Product {
   _count: { variants: number }
   variants: DefaultVariant[] // first variant only — `take: 1` in backend
-  // Only present when the list is fetched with showDeleted=true.
+  // Only present when the list is fetched with includeDeleted=true.
   deletedByUser?: DeletedByUser | null
 }
 
@@ -34,7 +34,7 @@ export interface ProductFilters {
   perPage?: number
   sortBy?: string
   sortDir?: 'asc' | 'desc'
-  showDeleted?: boolean
+  includeDeleted?: boolean
 }
 
 export function useProducts(filters: ProductFilters = {}): UseQueryResult<ProductWithCount[]> {
@@ -118,6 +118,18 @@ export function useDeleteProduct(): UseMutationResult<unknown, Error, string> {
     mutationFn: (id: string) => apiFetch<unknown>(`/products/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+}
+
+export function useRestoreProduct(): UseMutationResult<Product, Error, string> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<Product>(`/products/${id}/restore`, { method: 'POST' }),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: ['products'] })
+      void qc.invalidateQueries({ queryKey: ['products', id] })
     },
   })
 }

@@ -31,7 +31,10 @@ const createProductBodySchema = z.object({
 
 const listQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
-  showDeleted: z.enum(['true', 'false']).optional(),
+  // includeDeleted=true → list returns both active and soft-deleted rows so
+  // the operator can distinguish them by `deletedAt` and trigger restore.
+  // Default (omitted/false) preserves the legacy "active only" behaviour.
+  includeDeleted: z.enum(['true', 'false']).optional(),
 })
 
 // PATCH /products body. sku + barcode update the default variant, not the
@@ -50,43 +53,44 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware)
   app.addHook('preHandler', tenantMiddleware)
 
-  // GET /products — list with active variant count, optional ?search=, ?showDeleted=
+  // GET /products — list with active variant count, optional ?search=, ?includeDeleted=
   app.get('/products', async (request, reply) => {
     try {
       const query = listQuerySchema.safeParse(request.query)
       if (!query.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: query.error.message } })
       }
-      const { page, perPage, search, showDeleted: showDeletedRaw } = query.data
+      const { page, perPage, search, includeDeleted: includeDeletedRaw } = query.data
       const skip = (page - 1) * perPage
-      const showDeleted = showDeletedRaw === 'true'
+      const includeDeleted = includeDeletedRaw === 'true'
 
       const where: Prisma.ProductWhereInput = {
         tenantId: request.tenantId,
-        deletedAt: showDeleted ? { not: null } : null,
+        // includeDeleted=true returns both active and soft-deleted rows;
+        // omitting the deletedAt filter is correct here.
+        ...(includeDeleted ? {} : { deletedAt: null }),
       }
       if (search) {
         where.OR = [
           { name: { contains: search, mode: 'insensitive' } },
           {
             variants: {
-              // In deleted-view mode the product's variants are themselves
-              // soft-deleted (DELETE handler cascades deletedAt to all
-              // variants). Filtering by deletedAt: null would then hide every
-              // deleted product from SKU search. Drop the filter in that mode
-              // so SKU lookup still works on deleted rows.
+              // When deleted rows are merged in, soft-deleted variants must
+              // remain searchable so an SKU lookup still hits a deleted
+              // product (DELETE cascades deletedAt to all variants).
               some: {
                 sku: { contains: search, mode: 'insensitive' },
-                ...(showDeleted ? {} : { deletedAt: null }),
+                ...(includeDeleted ? {} : { deletedAt: null }),
               },
             },
           },
         ]
       }
 
-      // Deleted products: show all variants (including soft-deleted) so the row
-      // still has an SKU to display. Active products: only non-deleted variants.
-      const variantsInclude = showDeleted
+      // When deleted rows are included, surface ALL variants (incl. soft-
+      // deleted) so the row still has an SKU to display. Active-only mode
+      // restricts to non-deleted variants.
+      const variantsInclude = includeDeleted
         ? {
             orderBy: { createdAt: 'asc' as const },
             take: 1,
@@ -110,7 +114,7 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
               select: { variants: { where: { isActive: true, deletedAt: null } } },
             },
             variants: variantsInclude,
-            ...(showDeleted
+            ...(includeDeleted
               ? {
                   deletedByUser: {
                     select: { id: true, email: true, fullName: true },
@@ -464,6 +468,58 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
       await cleanupOrphanedStockTypeDefinitions(request.db, request.tenantId)
 
       return reply.code(204).send()
+    } catch {
+      return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
+    }
+  })
+
+  // POST /products/:id/restore — undo a prior soft-delete on the product and
+  // any variants that were cascaded down with it. Variants that had been
+  // soft-deleted independently *before* the product deletion are left alone
+  // (their deletedAt is older than the product's, so they are not part of the
+  // cascade snapshot).
+  app.post('/products/:id/restore', async (request, reply) => {
+    try {
+      const paramsResult = z.object({ id: z.string().uuid() }).safeParse(request.params)
+      if (!paramsResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid product ID format' } })
+      }
+      const { id } = paramsResult.data
+
+      // Only soft-deleted rows are restorable. A 404 is returned for both
+      // "wrong tenant" and "already active" so we never leak existence to
+      // an unauthorized caller. PRODUCT_NOT_FOUND is the unified code.
+      const existing = await request.db.product.findFirst({
+        where: { id, tenantId: request.tenantId, deletedAt: { not: null } },
+      })
+      if (!existing) {
+        return reply
+          .code(404)
+          .send({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' } })
+      }
+
+      const restoredProduct = await request.db.$transaction(async (tx) => {
+        const product = await tx.product.update({
+          where: { id },
+          data: { deletedAt: null, deletedBy: null },
+        })
+
+        // Cascade-restore: only variants whose deletedAt matches the product's
+        // deletedAt (the cascade snapshot). Variants soft-deleted earlier
+        // are intentionally left deleted.
+        await tx.productVariant.updateMany({
+          where: {
+            productId: id,
+            tenantId: request.tenantId,
+            deletedAt: existing.deletedAt,
+          },
+          data: { deletedAt: null },
+        })
+
+        return product
+      })
+
+      return reply.send({ data: restoredProduct })
     } catch {
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
     }
