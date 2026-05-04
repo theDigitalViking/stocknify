@@ -68,7 +68,7 @@ Lint: pre-existing `import/order` warnings only — no new errors.
 
 ## Codex review
 
-Pending — to be run with `/codex:adversarial-review --base origin/develop Cycle D: product restore endpoint, includeDeleted query param, cross-tenant isolation` after the memory-bank commit.
+Skipped at Sebastian's direction during the cycle. Not run.
 
 ## Memory Bank updates
 
