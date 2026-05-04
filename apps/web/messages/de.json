@@ -182,8 +182,6 @@
       "stockValue": "Bestandswert",
       "stockBatch": "Charge",
       "stockEmpty": "Kein Bestand für dieses Produkt vorhanden.",
-      "editProduct": "Produkt bearbeiten",
-      "deleteProduct": "Produkt löschen",
       "deleteConfirmTitle": "Produkt löschen?",
       "deleteConfirmDescription": "Das Produkt und alle zugehörigen Bestände werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
       "deleteConfirm": "Löschen",

@@ -6,7 +6,7 @@ import { CheckCircle2, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { EditProductDialog } from '@/components/products/edit-product-dialog'
 import { ProductSourceIcons } from '@/components/products/product-source-icons'
@@ -38,9 +38,19 @@ export default function ProductDetailPage(): JSX.Element {
 
   const [editOpen, setEditOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
 
   const { data: product, isLoading, error } = useProduct(id)
   const del = useDeleteProduct()
+
+  // Default-select the first variant once the product loads. Single-variant
+  // products effectively pin to that one variant; multi-variant products
+  // start on the first row and let the operator click another to swap.
+  const firstVariantId = product?.variants[0]?.id
+  useEffect(() => {
+    if (!firstVariantId) return
+    setSelectedVariantId((current) => current ?? firstVariantId)
+  }, [firstVariantId])
 
   async function handleDelete(): Promise<void> {
     if (!product) return
@@ -88,8 +98,8 @@ export default function ProductDetailPage(): JSX.Element {
     )
   }
 
-  const defaultVariant = product.variants[0]
   const unitLabel = tryUnitLabel(tUnits, product.unit)
+  const productSource = readSourceFromMetadata(product.metadata)
 
   return (
     <div>
@@ -113,46 +123,31 @@ export default function ProductDetailPage(): JSX.Element {
               <p className="text-sm text-muted-foreground mt-1">{product.description}</p>
             ) : null}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <ProductSourceIcons metadata={product.metadata} />
-            <button
-              type="button"
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setEditOpen(true)
               }}
-              title={tDetail('editProduct')}
-              className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <Pencil className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
+              {tCommon('edit')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
               onClick={() => {
                 setDeleteConfirmOpen(true)
               }}
-              title={tDetail('deleteProduct')}
-              className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-4 w-4" />
-            </button>
+              {tCommon('delete')}
+            </Button>
           </div>
         </div>
 
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 mt-4">
-          <MetaItem label={t('columns.sku')}>
-            {defaultVariant?.sku ? (
-              <span className="font-mono text-xs">{defaultVariant.sku}</span>
-            ) : (
-              <EmDash />
-            )}
-          </MetaItem>
-          <MetaItem label={t('columns.barcode')}>
-            {defaultVariant?.barcode ? (
-              <span className="font-mono text-xs">{defaultVariant.barcode}</span>
-            ) : (
-              <EmDash />
-            )}
-          </MetaItem>
+        <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 mt-4">
           <MetaItem label={t('columns.unit')}>
             <span className="text-sm">{unitLabel}</span>
           </MetaItem>
@@ -181,7 +176,7 @@ export default function ProductDetailPage(): JSX.Element {
       <section className="px-6 py-4">
         <h2 className="text-sm font-semibold text-foreground mb-3">{tDetail('variantsTitle')}</h2>
         <div className="rounded-md border border-border overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -194,46 +189,74 @@ export default function ProductDetailPage(): JSX.Element {
                   {t('columns.barcode')}
                 </th>
                 <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {t('columns.source')}
+                </th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {tDetail('variantStatus')}
                 </th>
               </tr>
             </thead>
             <tbody>
-              {product.variants.map((v) => (
-                <tr key={v.id} className="border-b border-border last:border-b-0">
-                  <td className="px-4 py-2">
-                    <span className="font-mono text-xs">{v.sku}</span>
-                  </td>
-                  <td className="px-4 py-2">
-                    {v.name ? (
-                      <span className="text-sm">{v.name}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {tDetail('defaultVariant')}
-                      </span>
+              {product.variants.map((v) => {
+                const isSelected = selectedVariantId === v.id
+                return (
+                  <tr
+                    key={v.id}
+                    onClick={() => {
+                      setSelectedVariantId(v.id)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedVariantId(v.id)
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-selected={isSelected}
+                    className={cn(
+                      'border-b border-border last:border-b-0 cursor-pointer transition-colors',
+                      'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                      isSelected && 'bg-brand-50/60 hover:bg-brand-50/60',
                     )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {v.barcode ? (
-                      <span className="font-mono text-xs">{v.barcode}</span>
-                    ) : (
-                      <EmDash />
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={cn(
-                        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-                        v.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-600',
+                  >
+                    <td className="px-4 py-2">
+                      <span className="font-mono text-xs">{v.sku}</span>
+                    </td>
+                    <td className="px-4 py-2">
+                      {v.name ? (
+                        <span className="text-sm">{v.name}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {tDetail('defaultVariant')}
+                        </span>
                       )}
-                    >
-                      {v.isActive ? tDetail('active') : tDetail('inactive')}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-2">
+                      {v.barcode ? (
+                        <span className="font-mono text-xs">{v.barcode}</span>
+                      ) : (
+                        <EmDash />
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <ProductSourceIcons source={productSource} />
+                    </td>
+                    <td className="px-4 py-2">
+                      <span
+                        className={cn(
+                          'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                          v.isActive
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-600',
+                        )}
+                      >
+                        {v.isActive ? tDetail('active') : tDetail('inactive')}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -243,7 +266,7 @@ export default function ProductDetailPage(): JSX.Element {
         <h2 className="text-sm font-semibold text-foreground mb-3">
           {tDetail('stockTitle')}
         </h2>
-        <ProductStockTable productId={id} />
+        <ProductStockTable productId={id} variantId={selectedVariantId ?? undefined} />
       </section>
 
       <section className="px-6 py-4">
@@ -349,6 +372,13 @@ function tryUnitLabel(t: (key: string) => string, unit: string): string {
   } catch {
     return unit
   }
+}
+
+function readSourceFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  const raw = metadata?.['source']
+  return typeof raw === 'string' ? raw : null
 }
 
 // SKU and barcode must be immutable when either (a) the product is linked to

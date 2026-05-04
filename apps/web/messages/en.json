@@ -182,8 +182,6 @@
       "stockValue": "Stock value",
       "stockBatch": "Batch",
       "stockEmpty": "No stock available for this product.",
-      "editProduct": "Edit product",
-      "deleteProduct": "Delete product",
       "deleteConfirmTitle": "Delete product?",
       "deleteConfirmDescription": "This will delete the product and all its stock levels. This action cannot be undone.",
       "deleteConfirm": "Delete",

@@ -9,6 +9,9 @@ import { useStockTypes } from '@/lib/api/use-stock-types'
 
 interface ProductStockTableProps {
   productId: string
+  // When set, narrows the readout to a single variant — used by the product
+  // detail page where the variant table acts as a selector.
+  variantId?: string
 }
 
 interface Row {
@@ -24,9 +27,12 @@ interface Row {
 // (location × bin × batch × stockType) so every dimension is visible on the
 // detail page, in contrast to the main stock page which also lists bins and
 // batches separately but spans the whole tenant.
-export function ProductStockTable({ productId }: ProductStockTableProps): JSX.Element {
+export function ProductStockTable({
+  productId,
+  variantId,
+}: ProductStockTableProps): JSX.Element {
   const t = useTranslations('products.detail')
-  const { data: stockData = [], isLoading } = useStock({ productId })
+  const { data: stockData = [], isLoading } = useStock({ productId, variantId })
   const { data: stockTypes = [] } = useStockTypes()
 
   const stockTypeByKey = new Map<string, { color: string | null; label: string }>()
