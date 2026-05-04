@@ -61,7 +61,7 @@ export function ProductStockTable({ productId }: ProductStockTableProps): JSX.El
 
   return (
     <div className="rounded-md border border-border overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm">
+      <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/30">
             <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -75,6 +75,9 @@ export function ProductStockTable({ productId }: ProductStockTableProps): JSX.El
             </th>
             <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {t('stockQuantity')}
+            </th>
+            <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {t('stockValue')}
             </th>
             <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {t('stockBatch')}
@@ -103,6 +106,9 @@ export function ProductStockTable({ productId }: ProductStockTableProps): JSX.El
                 </td>
                 <td className="px-4 py-2 text-right">
                   <QuantityCell quantity={row.quantity} />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <span className="text-xs text-muted-foreground">—</span>
                 </td>
                 <td className="px-4 py-2">
                   {row.batchNumber ? (

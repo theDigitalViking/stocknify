@@ -107,7 +107,6 @@
     "warehousesCount": "{count, plural, one {# Lager} other {# Lager}}",
     "storageLocationsCount": "{count, plural, one {# Lagerplatz} other {# Lagerplätze}}",
     "clearFilters": "Zurücksetzen",
-    "manualAdjust": "Manuell anpassen",
     "viewMovements": "Bewegungen anzeigen",
     "quickView": {
       "openTitle": "Schnellansicht",
@@ -122,6 +121,7 @@
       "warehouse": "Lager",
       "storageLocation": "Lagerplatz",
       "batch": "Charge",
+      "expiryDate": "MHD",
       "stockType": "Bestandsart",
       "quantity": "Menge",
       "lastSynced": "Zuletzt synchronisiert"
@@ -129,17 +129,6 @@
     "empty": {
       "title": "Noch kein Bestand",
       "description": "Verbinden Sie eine Integration, um Bestandsdaten zu synchronisieren."
-    },
-    "adjust": {
-      "title": "Bestand anpassen \u2014 {productName}",
-      "reason": "Grund (optional)",
-      "reasonPlaceholder": "Warum wird diese Anpassung vorgenommen?",
-      "was": "vorher {value}",
-      "submit": "Änderungen speichern",
-      "updated": "Bestand aktualisiert",
-      "updatedDescription": "{count, plural, one {# Mengenänderung gespeichert} other {# Mengenänderungen gespeichert}}",
-      "updateFailed": "Aktualisierung fehlgeschlagen",
-      "updateFailedGeneric": "Bestand konnte nicht aktualisiert werden"
     }
   },
   "products": {
@@ -190,6 +179,7 @@
       "stockStorageLocation": "Lagerplatz",
       "stockType": "Typ",
       "stockQuantity": "Menge",
+      "stockValue": "Bestandswert",
       "stockBatch": "Charge",
       "stockEmpty": "Kein Bestand für dieses Produkt vorhanden.",
       "editProduct": "Produkt bearbeiten",

@@ -107,7 +107,6 @@
     "warehousesCount": "{count, plural, one {# warehouse} other {# warehouses}}",
     "storageLocationsCount": "{count, plural, one {# storage location} other {# storage locations}}",
     "clearFilters": "Clear",
-    "manualAdjust": "Manual adjust",
     "viewMovements": "View movements",
     "quickView": {
       "openTitle": "Quick view",
@@ -122,6 +121,7 @@
       "warehouse": "Warehouse",
       "storageLocation": "Storage location",
       "batch": "Batch",
+      "expiryDate": "Best-before",
       "stockType": "Stock Type",
       "quantity": "Quantity",
       "lastSynced": "Last synced"
@@ -129,17 +129,6 @@
     "empty": {
       "title": "No inventory yet",
       "description": "Connect an integration to start syncing stock data."
-    },
-    "adjust": {
-      "title": "Adjust stock \u2014 {productName}",
-      "reason": "Reason (optional)",
-      "reasonPlaceholder": "Why is this adjustment being made?",
-      "was": "was {value}",
-      "submit": "Save changes",
-      "updated": "Stock updated",
-      "updatedDescription": "{count, plural, one {# quantity change saved} other {# quantity changes saved}}",
-      "updateFailed": "Update failed",
-      "updateFailedGeneric": "Failed to update stock"
     }
   },
   "products": {
@@ -190,6 +179,7 @@
       "stockStorageLocation": "Storage location",
       "stockType": "Type",
       "stockQuantity": "Qty",
+      "stockValue": "Stock value",
       "stockBatch": "Batch",
       "stockEmpty": "No stock available for this product.",
       "editProduct": "Edit product",

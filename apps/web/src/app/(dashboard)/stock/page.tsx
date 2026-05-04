@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { Eye, MoreHorizontal, Package, Upload } from 'lucide-react'
+import { Activity, Eye, Package, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -11,7 +11,6 @@ import { DataTable, type ColumnDef } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { QuantityCell } from '@/components/shared/quantity-cell'
 import type { SortDir } from '@/components/shared/sortable-header'
-import { ManualAdjustDialog } from '@/components/stock/manual-adjust-dialog'
 import { StockQuickViewSheet } from '@/components/stock/stock-quick-view-sheet'
 import { StockTypeBadge } from '@/components/stock/stock-type-badge'
 import { Button } from '@/components/ui/button'
@@ -19,14 +18,13 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useLocations, useStorageLocations } from '@/lib/api/use-locations'
-import { useStock, type StockRow } from '@/lib/api/use-stock'
+import { useStock } from '@/lib/api/use-stock'
 import { useStockTypes } from '@/lib/api/use-stock-types'
 
 interface FlatStockRow {
@@ -57,7 +55,6 @@ export default function StockPage(): JSX.Element {
   const [selectedStockTypes, setSelectedStockTypes] = useState<string[]>([])
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [selectedStorageLocations, setSelectedStorageLocations] = useState<string[]>([])
-  const [adjustRow, setAdjustRow] = useState<StockRow | null>(null)
   const [quickViewProductId, setQuickViewProductId] = useState<string | null>(null)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>(null)
@@ -140,26 +137,6 @@ export default function StockPage(): JSX.Element {
     return copy
   }, [flatRows, sortField, sortDir])
 
-  // Key must include every dimension that makes a stock row unique, so the
-  // manual-adjust action opens the exact row the user clicked — not a
-  // different row for the same (variant, location) pair in a different bin
-  // or batch. With only `variantId:locationId`, rows split by storage
-  // location or batch collapse into one map entry (last-write-wins) and the
-  // action operates on a near-miss row.
-  const aggregatedByKey = useMemo(() => {
-    const m = new Map<string, StockRow>()
-    for (const item of stockData) {
-      const key = [
-        item.variantId,
-        item.locationId,
-        item.storageLocationId ?? '-',
-        item.batchId ?? '-',
-      ].join(':')
-      m.set(key, item)
-    }
-    return m
-  }, [stockData])
-
   const stockTypeByKey = useMemo(() => {
     const m = new Map<string, { color: string | null; label: string }>()
     for (const st of stockTypes) m.set(st.key, { color: st.color ?? null, label: st.label })
@@ -220,18 +197,23 @@ export default function StockPage(): JSX.Element {
       header: t('columns.batch'),
       accessor: (row) =>
         row.batchNumber ? (
-          <div>
-            <span className="text-xs font-mono">{row.batchNumber}</span>
-            {row.expiryDate ? (
-              <span className="text-xs text-muted-foreground ml-1">
-                ({new Date(row.expiryDate).toLocaleDateString(locale, { timeZone: 'UTC' })})
-              </span>
-            ) : null}
-          </div>
+          <span className="text-xs font-mono">{row.batchNumber}</span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         ),
       sortField: 'batchNumber',
+    },
+    {
+      header: t('columns.expiryDate'),
+      accessor: (row) =>
+        row.expiryDate ? (
+          <span className="text-xs">
+            {new Date(row.expiryDate).toLocaleDateString(locale, { timeZone: 'UTC' })}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+      sortField: 'expiryDate',
     },
     {
       header: t('columns.stockType'),
@@ -277,30 +259,15 @@ export default function StockPage(): JSX.Element {
           >
             <Eye className="h-4 w-4" />
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => {
-                  const key = [
-                    row.variantId,
-                    row.locationId,
-                    row.storageLocationId ?? '-',
-                    row.batchId ?? '-',
-                  ].join(':')
-                  const agg = aggregatedByKey.get(key)
-                  if (agg) setAdjustRow(agg)
-                }}
-              >
-                {t('manualAdjust')}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled>{t('viewMovements')}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title={t('viewMovements')}
+            disabled
+          >
+            <Activity className="h-4 w-4" />
+          </Button>
         </div>
       ),
       className: 'text-right w-20',
@@ -470,14 +437,6 @@ export default function StockPage(): JSX.Element {
         onSort={(field, dir) => {
           setSortField(field)
           setSortDir(dir)
-        }}
-      />
-
-      <ManualAdjustDialog
-        row={adjustRow}
-        open={adjustRow !== null}
-        onOpenChange={(open) => {
-          if (!open) setAdjustRow(null)
         }}
       />
 

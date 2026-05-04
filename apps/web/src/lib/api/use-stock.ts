@@ -1,11 +1,5 @@
 import type { StockMovement } from '@stocknify/shared'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseMutationResult,
-  type UseQueryResult,
-} from '@tanstack/react-query'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
 import { apiFetch, toQueryString } from './client'
 
@@ -61,26 +55,5 @@ export function useStockMovements(
   return useQuery<StockMovement[]>({
     queryKey: ['stock', 'movements', filters],
     queryFn: () => apiFetch<StockMovement[]>(`/stock/movements${query}`),
-  })
-}
-
-export interface UpsertStockInput {
-  variantId: string
-  locationId: string
-  storageLocationId?: string
-  batchId?: string
-  stockType: string
-  quantity: number
-  reason?: string
-}
-
-export function useUpsertStock(): UseMutationResult<unknown, Error, UpsertStockInput> {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: UpsertStockInput) =>
-      apiFetch<unknown>('/stock', { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['stock'] })
-    },
   })
 }
