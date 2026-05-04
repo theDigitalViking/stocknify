@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-05-04 — `upsertStockLevel` always writes a `stock_movements` row
+
+**Decision:** `upsertStockLevel` (now in `apps/api/src/services/stock/upsert-stock-level.ts`) no longer short-circuits when the incoming quantity equals the existing quantity. Identical-quantity calls bump `stock_levels.last_synced_at`/`source` and append a `stock_movements` row with `delta=0`. The function's outcome type changes from `'created' | 'updated' | 'skipped'` to `'created' | 'updated' | 'unchanged'`. Callers that count outcomes (currently only `routes/csv/index.ts`) roll `'unchanged'` into the `updated` counter so the public `POST /integrations/csv/import/stock` response shape `{created, updated, skipped, errors}` is preserved (`skipped` now reserved for the dry-run-missing-location case).
+
+**Rationale:** Two product reasons. (1) Upload visibility — operators must see in the UI that a CSV was actually processed even when the quantities are identical to the prior sync; the previous skip silently dropped those rows from `stock_movements` and made the upload invisible in history. (2) Cycle E movement chart — the planned `GET /stock/movements`-backed chart requires a gapless movement trail; idempotency-as-write-skip would silently break that. Test pinning lives in `services/stock/__tests__/upsert-stock-level.test.ts` so a future Codex round can't regress it back to "the skip is correct".
+
+**Alternatives considered:**
+- Keep the skip + emit a synthetic "upload marker" event of a new `movementType` — rejected: adds a parallel event vocabulary, loses the standard `delta`/`quantityBefore`/`quantityAfter` semantics, and forces the chart to handle two row shapes.
+- Skip the `stock_levels` write but always write the movement — rejected: `last_synced_at` becomes a lie (stale even though a sync just happened), and the audit trail loses the link between "this sync ran" and "this is the current cohort row".
+
+**Note on idempotency:** A repeated CSV upload now creates one new movement row per (variant, location, bin, batch, stock_type) tuple per upload. For a tenant uploading the same 10k-row stock CSV daily, that's ~10k movement rows/day. At MVP scale this is fine; if movement-table growth becomes a problem, the right fix is a `stock_movements` retention policy keyed off the existing license-tier-derived history cap (PROJECT.md §10) rather than re-introducing the skip.
+
 ## 2026-05-02 — Test-DB strategy: Postgres in Docker, single DB, sequential
 
 **Decision:** Backend tests run against a Postgres 16 container managed via `apps/api/docker-compose.test.yml` locally and via GitHub Actions service container in CI. Single test database (`stocknify_test`); Vitest runs sequentially (`pool: 'forks'`, `singleFork: true`) with `TRUNCATE … RESTART IDENTITY CASCADE` of all tenant-scoped tables in `beforeEach`. Worker-schema isolation is explicitly deferred.

@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-02 (Test-Harness Foundation shipped — deferred extensions tracked below)
+**Last updated:** 2026-05-04 (Cycle B shipped — Bestandswert column now tracks pending cost-data dependency; Backend `/v1/stock` PUT manual-adjust endpoint is now UI-orphaned)
 
 ---
 
@@ -29,16 +29,20 @@
 - **RLS-isolation tests** — Prisma in tests connects as the table owner (`test` user in Docker), which bypasses RLS by default (RLS is `ENABLE`d, not `FORCE`d on these tables). Smoke test does not exercise cross-tenant isolation. When RLS-coverage tests are needed, either add a non-owner test role or `FORCE ROW LEVEL SECURITY` on the migrated tables.
 
 **Pending test coverage** (will be picked up by feature cycles or a future dedicated cleanup):
-- **`upsertStockLevel` behaviour change** (Cycle B) — identical-quantity upsert must still append a `stock_movements` row. First test under the new harness.
+- **`upsertStockLevel` behaviour change** (Cycle B) — ✅ shipped 2026-05-04 in `apps/api/src/services/stock/__tests__/upsert-stock-level.test.ts` (identical-quantity → 2 movement rows, non-zero delta → `'updated'`).
 - **`POST /products/:id/restore`** (Cycle D) — restore happy path, restore-on-active edge case, RLS isolation across tenants.
 - **`GET /stock/movements`** (Cycle E) — filter combinations, RLS isolation, license-tier date-cap enforcement.
 - **CSV row-error sanitization** (`sanitizeRowError` in `apps/api/src/lib/csv-errors.ts`) — whitelist contract, P2002/P2010+23505/foreign-key paths, `StockLevelInvariantError` UUID-leak prevention. Already documented under "Documentation" below; promoted up here for visibility once the harness exists.
+- **`upsertStockLevel` concurrent-writer / unique-violation path** — Cycle B's tests cover the happy paths but not the savepoint rollback / `AggregateError` cleanup-failure / `isUniqueViolation` fallthrough branches. Future addition when the harness gains transaction-level utilities.
 - **CSV pipeline regressions** — recurrent gap from every CSV cycle to date. Target tests: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip.
 
 ---
 
 ## Backend
 
+- **`PUT /stock` manual-adjust endpoint is UI-orphaned (Cycle B fallout).** `ManualAdjustDialog` was removed from the frontend, but `apps/api/src/routes/stock/index.ts`'s `PUT /stock` and the corresponding `useUpsertStock` shape still exist server-side. Per Cycle B prompt scope, backend deprecation was deliberately deferred — Stocknify mirrors inventory and won't manipulate it, so the endpoint should eventually 410 Gone (or be deleted) once we're confident no hidden caller exists. Tracked here so a future cleanup cycle does the deprecation cleanly.
+- **`stock_movements` row growth from identical-quantity uploads (Cycle B follow-up).** Every CSV stock upload now appends a movement row per (variant, location, bin, batch, stock_type), even when quantities are unchanged. At MVP scale this is fine; at a tenant uploading the same 10k-row CSV daily it's ~10k rows/day. When growth becomes a real concern, the right fix is a retention policy keyed off the existing license-tier-derived history cap (PROJECT.md §10), NOT re-adding the skip — see DECISIONS 2026-05-04.
+- **Bestandswert column has no cost data (Cycle B fallout).** `apps/web/src/components/products/product-stock-table.tsx` renders a `Bestandswert` / `Stock value` column with a `—` placeholder because `stock_levels` and `product_variants` have no `cost`/`unitCost`/`avgPrice` field. Implementing real value computation needs (a) a cost field on the variant or a per-movement cost, (b) a valuation method decision (last cost / weighted average / FIFO) — out of scope for Cycle B. Promoting the `—` to real numbers is a future product call.
 - **JWT verifier HS256 fallback** — needs a cutoff date once all tokens are ES256-signed.
 - **Auth webhook idempotency** — duplicate Supabase delivery can produce orphan tenants. Acceptable at current scale.
 - **CSV per-row N+1 queries** — batchable later when import volume grows.

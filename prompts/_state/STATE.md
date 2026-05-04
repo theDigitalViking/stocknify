@@ -2,7 +2,7 @@
 
 > Live snapshot of where the project is. Updated automatically by Claude Code at the end of every prompt run, plus manually by Claude (Chat) after reviews. Read this first at the start of every session.
 
-**Last updated:** 2026-05-02 (Test-Harness Foundation shipped — Backend has a Vitest harness against Postgres-in-Docker; smoke test green)
+**Last updated:** 2026-05-04 (Cycle B shipped — Bestände polish + identical-quantity now writes a stock_movements row; first cycle running with the Vitest harness)
 **Active phase:** Phase 4 — CSV import/export
 **Live URL:** https://app.stocknify.app
 **API health:** https://api.stocknify.app/v1/health
@@ -11,6 +11,7 @@
 
 ## What's deployed and working
 
+- **Cycle B — Bestände polish + identical-qty movement write (2026-05-04, commit `fc5036a`).** `upsertStockLevel` extracted from `apps/api/src/routes/csv/index.ts` into `apps/api/src/services/stock/upsert-stock-level.ts`; the inline `if (currentQty.equals(newQty)) return 'skipped'` short-circuit is gone. New outcome type `'created' | 'updated' | 'unchanged'` — identical-quantity calls now bump `last_synced_at` on the level row and append a `stock_movements` row with `delta=0`. Caller in `csv/index.ts` rolls `'unchanged'` into the existing `result.updated` counter so the public CSV import response shape stays `{created, updated, skipped}` (no frontend break; `skipped` is now reserved for the dry-run-missing-location case). `isUniqueViolation` lifted to a new `apps/api/src/lib/db-errors.ts` so both csv and stock paths share the predicate without back-references. **First test under the Cycle TH harness:** `apps/api/src/services/stock/__tests__/upsert-stock-level.test.ts` — two cases (identical-quantity → two movement rows; non-zero delta → outcome `'updated'`). All four backend tests green (smoke + new). Frontend: stock list (`stock/page.tsx`) splits the combined "Charge (MHD)" column into separate `Charge` + `MHD` columns; three-dot dropdown collapsed into a disabled `Activity` icon button next to the existing Quick-View Eye button (target: Cycle E movement view); `ManualAdjustDialog` component, the `useUpsertStock` hook, and the entire `stock.adjust` + `stock.manualAdjust` i18n blocks (en+de) are gone. Quick-View `ProductStockTable` gained a `Bestandswert`/`Stock value` column rendering `—` (no cost field on `stock_levels`/`product_variants` yet — KNOWN_TODOS now tracks the cost-data dependency). Backend `PUT /stock` endpoint (manual adjust) is intentionally untouched per prompt scope.
 - **Test-Harness Foundation shipped (2026-05-02).** Backend now has a Vitest harness against Postgres 16 in Docker (`apps/api/docker-compose.test.yml`, port 5433, named volume + healthcheck). `apps/api/.env.test` carries every var `config.ts` requires (incl. `SUPABASE_WEBHOOK_SECRET`, 64-hex `CREDENTIALS_ENCRYPTION_KEY`). `vitest.config.ts` runs sequentially (`pool: 'forks'`, `singleFork: true`) with dotenv loading `.env.test` before any test imports config. `src/test/global-setup.ts` runs `prisma migrate deploy` + the manual-migration runner; refuses to migrate against any DB other than `localhost`/`127.0.0.1:5433`. `src/test/setup.ts` truncates all 25 tenant-scoped tables in `beforeEach` (verified against `schema.prisma`). Helpers: `buildTestApp()`, `signTestJwt()` + `authedHeaders()` (real HS256 tokens — no `NODE_ENV==='test'` bypass anywhere in production code), `createTestTenant()`, shared `testDb` Prisma client. Smoke suite `src/test/smoke.test.ts` has two green tests: `GET /v1/health` (no auth, 200) + `GET /v1/products` for a fresh tenant (signed JWT, 200 + empty array). New scripts: `test:up`, `test:down`, `test:setup`. CI gets a `postgres:16-alpine` service container on 5433 and `continue-on-error: true` on the Test step (initial non-blocking window per testing-strategy decision; flip-to-blocking tracked in NEXT.md backlog after 5 cycles).
 - **Marketplace install-name render fix (2026-05-02).** `GET /integrations/marketplace/catalog` now selects `Integration.name` and falls back to the static catalog default only when no installed row exists. Persisted custom names entered at install time now appear on the marketplace cards. Two-line read-path fix in `apps/api/src/routes/integrations/index.ts` (added `name: true` to the `select`; changed `name: entry.name` to `name: row?.name ?? entry.name` in the response mapper). Closes Bug #1 of the 2026-04-30 frontend triage.
 - All Phase 3A/3B/3C work shipped: auth webhook, tenant provisioning, dashboard, products, stock, integrations skeleton, rules placeholder, notifications placeholder, settings.
@@ -44,7 +45,7 @@ Nothing.
 
 ## What's uncommitted
 
-User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = Test-Harness Foundation + Codex hardening pass (DB-guard tightening, mixed-tenant-table reset, dotenv override) + memory bank update.
+User-intentional edits sit in working tree on `.gitignore` (extended ignore list for legacy template files). Untracked: `test-data/`. HEAD after this cycle's commits = Cycle B (`upsertStockLevel` extraction + identical-quantity behaviour change + first harness test + frontend Bestände polish) + memory bank update.
 
 ## Critical paths
 
@@ -52,7 +53,9 @@ User-intentional edits sit in working tree on `.gitignore` (extended ignore list
 |------|------|
 | `PROJECT.md` | Single source of truth, architecture |
 | `apps/api/src/routes/csv/index.ts` | All CSV backend routes + `parseCsvStreaming` + stock-type system-key precheck + sanitized row errors |
+| `apps/api/src/services/stock/upsert-stock-level.ts` | Stock-level upsert + paired stock_movements write (always, including delta=0 on identical-quantity) |
 | `apps/api/src/lib/csv-errors.ts` | Custom row-error classes + `sanitizeRowError` whitelist for CSV imports |
+| `apps/api/src/lib/db-errors.ts` | `isUniqueViolation` predicate shared across CSV + stock services |
 | `apps/api/src/lib/supabase-admin.ts` | Shared `getSupabaseAdmin()` helper |
 | `apps/api/src/routes/auth/index.ts` | Auth webhook (production-ready) |
 | `apps/api/src/db/schema.prisma` | Schema v4 |
@@ -61,9 +64,9 @@ User-intentional edits sit in working tree on `.gitignore` (extended ignore list
 | `apps/web/src/app/(dashboard)/products/import/page.tsx` | Products CSV import route |
 | `apps/web/src/app/(dashboard)/stock/import/page.tsx` | Stock CSV import route |
 | `apps/web/src/components/csv/` | All CSV frontend components |
-| `apps/web/src/components/products/product-stock-table.tsx` | Per-product stock block |
-| `apps/web/src/app/(dashboard)/stock/page.tsx` | Stock list w/ Lager/Lagerplatz/Batch columns + filters + SKU link + Quick-View Eye-Button |
+| `apps/web/src/app/(dashboard)/stock/page.tsx` | Stock list w/ Lager/Lagerplatz/Charge/MHD columns + filters + SKU link + Quick-View Eye + Activity icon (placeholder for Cycle E movement view) |
 | `apps/web/src/components/stock/stock-quick-view-sheet.tsx` | Right-side Quick-View sheet for stock list rows |
+| `apps/web/src/components/products/product-stock-table.tsx` | Per-product stock table w/ Bestandswert column (placeholder until cost field exists) |
 | `apps/web/src/components/ui/sheet.tsx` | shadcn Sheet primitive (Radix Dialog + cva slide variants) |
 | `apps/web/src/components/shared/sidebar.tsx` | Collapsible sidebar |
 | `apps/web/src/middleware.ts` | Supabase SSR auth + root → /products |
@@ -73,6 +76,7 @@ User-intentional edits sit in working tree on `.gitignore` (extended ignore list
 | `apps/api/src/test/auth.ts` | Test JWT signer (`signTestJwt`, `authedHeaders`) |
 | `apps/api/src/test/db.ts` | Tenant-table truncate + `createTestTenant` helper |
 | `apps/api/src/test/smoke.test.ts` | Harness proof-of-life suite |
+| `apps/api/src/services/stock/__tests__/upsert-stock-level.test.ts` | Pins identical-quantity → movement-row behaviour (Cycle B) |
 
 ## Infrastructure
 
