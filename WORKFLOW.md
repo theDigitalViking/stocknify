@@ -44,6 +44,23 @@ Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank u
 
 Claude (Chat) hands this prompt over with the filename pre-filled at the start of every cycle, so Sebastian never has to remember it. The bootstrap stays the same for frontend, backend, or any other type of cycle — file-specific context lives inside the referenced PROMPT file, not in the bootstrap.
 
+**Effort-level recommendation:** Claude (Chat) always includes a recommended effort level when handing over the bootstrap prompt. Sebastian sets the level before pasting the prompt:
+
+```
+/effort <level>
+```
+
+The recommendation follows these guidelines (assuming Opus 4.7 where `xhigh` is the default):
+
+| Level | When to recommend |
+|-------|-------------------|
+| `medium` | Trivial single-file fixes, doc-only cycles, pure renames, simple i18n additions |
+| `high` | Frontend-only refactors with very clear specs, no data-flow changes, no ambiguity |
+| `xhigh` | **Default — leave as-is.** Mixed backend+frontend cycles, new endpoints, behaviour changes, diagnostic/infra work, anything with data-flow logic or RLS/security surface |
+| `max` | Reserved for genuinely hard problems: large L-estimate cycles with algorithmic complexity, multi-system debugging, critical architecture decisions |
+
+The effort level controls Claude Code's thinking budget — how deeply it reasons before acting. Lower effort is faster and cheaper; higher effort catches more edge cases but costs more tokens. In most cases, leaving the default (`xhigh`) is correct. The recommendation is a guideline, not a hard rule — Sebastian can override based on feel.
+
 **Formatting rule for Claude (Chat):** when handing copy-paste content to Sebastian in chat — bootstrap prompts, shell commands, snippets, anything he needs to extract verbatim — always render it as a fenced code block (```` ``` ````) or inline code, never as a Markdown blockquote (`>`). Blockquotes are painful to copy on both mobile and desktop because the leading marker and indentation get selected with the text. This applies to all Stocknify chat sessions.
 
 ---
@@ -145,11 +162,18 @@ Two long-lived branches:
 - **`develop`** — the working line. Every cycle commits and pushes here. Pushing `develop` runs CI and produces a Vercel Preview Deployment, but does **not** trigger production deploy.
 - **`main`** — production. Every commit on `main` triggers the production deploy pipeline (`.github/workflows/deploy.yml`), gated by manual approval in the GitHub `production` environment.
 
-Default flow:
+### Merge cadence: batch, not per-cycle
 
-1. Cycles accumulate on `develop` over multiple days/sessions. Claude Code pushes after each cycle.
-2. When Sebastian is happy with the accumulated state — verified via Vercel Preview, local `pnpm dev`, or both — he merges `develop` into `main` manually (`git checkout main && git merge develop --ff-only && git push`).
-3. Production deploy runs through its approval gate. Once approved, frontend goes to Vercel production, API goes to Hetzner via Kamal.
+Cycles are planned in batches (e.g. "Cycles A–E from the frontend triage"). The merge to `main` happens **after all cycles in the current batch are complete**, not after each individual cycle. The rhythm is:
+
+1. **Plan** — Claude (Chat) + Sebastian define a batch of cycles (scope, order, estimates).
+2. **Execute** — cycles run sequentially on `develop`, one chat per cycle. Claude Code pushes after each.
+3. **Review** — after the last cycle in the batch, Sebastian reviews the accumulated `develop` state via Vercel Preview + local `pnpm dev`. Bug-fix cycles may be added at this stage.
+4. **Merge** — Sebastian merges `develop` into `main` (`git checkout main && git merge develop --ff-only && git push`).
+5. **Deploy** — production deploy runs through its approval gate. Frontend → Vercel production, API → Hetzner via Kamal.
+6. **Next batch** — new planning round starts.
+
+This keeps the review surface manageable (one coherent chunk of related changes) and avoids partially-shipped feature sets on production.
 
 Backend caveat: there is **no backend preview environment**. Hetzner/Kamal only deploys from `main`. Frontend changes on `develop` can be reviewed against the existing production API as long as no breaking API-contract changes are pending. For full-stack cycles where backend changes matter for the review, fall back to local testing (`pnpm dev`) before merging.
 

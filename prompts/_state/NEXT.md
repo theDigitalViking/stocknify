@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-04 (Cycle B shipped; Cycle C is next up)
+**Last updated:** 2026-05-04 (Cycle C prompt written, ready for Claude Code)
 
 ---
 
@@ -16,24 +16,18 @@ Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt z
 
 ---
 
-## 🟢 Active cycle (currently in chat)
+## 🟢 Active cycle (prompt written, ready for Claude Code)
 
-Nothing — next chat opens Cycle C.
+### Cycle C — Produkt-Detailseite Refactor
+- **Prompt:** `prompts/PROMPT_CYCLE_C_PRODUKT_DETAIL_REFACTOR.md`
+- **Notion:** https://www.notion.so/35624fe1d88a81138061fc38bb89d355
+- **Items:** R0 fix CI test-harness migration path, R1 restructure header, R2 remove source icon from header, R3 Edit/Delete as labeled buttons, R4 source icon as variant-table column, R5 variant selection drives stock section
+- **Estimate:** M
+- **Effort:** `xhigh` (default — CI diagnosis + data-flow logic in R5 warrant full reasoning)
 
 ---
 
 ## 🟡 Queued cycles (next chat opens these in order)
-
-### Cycle C — Produkt-Detailseite Refactor
-- **Type:** Refactor (Frontend-only)
-- **Items:**
-  - **#4** Header neu: nur Name, Beschreibung, Einheit, MHD-/chargengeführt. SKU/EAN/Barcode raus aus dem Header (sind variantenspezifisch).
-  - **#5** Variantenwahl steuert Bestand- und Integrations-Sektionen reaktiv. Variantentabelle wird zum Steuerelement: Klick auf Variante → unten erscheinen Bestand und Integrationen für genau diese Variante.
-  - **#6** Quelle-Icon raus aus dem Produkt-Header (wirkt wie ein Edit-Icon, ist verwirrend).
-  - **#7** Quelle-Icon als neue Spalte in der Variantentabelle. Begründung: Hauptprodukt + Varianten können unterschiedliche Quellen haben (CSV-Hauptprodukt, manuell hinzugefügte Variante).
-  - **#8** Edit/Delete als beschriftete Buttons im Header. Löschen rot. Icons dürfen bleiben, aber als Buttons erkennbar (nicht nur Icon).
-- **Estimate:** M
-- **Tests:** None this cycle — frontend-only, harness covers backend only. Manual verification + Codex.
 
 ### Cycle D — Produkte-Liste Polish + Soft-Delete Restore
 - **Type:** Feature (Reaktivierung) + small UI
