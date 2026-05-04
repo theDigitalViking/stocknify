@@ -16,9 +16,6 @@ out/
 .env.local
 .env.*.local
 
-# Prisma generated
-apps/api/src/db/migrations/
-
 # OS
 .DS_Store
 Thumbs.db
