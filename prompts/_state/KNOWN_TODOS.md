@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-04 (Cycle C shipped — variant-source schema gap and integrations-per-variant deferral are now tracked; CI test-harness migration path is unblocked)
+**Last updated:** 2026-05-04 (Cycle D shipped — soft-delete restore endpoint + tests; non-goals (time-limited window, bulk-restore, hard-delete) and stock-level non-recovery on restore now tracked)
 
 ---
 
@@ -30,7 +30,7 @@
 
 **Pending test coverage** (will be picked up by feature cycles or a future dedicated cleanup):
 - **`upsertStockLevel` behaviour change** (Cycle B) — ✅ shipped 2026-05-04 in `apps/api/src/services/stock/__tests__/upsert-stock-level.test.ts` (identical-quantity → 2 movement rows, non-zero delta → `'updated'`).
-- **`POST /products/:id/restore`** (Cycle D) — restore happy path, restore-on-active edge case, RLS isolation across tenants.
+- **`POST /products/:id/restore`** (Cycle D) — ✅ shipped 2026-05-04 in `apps/api/src/routes/products/__tests__/restore.test.ts`. Covers: happy path with cascade-variant restore (anchored to `deletedAt = product.deletedAt` so an early-deleted variant is not resurrected), already-active 404, cross-tenant 404, and the `includeDeleted` query-param contract. Future addition when the harness gains transaction-level utilities: a concurrent-DELETE-during-restore race assertion.
 - **`GET /stock/movements`** (Cycle E) — filter combinations, RLS isolation, license-tier date-cap enforcement.
 - **CSV row-error sanitization** (`sanitizeRowError` in `apps/api/src/lib/csv-errors.ts`) — whitelist contract, P2002/P2010+23505/foreign-key paths, `StockLevelInvariantError` UUID-leak prevention. Already documented under "Documentation" below; promoted up here for visibility once the harness exists.
 - **`upsertStockLevel` concurrent-writer / unique-violation path** — Cycle B's tests cover the happy paths but not the savepoint rollback / `AggregateError` cleanup-failure / `isUniqueViolation` fallthrough branches. Future addition when the harness gains transaction-level utilities.
@@ -40,6 +40,7 @@
 
 ## Backend
 
+- **Stock levels are not recovered on product restore (Cycle D fallout).** `DELETE /products/:id` removes `stock_levels` rows outright (no `deletedAt` column on that table — the DELETE handler runs raw SQL `DELETE FROM stock_levels …`). `POST /products/:id/restore` brings the product + cascade variants back, but stock starts empty — operators must re-import or re-sync to repopulate. This is an intentional consequence of the existing delete design and was not in scope to revisit. If "restore should also restore stock" becomes a product requirement, the path is to add a soft-delete column to `stock_levels` (or move the cleanup behind a tombstone) so the rows can be revived in the same transaction. Surfaced 2026-05-04 (Cycle D).
 - **`PUT /stock` manual-adjust endpoint is UI-orphaned (Cycle B fallout).** `ManualAdjustDialog` was removed from the frontend, but `apps/api/src/routes/stock/index.ts`'s `PUT /stock` and the corresponding `useUpsertStock` shape still exist server-side. Per Cycle B prompt scope, backend deprecation was deliberately deferred — Stocknify mirrors inventory and won't manipulate it, so the endpoint should eventually 410 Gone (or be deleted) once we're confident no hidden caller exists. Tracked here so a future cleanup cycle does the deprecation cleanly.
 - **`stock_movements` row growth from identical-quantity uploads (Cycle B follow-up).** Every CSV stock upload now appends a movement row per (variant, location, bin, batch, stock_type), even when quantities are unchanged. At MVP scale this is fine; at a tenant uploading the same 10k-row CSV daily it's ~10k rows/day. When growth becomes a real concern, the right fix is a retention policy keyed off the existing license-tier-derived history cap (PROJECT.md §10), NOT re-adding the skip — see DECISIONS 2026-05-04.
 - **Bestandswert column has no cost data (Cycle B fallout).** `apps/web/src/components/products/product-stock-table.tsx` renders a `Bestandswert` / `Stock value` column with a `—` placeholder because `stock_levels` and `product_variants` have no `cost`/`unitCost`/`avgPrice` field. Implementing real value computation needs (a) a cost field on the variant or a per-movement cost, (b) a valuation method decision (last cost / weighted average / FIFO) — out of scope for Cycle B. Promoting the `—` to real numbers is a future product call.

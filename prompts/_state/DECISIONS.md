@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-04 — Product restore: cascade-variant restore is anchored to `deletedAt`
+
+**Decision:** `POST /products/:id/restore` (Cycle D) restores the product (`deletedAt = null`, `deletedBy = null`) and any variants whose `deletedAt` **equals** the product's prior `deletedAt`. Variants that were soft-deleted independently *before* the product was deleted (i.e. carry an older `deletedAt`) are intentionally left deleted. The 404 surface for "wrong tenant" and "already active" is unified under code `PRODUCT_NOT_FOUND` so the endpoint never enumerates existence.
+
+**Rationale:** The DELETE handler stamps the product row and all then-active variants with the same `Date()` value inside one transaction, so that timestamp is a reliable cascade marker. A naive `WHERE deletedAt IS NOT NULL` on the variant restore would resurrect variants the operator had explicitly retired earlier — that's silent data loss in the opposite direction. Anchoring to the snapshot keeps restore symmetric with the cascade-soft-delete it undoes. Pinned in `apps/api/src/routes/products/__tests__/restore.test.ts` (the happy-path test asserts both that cascade variants are restored AND that an early-deleted variant remains deleted).
+
+**Alternatives considered:**
+- Restore *all* soft-deleted variants of the product → rejected for the silent-data-loss reason above.
+- Add a separate `restored_at` column or an audit log of cascade events → premature; the timestamp comparison is sufficient for MVP and adds no migration cost.
+- Distinct error codes for "wrong tenant" vs "already active" → rejected; the prompt explicitly asked to avoid existence enumeration and the merged code matches existing 404 patterns elsewhere in the route.
+
+**Note:** Stock levels are NOT restored — DELETE removes them outright (no `deletedAt` on `stock_levels`). Surfaced in KNOWN_TODOS as a future call.
+
+## 2026-05-04 — Products list query renamed `showDeleted` → `includeDeleted` (semantic change)
+
+**Decision:** The list query parameter on `GET /v1/products` is now `?includeDeleted=true` and changes semantics from "deleted-only view" to "merge active + deleted in one list" (each product surfaces `deletedAt` so the frontend can distinguish). The frontend toolbar toggle is repurposed accordingly: turning it on now mixes deleted rows into the active list (with line-through name + "Gelöscht / Deleted" badge + a `RotateCcw` restore button) rather than swapping into a separate deleted-only view.
+
+**Rationale:** The Cycle D prompt R5 explicitly asks for visual distinction of deleted rows, which only makes sense when both states are co-listed. The "trash bin" tab pattern the previous implementation favoured was reasonable in isolation but doubled the list-page state machine and made restoring a deleted product require a context switch. Merging the views collapses the affordance into one page and makes restore a per-row action. There is no API consumer outside the web app, so the rename is safe to ship in one commit.
+
+**Alternatives considered:** Keep both query params (deprecate `showDeleted`, add `includeDeleted`) — rejected; no downstream callers, and carrying both meant either two route branches or a query-param adapter for no payoff. Keep the deleted-only view alongside the merged view — rejected; UX-doubling without a clear win.
+
 ## 2026-05-04 — `upsertStockLevel` always writes a `stock_movements` row
 
 **Decision:** `upsertStockLevel` (now in `apps/api/src/services/stock/upsert-stock-level.ts`) no longer short-circuits when the incoming quantity equals the existing quantity. Identical-quantity calls bump `stock_levels.last_synced_at`/`source` and append a `stock_movements` row with `delta=0`. The function's outcome type changes from `'created' | 'updated' | 'skipped'` to `'created' | 'updated' | 'unchanged'`. Callers that count outcomes (currently only `routes/csv/index.ts`) roll `'unchanged'` into the `updated` counter so the public `POST /integrations/csv/import/stock` response shape `{created, updated, skipped, errors}` is preserved (`skipped` now reserved for the dry-run-missing-location case).

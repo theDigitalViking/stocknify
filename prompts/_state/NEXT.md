@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-04 (Cycle D prompt written, ready for Claude Code)
+**Last updated:** 2026-05-04 (Cycle D shipped — restore endpoint + tests + frontend; only Cycle E remains in batch)
 
 ---
 
@@ -10,20 +10,15 @@
 
 Stabilization-Track ist **abgeschlossen**, alle drei Cycles seit 2026-04-29 (Marketplace polish 2, Stock-overview navigation polish, CSV row-error sanitization broadened) sind auf `main` gemerged.
 
-Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen.** **Test-Harness Foundation ist abgeschlossen.** **Cycle B ist abgeschlossen** (commit `fc5036a`). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`).
+Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen.** **Test-Harness Foundation ist abgeschlossen.** **Cycle B ist abgeschlossen** (commit `fc5036a`). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`). **Cycle D ist abgeschlossen** (2026-05-04).
 
 **Testing-Strategie (2026-05-02, hybrid Option D):** Ab Cycle B gilt: jeder Cycle mit Backend-Touch bringt mind. 1 Test für das angefasste Endpoint-Surface mit. Frontend-Tests bleiben out of scope. Details: DECISIONS.md 2026-05-02.
 
 ---
 
-## 🟢 Active cycle (prompt written, ready for Claude Code)
+## 🟢 Active cycle
 
-### Cycle D — Produkte-Liste Polish + Soft-Delete Restore
-- **Prompt:** `prompts/PROMPT_CYCLE_D_PRODUKTE_LISTE_RESTORE.md`
-- **Notion:** https://www.notion.so/35624fe1d88a8185bfd0c8b5a273f2c8
-- **Items:** R1 restore endpoint, R2 includeDeleted query param, R3 backend tests (happy path + already-active 404 + cross-tenant + variant cascade), R4 Eye icon in list, R5 show deleted + restore UI
-- **Estimate:** S–M
-- **Effort:** `xhigh` (default — new endpoint with RLS + mandatory tests)
+Nothing active — Cycle D shipped. Next chat opens Cycle E.
 
 ---
 
