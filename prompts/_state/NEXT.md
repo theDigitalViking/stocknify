@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-02 (Cycle TH — Test-Harness Foundation — shipped; Cycle B is next up)
+**Last updated:** 2026-05-04 (Cycle B prompt written; ready for Claude Code)
 
 ---
 
@@ -10,38 +10,23 @@
 
 Stabilization-Track ist **abgeschlossen**, alle drei Cycles seit 2026-04-29 (Marketplace polish 2, Stock-overview navigation polish, CSV row-error sanitization broadened) sind auf `main` gemerged.
 
-Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A läuft im aktuellen Chat** (Diagnose abgeschlossen, Bug ist im Backend-Catalog-Endpoint, nicht im Frontend).
+Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen** (Marketplace install-name Bug war im Backend-Catalog-Endpoint). **Test-Harness Foundation ist abgeschlossen** (Vitest + Postgres-in-Docker, Smoke-Tests grün).
 
-**Testing-Strategie entschieden (2026-05-02, hybrid Option D):** Stocknify hat heute keine Tests (Vitest-Config existiert, ungenutzt; KNOWN_TODOS bestätigt). Statt im laufenden Cycle nachzurüsten oder bis Phase-4-Ende zu warten:
-
-1. Cycle A bleibt testfrei (XS-Fix, manuelle Verify reicht).
-2. Direkt nach Cycle A wird ein dedizierter **`TEST_HARNESS_FOUNDATION`**-Cycle eingeschoben (M-Größe, Backend-Test-Infra: `buildTestApp()`-Factory, Test-DB-Strategy, Auth-Mock, Smoke-Test, CI-Hook).
-3. Ab Cycle B gilt: jeder Cycle mit Backend-Touch bringt mind. 1 Test für das angefasste Endpoint-Surface mit. Frontend-Tests bleiben out of scope, bis ein dedizierter Frontend-Test-Cycle gebaut wird (KNOWN_TODOS).
-4. Coverage-Requirements und TDD-Pflicht sind explizit nicht eingeführt (würde Solo-Operator-Workflow zerschießen).
-
-Details siehe Notiz in KNOWN_TODOS.md unter "Testing strategy".
+**Testing-Strategie (2026-05-02, hybrid Option D):** Ab Cycle B gilt: jeder Cycle mit Backend-Touch bringt mind. 1 Test für das angefasste Endpoint-Surface mit. Frontend-Tests bleiben out of scope. Details: DECISIONS.md 2026-05-02.
 
 ---
 
-## 🟢 Active cycle (currently in chat)
+## 🟢 Active cycle (prompt written, ready for Claude Code)
 
-Nothing — next chat opens Cycle B.
+### Cycle B — Bestände-Tabelle Polish + Re-Upload Behavior
+- **Prompt:** `prompts/PROMPT_CYCLE_B_BESTAENDE_POLISH.md`
+- **Notion:** https://www.notion.so/35624fe1d88a8187bed5d34a5d59133f
+- **Items:** R1 remove identical-qty skip, R2 backend test, R3 Bestandswert column, R4 split Charge/MHD, R5 remove ManualAdjustDialog, R6 dissolve three-dot menu
+- **Estimate:** M
 
 ---
 
 ## 🟡 Queued cycles (next chat opens these in order)
-
-### Cycle B — Bestände-Tabelle Polish + Re-Upload Behavior
-- **Type:** Fix + small refactor (now also: first cycle that ships with a Backend test)
-- **Items:**
-  - **#9** Bestandswert-Spalte fehlt in der Quick-View-Bestands-Tabelle — ergänzen.
-  - **#10** „Charge (MHD)" als zwei Spalten splitten — `Charge` und `MHD` getrennt.
-  - **#13** **Verhaltenswechsel:** `upsertStockLevel`'s `if (currentQty.equals(newQty)) return 'skipped'` rausnehmen. Jeder Upload erzeugt einen `stock_movements`-Eintrag, auch bei identischer Menge. Im Frontend soll man sehen, dass *etwas hochgeladen wurde*, auch wenn die Mengen identisch sind.
-  - **#14** Manuelle Bestandsanpassung deaktivieren — `ManualAdjustDialog` aus der UI raus, ggf. Backend-Endpoint deprecaten. Stocknify spiegelt Bestände, manipuliert sie nicht.
-  - **#15** Drei-Punkte-Menü auflösen — wenn nur noch „Bewegungen anzeigen" übrig, dann zum Icon in der Aktionsspalte machen. Passt zur Chart-Idee in Cycle E.
-  - **NEU: Backend test for `upsertStockLevel` behaviour change.** First test under the freshly-built harness. Asserts that identical-quantity upsert still appends a `stock_movements` row. Acceptance: 1 passing test under `apps/api/src/services/stock/__tests__/` (or wherever the harness convention lands in Cycle TH).
-- **Estimate:** M (slightly larger now with the test).
-- **Behaviour-Change-Note:** #13 muss explizit dokumentiert werden, sonst regressed der nächste Codex es zurück mit „idempotent skip is correct". Begründung: Upload-Sichtbarkeit > Idempotenz, und für den Chart in Cycle E brauchen wir die lückenlose Movement-History. The new test pins the behaviour so the regression can't happen silently.
 
 ### Cycle C — Produkt-Detailseite Refactor
 - **Type:** Refactor (Frontend-only)
@@ -53,24 +38,22 @@ Nothing — next chat opens Cycle B.
   - **#8** Edit/Delete als beschriftete Buttons im Header. Löschen rot. Icons dürfen bleiben, aber als Buttons erkennbar (nicht nur Icon).
 - **Estimate:** M
 - **Tests:** None this cycle — frontend-only, harness covers backend only. Manual verification + Codex.
-- **Backend-Touch:** wahrscheinlich keiner — `GET /stock` ist schon variant-scoped, Integrations-Sektion existiert noch nicht und wird in dieser Form neu gebaut.
 
 ### Cycle D — Produkte-Liste Polish + Soft-Delete Restore
 - **Type:** Feature (Reaktivierung) + small UI
 - **Items:**
-  - **#2** Soft-deleted Produkte reaktivierbar machen. Backend: `POST /products/:id/restore` (oder PATCH mit `deletedAt: null`). Frontend: Toggle „inkl. gelöschte" oder eigener Tab + Reaktivieren-Button. Optional: zeitliche Begrenzung (z.B. innerhalb 30 Tagen).
-  - **#3** Detail-Icon (Eye) in der Aktionsspalte der Produkte-Liste, neben Stift und Mülltonne. Aktuell führt nur der Name-Link auf die Detailseite — Icon macht das Affordance explizit.
-  - **NEU: Backend test for `POST /products/:id/restore`.** New endpoint = mandatory test. Coverage: restore happy path, restore on already-active product (409 or no-op?), restore across tenants (must 404 / RLS-blocked).
+  - **#2** Soft-deleted Produkte reaktivierbar machen. Backend: `POST /products/:id/restore` (oder PATCH mit `deletedAt: null`). Frontend: Toggle „inkl. gelöschte" oder eigener Tab + Reaktivieren-Button.
+  - **#3** Detail-Icon (Eye) in der Aktionsspalte der Produkte-Liste.
+  - **NEU: Backend test for `POST /products/:id/restore`.** New endpoint = mandatory test.
 - **Estimate:** S–M
 
 ### Cycle E — Bestands-Verlauf + Chargen-Liste
 - **Type:** Feature (größtes Stück, sauber als letztes)
 - **Items:**
-  - **#12** Bestands-Verlauf-Surface mit Chart + Bewegungstabelle. Klick auf Bestandszeile (Variante × Lager × Lagerplatz × Charge) öffnet Verlaufsansicht. Oben: Chart (Mengen-Kurve über Zeit) — Recharts (schon im Stack). Unten: Tabelle der Bewegungen. Zeitraum-Buttons: 1 Tag, 3 Tage, 1 Woche, 1 Monat, alle. Date-Picker out of scope für MVP. Historie wird durch Lizenz-Tier gekappt (PROJECT.md §10: Trial 7d / Starter 30d / Growth 1y / Enterprise unlimited).
-  - **#11** Chargen-Liste als eigener Block auf der Produkt-Detailseite. Pro Charge: Chargennummer, MHD, Summe der Mengen über alle Lagerplätze, Status (aktiv / fast abgelaufen / abgelaufen). Klick auf eine Chargen-Zeile → Verlaufsansicht in Charge-Skin.
-  - **NEU: Backend tests for `GET /stock/movements`.** New endpoint = mandatory tests. Coverage: filter by variantId / locationId / batchId / date range, RLS isolation across tenants, license-tier date-cap enforcement.
+  - **#12** Bestands-Verlauf-Surface mit Chart + Bewegungstabelle. `GET /stock/movements` endpoint.
+  - **#11** Chargen-Liste als eigener Block auf der Produkt-Detailseite.
+  - **NEU: Backend tests for `GET /stock/movements`.**
 - **Estimate:** L
-- **Backend-neuer-Endpoint:** `GET /stock/movements` mit Filter-Parametern (variantId, locationId, storageLocationId, batchId, fromDate, toDate). Schemamäßig schon vorhanden — `stock_movements` ist bereits beschrieben mit `quantityBefore`, `quantityAfter`, `delta`, `movementType`.
 
 ---
 
