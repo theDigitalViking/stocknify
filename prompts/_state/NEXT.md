@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-04 (Cycle C prompt written, ready for Claude Code)
+**Last updated:** 2026-05-04 (Cycle C shipped; Cycle D is next up)
 
 ---
 
@@ -10,20 +10,15 @@
 
 Stabilization-Track ist **abgeschlossen**, alle drei Cycles seit 2026-04-29 (Marketplace polish 2, Stock-overview navigation polish, CSV row-error sanitization broadened) sind auf `main` gemerged.
 
-Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen** (Marketplace install-name Bug war im Backend-Catalog-Endpoint). **Test-Harness Foundation ist abgeschlossen** (Vitest + Postgres-in-Docker, Smoke-Tests grün). **Cycle B ist abgeschlossen** (commit `fc5036a`, 2026-05-04 — `upsertStockLevel` extrahiert + identische-Menge schreibt jetzt eine `stock_movements`-Row mit `delta=0`, `ManualAdjustDialog` raus, Charge/MHD-Spalten gesplittet, Drei-Punkte-Menü zu einem Icon kollabiert, Bestandswert-Spalte als Platzhalter; erster Test unter dem TH-Harness).
+Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen** (Marketplace install-name Bug war im Backend-Catalog-Endpoint). **Test-Harness Foundation ist abgeschlossen** (Vitest + Postgres-in-Docker, Smoke-Tests grün). **Cycle B ist abgeschlossen** (commit `fc5036a`, 2026-05-04 — `upsertStockLevel` extrahiert + identische-Menge schreibt jetzt eine `stock_movements`-Row mit `delta=0`, `ManualAdjustDialog` raus, Charge/MHD-Spalten gesplittet, Drei-Punkte-Menü zu einem Icon kollabiert, Bestandswert-Spalte als Platzhalter; erster Test unter dem TH-Harness). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`, 2026-05-04 — Produkt-Detail-Header reduziert auf Name/Beschreibung/Einheit/Charge-Indikator, Source-Icon raus aus dem Header, Edit/Delete als beschriftete Buttons, Source-Spalte in der Variantentabelle, Variantenwahl steuert jetzt reaktiv `ProductStockTable`. R0-Bonus: `apps/api/src/db/migrations/` aus `.gitignore` entfernt — CI-Test-Harness fand vorher keine Migrations und blieb still grün durch `continue-on-error`).
 
 **Testing-Strategie (2026-05-02, hybrid Option D):** Ab Cycle B gilt: jeder Cycle mit Backend-Touch bringt mind. 1 Test für das angefasste Endpoint-Surface mit. Frontend-Tests bleiben out of scope. Details: DECISIONS.md 2026-05-02.
 
 ---
 
-## 🟢 Active cycle (prompt written, ready for Claude Code)
+## 🟢 Active cycle (currently in chat)
 
-### Cycle C — Produkt-Detailseite Refactor
-- **Prompt:** `prompts/PROMPT_CYCLE_C_PRODUKT_DETAIL_REFACTOR.md`
-- **Notion:** https://www.notion.so/35624fe1d88a81138061fc38bb89d355
-- **Items:** R0 fix CI test-harness migration path, R1 restructure header, R2 remove source icon from header, R3 Edit/Delete as labeled buttons, R4 source icon as variant-table column, R5 variant selection drives stock section
-- **Estimate:** M
-- **Effort:** `xhigh` (default — CI diagnosis + data-flow logic in R5 warrant full reasoning)
+Nothing — next chat opens Cycle D.
 
 ---
 

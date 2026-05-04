@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-04 (Cycle B shipped — Bestandswert column now tracks pending cost-data dependency; Backend `/v1/stock` PUT manual-adjust endpoint is now UI-orphaned)
+**Last updated:** 2026-05-04 (Cycle C shipped — variant-source schema gap and integrations-per-variant deferral are now tracked; CI test-harness migration path is unblocked)
 
 ---
 
@@ -57,6 +57,8 @@
 
 ## Frontend
 
+- **Per-variant source data is missing in the schema (Cycle C fallout).** The product detail page now has a "Quelle / Source" column on the variant table (R4), but `ProductVariant` (in `packages/shared/src/types/index.ts` and `apps/api/src/db/schema.prisma`) has no `metadata` or `source` field. The column currently renders the product-level source for every variant row. The triage-time motivation (CSV-imported main product + manually added variant) needs a per-variant source field plus the wiring to populate it during CSV import / manual variant creation. `ProductSourceIcons` already accepts an explicit `source` prop, so once the data exists the rendering switches with no further refactor.
+- **Variant-reactive integration section on product detail (Cycle C deferral).** R5 wires `selectedVariantId` to `ProductStockTable`. The same wiring pattern is meant for an "Integrations per variant" section that doesn't exist yet — it currently shows a placeholder empty state. Will land alongside real integration data per variant.
 - **`useDeleteProducts`** — sequential calls, no batch endpoint.
 - **`?confirmed=true`** URL parameter — not stripped after refresh.
 - **Stock page** — no bulk-select / bulk-delete yet.
