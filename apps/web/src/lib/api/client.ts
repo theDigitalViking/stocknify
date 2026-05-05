@@ -32,10 +32,15 @@ export class ApiError extends Error {
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = await getAuthHeader()
+  // Only advertise a JSON Content-Type when a body is actually being sent.
+  // Fastify's default JSON parser rejects empty bodies with `Content-Type:
+  // application/json` (FST_ERR_CTP_EMPTY_JSON_BODY → 400) on methods that
+  // run the body parser (POST/PUT/PATCH).
+  const hasBody = options?.body !== undefined && options.body !== null
   const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/v1${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...headers,
       ...options?.headers,
     },
@@ -86,10 +91,11 @@ export async function apiFetchWithMeta<T>(
   options?: RequestInit,
 ): Promise<ApiPage<T>> {
   const headers = await getAuthHeader()
+  const hasBody = options?.body !== undefined && options.body !== null
   const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/v1${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...headers,
       ...options?.headers,
     },
