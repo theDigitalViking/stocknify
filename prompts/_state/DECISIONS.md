@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-05 — Bestands-Verlauf is a dedicated page, not a sheet/drawer
+
+**Decision:** The stock-movement history surface (Cycle E) lives at the route `/stock/movements`, not as a Sheet/Drawer triggered from the stock list. The stock list's Activity icon navigates there with the row's filter trio (`variantId`, `locationId`, `stockType`) pre-filled in the query string.
+
+**Rationale:** A movement view carries two non-trivial sub-surfaces — a quantity-over-time chart and a paginated table with sortable date and per-page navigation. Both want url-shareable filter state; both benefit from full-width real estate; both can deep-link from email/Slack. The Quick-View Sheet pattern (Cycle 2026-04-30) is right for "peek at this product's stock from the list" because the contained `ProductStockTable` is a compact, atomic readout. A movement view isn't atomic — it composes a chart that re-fetches (asc, wider window) and a table that re-fetches (paged, sorted) independently. Cramming that into a Sheet would either truncate one of the sub-surfaces or push the user back to the list immediately. The chart also relies on filter completeness (variant + location + stockType all required) — the URL is a better persistence layer than ephemeral Sheet state.
+
+**Alternatives considered:**
+- Sheet/Drawer triggered from each stock-list row — rejected, see above.
+- Modal — rejected for the same reason as Sheet, plus modal viewport conflicts with the table's pagination footer.
+- Movement section embedded under each product detail page — rejected: filter scope is broader than a single product (operators want to compare variants and locations on one canvas).
+
+## 2026-05-05 — Chargen list reuses `useStock`; no separate batches endpoint
+
+**Decision:** The Chargen / Batches section on the product detail page (Cycle E R5) renders from the same `GET /stock` payload used by `ProductStockTable`, filtered to entries where `batchId !== null`. No new `GET /batches` endpoint, no new query hook. The component is mounted only when `product.batchTracking === true`.
+
+**Rationale:** The `Batch` model exists in the schema, but `GET /stock` already returns `batchId`, `batchNumber`, and `expiryDate` joined onto every level row, plus the location and stock-type splits the prompt asks for. Adding a dedicated batches endpoint would (a) duplicate the joins already happening in the stock route and (b) introduce a second source of truth for "what batches does this product have right now". The product-detail page currently shows the operator the *quantities* of each batch — that's a stock-level concern, not a batch-metadata concern. If/when a future surface needs raw batch metadata (e.g. a Batch CRUD page with manufactured-date editing), the `Batch` model will get its own endpoint. This decision is intentionally narrow: stock-level-by-batch readout, not batch CRUD.
+
+**Alternatives considered:**
+- Build `GET /products/:id/batches` returning `Batch` rows directly — rejected: doesn't include the per-location/per-stock-type quantity rollup the prompt asks for, and the operator's primary signal here is "how much of which batch is where", not "which batches exist".
+- Inline the batch data into `ProductStockTable` (collapse the two surfaces) — rejected: the existing stock table is already dense (location × bin × stockType × batch); a dedicated section gives Chargen visual primacy on batch-tracked products.
+
 ## 2026-05-04 — Product restore: cascade-variant restore is anchored to `deletedAt`
 
 **Decision:** `POST /products/:id/restore` (Cycle D) restores the product (`deletedAt = null`, `deletedBy = null`) and any variants whose `deletedAt` **equals** the product's prior `deletedAt`. Variants that were soft-deleted independently *before* the product was deleted (i.e. carry an older `deletedAt`) are intentionally left deleted. The 404 surface for "wrong tenant" and "already active" is unified under code `PRODUCT_NOT_FOUND` so the endpoint never enumerates existence.

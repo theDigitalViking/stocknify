@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-05 (Cycle E prompt written, ready for Claude Code — last cycle in batch A–E)
+**Last updated:** 2026-05-05 (Cycle E shipped — batch A–E complete)
 
 ---
 
@@ -10,26 +10,21 @@
 
 Stabilization-Track ist **abgeschlossen**, alle drei Cycles seit 2026-04-29 (Marketplace polish 2, Stock-overview navigation polish, CSV row-error sanitization broadened) sind auf `main` gemerged.
 
-Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen.** **Test-Harness Foundation ist abgeschlossen.** **Cycle B ist abgeschlossen** (commit `fc5036a`). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`). **Cycle D ist abgeschlossen** (2026-05-04).
+Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt zu fünf Cycles (A–E). **Cycle A ist abgeschlossen.** **Test-Harness Foundation ist abgeschlossen.** **Cycle B ist abgeschlossen** (commit `fc5036a`). **Cycle C ist abgeschlossen** (commits `c592907` + `c14eea2`). **Cycle D ist abgeschlossen** (2026-05-04). **Cycle E ist abgeschlossen** (2026-05-05) — **Batch A–E komplett**.
 
 **Testing-Strategie (2026-05-02, hybrid Option D):** Ab Cycle B gilt: jeder Cycle mit Backend-Touch bringt mind. 1 Test für das angefasste Endpoint-Surface mit. Frontend-Tests bleiben out of scope. Details: DECISIONS.md 2026-05-02.
 
 ---
 
-## 🟢 Active cycle (prompt written, ready for Claude Code)
+## 🟢 Active cycle
 
-### Cycle E — Bestands-Verlauf + Chargen-Liste
-- **Prompt:** `prompts/PROMPT_CYCLE_E_BESTANDS_VERLAUF_CHARGEN.md`
-- **Notion:** https://www.notion.so/35724fe1d88a8151a53bf3bcc9ca9b13
-- **Items:** R1 GET /stock/movements endpoint, R2 backend tests (empty state + filters + pagination + cross-tenant), R3 movements page with chart + table, R4 enable Activity icon on stock list, R5 Chargen-Liste on product detail, R6 i18n
-- **Estimate:** L
-- **Effort:** `xhigh` (default — new endpoint + chart + multi-component frontend feature)
+Nothing — batch A–E complete. Sebastian reviews `develop`, then merges to `main`.
 
 ---
 
 ## 🟡 Queued cycles
 
-None — Cycle E is the last cycle in batch A–E. After it ships, Sebastian reviews `develop` and merges to `main`.
+None — next batch will be planned after the merge to `main`.
 
 ---
 
