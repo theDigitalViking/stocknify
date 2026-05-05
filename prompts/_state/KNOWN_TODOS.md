@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-05 (Cycle 2-A shipped — Bestandswert column removed from UI; underlying cost-data TODO updated)
+**Last updated:** 2026-05-05 (Cycle 2-B shipped — movements chart polish; minor URL/preset/calendar-month follow-ups recorded)
 
 ---
 
@@ -63,6 +63,9 @@
 
 ## Frontend
 
+- **Movements page: URL→preset rehydration (Cycle 2-B fallout).** When `/stock/movements` loads with `?from=…&to=…` already in the URL, no preset button is highlighted even if the URL range happens to equal a preset (e.g. exactly the last 30 days). The state-machine treats any URL-driven range as "custom". Right fix when this becomes annoying: compare the loaded URL range against each preset's computed `(from, to)` with a small tolerance (a minute, say) and pin `activePreset` accordingly. Currently low-impact — a user clicking the preset after load just gets the same range with the highlight added, no extra fetch beyond what TanStack already cached.
+- **Movements page: calendar-month/week presets (Cycle 2-B non-goal).** NEXT.md mentioned "Diese Woche / Letzte 14 Tage / Dieser Monat" as preset candidates. The prompt narrowed presets to day-counts (`7d`/`14d`/`30d`/`90d`) for simplicity and i18n parity. If operators want true calendar-aligned ranges (start-of-week, calendar-month-to-date) we'll add those buttons next to the existing day-count presets — they share the same `applyPreset` plumbing, just with different `from`/`to` math. No structural change.
+- **Movements page: range exceeds 200-row chart cap (Cycle 2-B follow-up).** With a 90d range on a high-throughput tenant, the chart's `perPage=200` cap silently truncates older data — earliest timestamps fall off and the area starts mid-window. Right fix is server-side downsampling, which is already tracked under the existing "stock_movements chart aggregation/downsampling" Backend entry; surfacing it here too because the wider date ranges from 2-B make the cap easier to hit. Cycle 2-C will compound the surface (multi-line) but won't change this caveat.
 - **Per-variant source data is missing in the schema (Cycle C fallout).** The product detail page now has a "Quelle / Source" column on the variant table (R4), but `ProductVariant` (in `packages/shared/src/types/index.ts` and `apps/api/src/db/schema.prisma`) has no `metadata` or `source` field. The column currently renders the product-level source for every variant row. The triage-time motivation (CSV-imported main product + manually added variant) needs a per-variant source field plus the wiring to populate it during CSV import / manual variant creation. `ProductSourceIcons` already accepts an explicit `source` prop, so once the data exists the rendering switches with no further refactor.
 - **Variant-reactive integration section on product detail (Cycle C deferral).** R5 wires `selectedVariantId` to `ProductStockTable`. The same wiring pattern is meant for an "Integrations per variant" section that doesn't exist yet — it currently shows a placeholder empty state. Will land alongside real integration data per variant.
 - **`useDeleteProducts`** — sequential calls, no batch endpoint.
