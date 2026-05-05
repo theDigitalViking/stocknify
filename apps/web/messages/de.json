@@ -156,7 +156,13 @@
         "title": "Keine Bewegungen in diesem Zeitraum",
         "description": "Bitte einen anderen Zeitraum wählen oder auf den nächsten Sync warten."
       },
-      "truncatedNotice": "Zeigt die neuesten {shown} von {total} Bewegungen in diesem Zeitraum. Bitte Zeitraum verkleinern für die vollständige Serie."
+      "truncatedNotice": "Zeigt die neuesten {shown} von {total} Bewegungen in diesem Zeitraum. Bitte Zeitraum verkleinern für die vollständige Serie.",
+      "multiLine": {
+        "title": "Alle Bewegungen für dieses Produkt",
+        "description": "Jede Linie ist eine Kombination aus Lager und Bestandstyp.",
+        "legendToggleHint": "Auf eine Serie klicken, um sie ein-/auszublenden.",
+        "seriesLabel": "{location} · {stockType}"
+      }
     },
     "table": {
       "title": "Bewegungs-Historie",

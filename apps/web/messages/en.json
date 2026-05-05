@@ -156,7 +156,13 @@
         "title": "No movements in this time range",
         "description": "Pick a different range or wait for the next sync."
       },
-      "truncatedNotice": "Showing the latest {shown} of {total} movements in this range. Narrow the time range for the full series."
+      "truncatedNotice": "Showing the latest {shown} of {total} movements in this range. Narrow the time range for the full series.",
+      "multiLine": {
+        "title": "All movements for this product",
+        "description": "Each line is one warehouse + stock-type combination.",
+        "legendToggleHint": "Click a series to toggle it.",
+        "seriesLabel": "{location} · {stockType}"
+      }
     },
     "table": {
       "title": "Movement history",

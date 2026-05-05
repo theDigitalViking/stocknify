@@ -1,10 +1,12 @@
 'use client'
 
 import { useLocale } from 'next-intl'
+import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,47 +15,126 @@ import {
 
 import type { StockMovementRow } from '@/lib/api/use-stock-movements'
 
-interface StockMovementChartProps {
-  movements: StockMovementRow[]
-  emptyTitle: string
-  emptyDescription: string
+export interface StockMovementSeries {
+  key: string
+  name: string
+  rows: StockMovementRow[]
 }
 
-interface ChartPoint {
-  timestamp: number
-  quantity: number
-}
+type StockMovementChartProps =
+  | {
+      movements: StockMovementRow[]
+      emptyTitle: string
+      emptyDescription: string
+      series?: never
+    }
+  | {
+      series: StockMovementSeries[]
+      emptyTitle: string
+      emptyDescription: string
+      movements?: never
+    }
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const SEVEN_DAYS_MS = 7 * ONE_DAY_MS
 
-export function StockMovementChart({
-  movements,
-  emptyTitle,
-  emptyDescription,
-}: StockMovementChartProps): JSX.Element {
-  const locale = useLocale()
+// 8 distinct hues from Tailwind's 500 ramp. Cycle if we get more series than
+// colors — pairing each with its own dasharray below keeps the legend usable
+// for colorblind operators.
+const PALETTE = [
+  '#3b82f6', // blue-500
+  '#10b981', // emerald-500
+  '#f59e0b', // amber-500
+  '#f43f5e', // rose-500
+  '#8b5cf6', // violet-500
+  '#06b6d4', // cyan-500
+  '#f97316', // orange-500
+  '#64748b', // slate-500
+] as const
 
-  if (movements.length === 0) {
+const DASH_PATTERNS = [
+  '0',
+  '6 3',
+  '2 3',
+  '8 2 2 2',
+  '10 4',
+  '1 3',
+  '4 2 1 2',
+  '5 5',
+] as const
+
+function pickStyle(idx: number): { stroke: string; dasharray: string } {
+  return {
+    stroke: PALETTE[idx % PALETTE.length],
+    dasharray: DASH_PATTERNS[idx % DASH_PATTERNS.length],
+  }
+}
+
+const SINGLE_SERIES_COLOR = '#0d9488' // teal-600 — preserves the original look
+
+export function StockMovementChart(props: StockMovementChartProps): JSX.Element {
+  const locale = useLocale()
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set())
+
+  const isMulti = 'series' in props && props.series !== undefined
+
+  const { mergedPoints, seriesMeta, hasAnyData } = useMemo(() => {
+    if (isMulti) {
+      const allRows: { row: StockMovementRow; seriesKey: string }[] = []
+      const meta = props.series.map((s, idx) => {
+        for (const row of s.rows) allRows.push({ row, seriesKey: s.key })
+        const style = pickStyle(idx)
+        return { key: s.key, name: s.name, ...style }
+      })
+      const points = allRows
+        .sort(
+          (a, b) =>
+            new Date(a.row.createdAt).getTime() - new Date(b.row.createdAt).getTime(),
+        )
+        .map(({ row, seriesKey }) => ({
+          timestamp: new Date(row.createdAt).getTime(),
+          [seriesKey]: row.quantity,
+        }))
+      return {
+        mergedPoints: points,
+        seriesMeta: meta,
+        hasAnyData: allRows.length > 0,
+      }
+    }
+
+    const points = [...props.movements]
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((m) => ({
+        timestamp: new Date(m.createdAt).getTime(),
+        quantity: m.quantity,
+      }))
+    return {
+      mergedPoints: points,
+      seriesMeta: [
+        {
+          key: 'quantity',
+          name: 'quantity',
+          stroke: SINGLE_SERIES_COLOR,
+          dasharray: '0',
+        },
+      ],
+      hasAnyData: points.length > 0,
+    }
+  }, [isMulti, props])
+
+  if (!hasAnyData) {
     return (
       <div className="rounded-md border border-border h-64 flex flex-col items-center justify-center text-center px-6">
-        <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
-        <p className="text-xs text-muted-foreground mt-1">{emptyDescription}</p>
+        <p className="text-sm font-medium text-foreground">{props.emptyTitle}</p>
+        <p className="text-xs text-muted-foreground mt-1">{props.emptyDescription}</p>
       </div>
     )
   }
 
-  // Recharts plots in array order; the API may return desc, so sort asc here
-  // to render time-left-to-right regardless of the request's sortDir.
-  const points: ChartPoint[] = [...movements]
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((m) => ({
-      timestamp: new Date(m.createdAt).getTime(),
-      quantity: m.quantity,
-    }))
-
   const rangeMs =
-    points.length > 1 ? points[points.length - 1].timestamp - points[0].timestamp : 0
+    mergedPoints.length > 1
+      ? mergedPoints[mergedPoints.length - 1].timestamp - mergedPoints[0].timestamp
+      : 0
 
   const dayMonth = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' })
   const hourMinute = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
@@ -73,17 +154,30 @@ export function StockMovementChart({
     return dayMonth.format(date)
   }
 
+  const handleLegendClick = (data: { dataKey?: unknown }): void => {
+    const key = typeof data.dataKey === 'string' ? data.dataKey : undefined
+    if (!key) return
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   return (
     <div className="rounded-md border border-border p-4">
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={points} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="stockMovementFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#0d9488" stopOpacity={0} />
-              </linearGradient>
-            </defs>
+          <AreaChart data={mergedPoints} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            {!isMulti && (
+              <defs>
+                <linearGradient id="stockMovementFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={SINGLE_SERIES_COLOR} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={SINGLE_SERIES_COLOR} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+            )}
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
               dataKey="timestamp"
@@ -102,6 +196,10 @@ export function StockMovementChart({
             />
             <Tooltip
               labelFormatter={(value) => tooltipFormat.format(new Date(Number(value)))}
+              formatter={(value, name) => {
+                const meta = seriesMeta.find((s) => s.key === name)
+                return [value, meta?.name ?? name]
+              }}
               contentStyle={{
                 background: '#ffffff',
                 border: '1px solid #e5e7eb',
@@ -109,13 +207,44 @@ export function StockMovementChart({
                 fontSize: '0.75rem',
               }}
             />
-            <Area
-              type="monotone"
-              dataKey="quantity"
-              stroke="#0d9488"
-              strokeWidth={2}
-              fill="url(#stockMovementFill)"
-            />
+            {isMulti && (
+              <Legend
+                onClick={handleLegendClick}
+                wrapperStyle={{ fontSize: '0.75rem', cursor: 'pointer' }}
+                formatter={(value) => {
+                  const meta = seriesMeta.find((s) => s.key === value)
+                  const label = meta?.name ?? value
+                  const isHidden = hidden.has(String(value))
+                  return (
+                    <span
+                      style={{
+                        color: isHidden ? '#9ca3af' : '#374151',
+                        textDecoration: isHidden ? 'line-through' : 'none',
+                      }}
+                    >
+                      {label}
+                    </span>
+                  )
+                }}
+              />
+            )}
+            {seriesMeta.map((s) => (
+              <Area
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.key}
+                stroke={s.stroke}
+                strokeWidth={2}
+                strokeDasharray={s.dasharray}
+                fill={isMulti ? 'transparent' : 'url(#stockMovementFill)'}
+                hide={hidden.has(s.key)}
+                connectNulls
+                isAnimationActive={false}
+                dot={isMulti ? { r: 2 } : false}
+                activeDot={{ r: 4 }}
+              />
+            ))}
           </AreaChart>
         </ResponsiveContainer>
       </div>

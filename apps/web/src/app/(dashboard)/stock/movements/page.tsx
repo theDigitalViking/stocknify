@@ -8,7 +8,10 @@ import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
-import { StockMovementChart } from '@/components/stock/stock-movement-chart'
+import {
+  StockMovementChart,
+  type StockMovementSeries,
+} from '@/components/stock/stock-movement-chart'
 import { StockMovementTable } from '@/components/stock/stock-movement-table'
 import { Button } from '@/components/ui/button'
 import { useStockMovements } from '@/lib/api/use-stock-movements'
@@ -211,7 +214,9 @@ export default function StockMovementsPage(): JSX.Element {
   const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
   const { data: chartData } = useStockMovements(chartFilters)
 
-  const hasChartFilters = Boolean(variantId && locationId && stockType)
+  const hasSingleLineFilters = Boolean(variantId && locationId && stockType)
+  const isProductMode = Boolean(productId) && !hasSingleLineFilters
+  const hasChart = hasSingleLineFilters || isProductMode
   const chartRows = chartData?.data ?? []
   const chartTotal = chartData?.meta.total ?? 0
   const isChartTruncated = chartTotal > chartRows.length
@@ -220,6 +225,32 @@ export default function StockMovementsPage(): JSX.Element {
   const chartEmptyDescription = hasRange
     ? t('chart.emptyRange.description')
     : t('chart.empty.description')
+
+  // In product mode, fan the flat row payload out into one series per
+  // (location, stockType) combo. The composite key is locationId+stockType so
+  // two stock types in the same warehouse become two series; locationName +
+  // stockType form the human-readable label rendered in the legend.
+  const productSeries = useMemo<StockMovementSeries[]>(() => {
+    if (!isProductMode) return []
+    const groups = new Map<string, StockMovementSeries>()
+    for (const row of chartRows) {
+      const key = `${row.locationId}|${row.stockType}`
+      let group = groups.get(key)
+      if (!group) {
+        group = {
+          key,
+          name: t('chart.multiLine.seriesLabel', {
+            location: row.locationName,
+            stockType: row.stockType,
+          }),
+          rows: [],
+        }
+        groups.set(key, group)
+      }
+      group.rows.push(row)
+    }
+    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [isProductMode, chartRows, t])
 
   const fromInputValue = isoToDateInput(range.from)
   const toInputValue = isoToDateInput(range.to)
@@ -292,8 +323,18 @@ export default function StockMovementsPage(): JSX.Element {
             </div>
           </div>
 
-          {hasChartFilters ? (
+          {hasChart ? (
             <>
+              {isProductMode && (
+                <div className="mb-2">
+                  <p className="text-sm font-medium text-foreground">
+                    {t('chart.multiLine.title')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('chart.multiLine.description')} {t('chart.multiLine.legendToggleHint')}
+                  </p>
+                </div>
+              )}
               {isChartTruncated && (
                 <p
                   role="status"
@@ -305,11 +346,19 @@ export default function StockMovementsPage(): JSX.Element {
                   })}
                 </p>
               )}
-              <StockMovementChart
-                movements={chartRows}
-                emptyTitle={chartEmptyTitle}
-                emptyDescription={chartEmptyDescription}
-              />
+              {isProductMode ? (
+                <StockMovementChart
+                  series={productSeries}
+                  emptyTitle={chartEmptyTitle}
+                  emptyDescription={chartEmptyDescription}
+                />
+              ) : (
+                <StockMovementChart
+                  movements={chartRows}
+                  emptyTitle={chartEmptyTitle}
+                  emptyDescription={chartEmptyDescription}
+                />
+              )}
             </>
           ) : (
             <div className="rounded-md border border-border h-64 flex flex-col items-center justify-center text-center px-6">

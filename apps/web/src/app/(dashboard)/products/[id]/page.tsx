@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { CheckCircle2, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
+import { BarChart3, CheckCircle2, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -34,6 +34,7 @@ export default function ProductDetailPage(): JSX.Element {
   const tDetail = useTranslations('products.detail')
   const tUnits = useTranslations('products.units')
   const tCommon = useTranslations('common')
+  const tStock = useTranslations('stock')
   const locale = useLocale()
   const dateLocale = locale === 'de' ? deLocale : undefined
 
@@ -125,6 +126,12 @@ export default function ProductDetailPage(): JSX.Element {
             ) : null}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/stock/movements?productId=${id}`}>
+                <BarChart3 className="h-4 w-4" />
+                {tStock('viewMovements')}
+              </Link>
+            </Button>
             <Button
               variant="outline"
               size="sm"
