@@ -35,12 +35,50 @@ interface RangeState {
   activePreset: PresetKey | null
 }
 
+// `days` is inclusive of today: a 7d preset spans today + 6 prior days = 7
+// calendar days. Off-by-one in the prior implementation made every preset
+// one day wider than its label suggested.
 function rangeForPreset(days: number): { from: string; to: string } {
   const now = new Date()
   return {
-    from: subDays(startOfDay(now), days).toISOString(),
+    from: subDays(startOfDay(now), days - 1).toISOString(),
     to: endOfDay(now).toISOString(),
   }
+}
+
+function parseValidIso(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined
+  const ms = new Date(raw).getTime()
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined
+}
+
+interface ParsedUrlRange {
+  from: string | undefined
+  to: string | undefined
+  isValid: boolean
+  hadParams: boolean
+}
+
+// Parses raw URL `from`/`to` query params into normalized ISO strings or
+// flags the pair as invalid. Invalid covers: an unparseable string in
+// either slot, or `from` later than `to`. Callers fall back to the default
+// range and rewrite the URL when invalid so a malformed shared link can't
+// keep firing 4xx responses against the API.
+function parseUrlRange(rawFrom: string | null, rawTo: string | null): ParsedUrlRange {
+  const hadParams = Boolean(rawFrom || rawTo)
+  if (!hadParams) return { from: undefined, to: undefined, isValid: true, hadParams: false }
+  const from = parseValidIso(rawFrom)
+  const to = parseValidIso(rawTo)
+  const fromInvalid = Boolean(rawFrom) && from === undefined
+  const toInvalid = Boolean(rawTo) && to === undefined
+  const orderInvalid =
+    from !== undefined &&
+    to !== undefined &&
+    new Date(from).getTime() > new Date(to).getTime()
+  if (fromInvalid || toInvalid || orderInvalid) {
+    return { from: undefined, to: undefined, isValid: false, hadParams: true }
+  }
+  return { from, to, isValid: true, hadParams: true }
 }
 
 // Render an ISO timestamp as the user's local YYYY-MM-DD for an <input type="date">.
@@ -88,11 +126,12 @@ export default function StockMovementsPage(): JSX.Element {
   const defaultRangeRef = useRef<{ from: string; to: string }>(rangeForPreset(DEFAULT_RANGE_DAYS))
 
   const [range, setRange] = useState<RangeState>(() => {
-    const urlFrom = search.get('from') ?? undefined
-    const urlTo = search.get('to') ?? undefined
-    if (urlFrom || urlTo) {
-      return { from: urlFrom, to: urlTo, activePreset: null }
+    const parsed = parseUrlRange(search.get('from'), search.get('to'))
+    if (parsed.isValid && parsed.hadParams) {
+      return { from: parsed.from, to: parsed.to, activePreset: null }
     }
+    // No URL params (default-30d landing) or malformed URL — fall back to
+    // the stable default range. The mount effect below rewrites the URL.
     return { ...defaultRangeRef.current, activePreset: '30d' }
   })
 
@@ -109,12 +148,13 @@ export default function StockMovementsPage(): JSX.Element {
     [pathname, router, search],
   )
 
-  // On mount, if the URL has no range params, push the default 30d range into
-  // the URL so the address bar always reflects the active filter. Without
-  // this, the URL is "default" but state has explicit ISOs — the asymmetry
-  // makes shared/back-button navigation desync from rendered data.
+  // On mount, if the URL has no range params OR carries malformed values,
+  // push the default 30d range into the URL so the address bar always
+  // reflects the active filter. Rewriting on invalid input also stops a
+  // bad shared link from looping 4xx responses through TanStack's retry.
   useEffect(() => {
-    if (!search.get('from') && !search.get('to')) {
+    const parsed = parseUrlRange(search.get('from'), search.get('to'))
+    if (!parsed.hadParams || !parsed.isValid) {
       writeRangeToUrl(defaultRangeRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,13 +162,27 @@ export default function StockMovementsPage(): JSX.Element {
 
   // Sync external URL changes (browser back/forward, deep-link nav while on
   // this page) into range state. Our own writeRangeToUrl calls also fire
-  // this effect, but the equality short-circuit makes them no-ops.
+  // this effect, but the equality short-circuit makes them no-ops. Invalid
+  // URL params reset to the default and rewrite the URL — same defense as
+  // the mount effect for navigation that lands on a malformed link.
   useEffect(() => {
-    const urlFrom = search.get('from') ?? undefined
-    const urlTo = search.get('to') ?? undefined
+    const parsed = parseUrlRange(search.get('from'), search.get('to'))
+    if (!parsed.isValid) {
+      setRange((prev) => {
+        if (
+          prev.from === defaultRangeRef.current.from &&
+          prev.to === defaultRangeRef.current.to
+        ) {
+          return prev
+        }
+        return { ...defaultRangeRef.current, activePreset: '30d' }
+      })
+      writeRangeToUrl(defaultRangeRef.current)
+      return
+    }
     setRange((prev) => {
-      if (prev.from === urlFrom && prev.to === urlTo) return prev
-      if (!urlFrom && !urlTo) {
+      if (prev.from === parsed.from && prev.to === parsed.to) return prev
+      if (!parsed.hadParams) {
         if (
           prev.from === defaultRangeRef.current.from &&
           prev.to === defaultRangeRef.current.to
@@ -137,9 +191,9 @@ export default function StockMovementsPage(): JSX.Element {
         }
         return { ...defaultRangeRef.current, activePreset: '30d' }
       }
-      return { from: urlFrom, to: urlTo, activePreset: null }
+      return { from: parsed.from, to: parsed.to, activePreset: null }
     })
-  }, [search])
+  }, [search, writeRangeToUrl])
 
   const applyPreset = useCallback(
     (preset: (typeof PRESETS)[number]) => {
