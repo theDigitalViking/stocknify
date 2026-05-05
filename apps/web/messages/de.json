@@ -133,6 +133,15 @@
   },
   "stockMovements": {
     "title": "Bestands-Verlauf",
+    "rangeLabel": "Zeitraum",
+    "presets": {
+      "7d": "7T",
+      "14d": "14T",
+      "30d": "30T",
+      "90d": "90T"
+    },
+    "fromLabel": "Von",
+    "toLabel": "Bis",
     "chart": {
       "title": "Menge im Zeitverlauf",
       "filtersRequired": {
@@ -142,6 +151,10 @@
       "empty": {
         "title": "Keine Bewegungen vorhanden",
         "description": "Bewegungen erscheinen, sobald Bestandsdaten für diese Kombination synchronisiert wurden."
+      },
+      "emptyRange": {
+        "title": "Keine Bewegungen in diesem Zeitraum",
+        "description": "Bitte einen anderen Zeitraum wählen oder auf den nächsten Sync warten."
       }
     },
     "table": {

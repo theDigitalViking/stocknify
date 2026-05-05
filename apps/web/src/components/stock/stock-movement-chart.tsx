@@ -21,9 +21,11 @@ interface StockMovementChartProps {
 
 interface ChartPoint {
   timestamp: number
-  dateLabel: string
   quantity: number
 }
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const SEVEN_DAYS_MS = 7 * ONE_DAY_MS
 
 export function StockMovementChart({
   movements,
@@ -45,17 +47,31 @@ export function StockMovementChart({
   // to render time-left-to-right regardless of the request's sortDir.
   const points: ChartPoint[] = [...movements]
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((m) => {
-      const date = new Date(m.createdAt)
-      return {
-        timestamp: date.getTime(),
-        dateLabel: date.toLocaleDateString(locale, {
-          month: 'short',
-          day: 'numeric',
-        }),
-        quantity: m.quantity,
-      }
-    })
+    .map((m) => ({
+      timestamp: new Date(m.createdAt).getTime(),
+      quantity: m.quantity,
+    }))
+
+  const rangeMs =
+    points.length > 1 ? points[points.length - 1].timestamp - points[0].timestamp : 0
+
+  const dayMonth = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' })
+  const hourMinute = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
+  const tooltipFormat = new Intl.DateTimeFormat(locale, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+
+  const formatTick = (value: number): string => {
+    const date = new Date(value)
+    if (rangeMs <= ONE_DAY_MS) {
+      return hourMinute.format(date)
+    }
+    if (rangeMs <= SEVEN_DAYS_MS) {
+      return `${dayMonth.format(date)} ${hourMinute.format(date)}`
+    }
+    return dayMonth.format(date)
+  }
 
   return (
     <div className="rounded-md border border-border p-4">
@@ -70,9 +86,14 @@ export function StockMovementChart({
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
-              dataKey="dateLabel"
+              dataKey="timestamp"
+              type="number"
+              scale="time"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={formatTick}
               tick={{ fontSize: 11, fill: '#6b7280' }}
               stroke="#e5e7eb"
+              minTickGap={32}
             />
             <YAxis
               tick={{ fontSize: 11, fill: '#6b7280' }}
@@ -80,6 +101,7 @@ export function StockMovementChart({
               allowDecimals={false}
             />
             <Tooltip
+              labelFormatter={(value) => tooltipFormat.format(new Date(Number(value)))}
               contentStyle={{
                 background: '#ffffff',
                 border: '1px solid #e5e7eb',

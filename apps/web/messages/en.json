@@ -133,6 +133,15 @@
   },
   "stockMovements": {
     "title": "Stock movements",
+    "rangeLabel": "Time range",
+    "presets": {
+      "7d": "7d",
+      "14d": "14d",
+      "30d": "30d",
+      "90d": "90d"
+    },
+    "fromLabel": "From",
+    "toLabel": "To",
     "chart": {
       "title": "Quantity over time",
       "filtersRequired": {
@@ -142,6 +151,10 @@
       "empty": {
         "title": "No movements yet",
         "description": "Movements will appear once stock data is synced for this combination."
+      },
+      "emptyRange": {
+        "title": "No movements in this time range",
+        "description": "Pick a different range or wait for the next sync."
       }
     },
     "table": {
