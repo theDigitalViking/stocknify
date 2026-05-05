@@ -8,13 +8,16 @@
 
 A **cycle** is one focused unit of change — typically a single feature, fix, or refactor that maps to one Notion entry, one prompt file, one result file, and one push.
 
-**One Claude.ai chat = one cycle.** When a cycle ends (pushed + reviewed), the chat closes. The next cycle opens a fresh chat. This is the only reliable defense against context degradation in long Claude.ai sessions.
+**Chat cadence depends on the role:**
+
+- **Claude Code (execution):** One fresh session per cycle. When a cycle ends (pushed), the session closes. The next cycle opens a fresh session. This is the only reliable defense against context degradation in long Claude Code sessions with heavy tool use.
+- **Claude Chat (planning):** One chat per batch. The planning chat stays open from batch planning through all cycles until the batch is complete. Context degradation is not a concern here — planning chats are lighter on tool calls and benefit from continuity across the batch.
 
 ---
 
 ## Bootstrap prompt for Claude (Chat)
 
-At the start of a new Claude.ai chat, paste this single sentence:
+At the start of a new batch, open a fresh Claude.ai chat and paste this single sentence:
 
 ```
 Stocknify-Cycle. Lies `WORKFLOW.md`, `prompts/_state/STATE.md` und `prompts/_state/NEXT.md` via Filesystem MCP, dann reden wir über den nächsten Cycle.
@@ -112,14 +115,28 @@ After Claude Code pushes to `develop`, Sebastian decides whether a Codex review 
 
 Claude (Chat) assigns the classification when writing the prompt. If missing, default to `review:mandatory`.
 
-When a review runs, Sebastian opens a separate Codex session targeting the diff. Findings are classified following DECISIONS 2026-04-16:
-- **Security / Data Integrity / Correctness** → open a fix cycle (e.g. `2-FIX`) before continuing.
-- **Hypothetical / MVP-irrelevant / deployment ergonomics** → append to `KNOWN_TODOS.md` in the next cycle's carry-over, proceed.
+**Review-fix flow (same session):** After pushing, Claude Code tells Sebastian to run the Codex review command. Sebastian executes it in the same session:
+
+```
+/codex:adversarial-review --base origin/main
+```
+
+The `--base origin/main` flag ensures Codex reviews all uncommitted-to-production changes on `develop` (the cycle's actual code), not just the working tree.
+
+The findings appear directly in the session. Claude Code then:
+
+1. **Parses & classifies** every finding as ACTIONABLE (Security / Data Integrity / Correctness) or DEFERRED (Hypothetical / MVP-irrelevant) per DECISIONS 2026-04-16.
+2. **Fixes all ACTIONABLE findings** directly. Commits each fix (or batches related fixes).
+3. **Documents everything** in `prompts/results/REVIEW_<cycle-name>.md` following `prompts/_templates/REVIEW_TEMPLATE.md`.
+4. **Updates memory bank:** `STATE.md` (review-fix note on the cycle bullet) + `KNOWN_TODOS.md` (any DEFERRED findings).
+5. **Pushes again** (`git push origin develop`).
+
+**Important:** Do NOT use `/codex:setup --enable-review-gate` (the automatic gate). It hangs and triggers `codex:rescue` loops. Only use the manual command above.
 
 **Future automation (planned):** A GitHub Action that triggers on push to `develop` and runs the Codex review automatically for `review:mandatory` cycles, posting findings as a CI artifact.
 
-### 7. Chat close
-Chat closes. The next cycle opens a fresh chat.
+### 7. Next cycle
+Claude Code session closes. Sebastian returns to the batch planning chat (Claude Chat) to pick up the next cycle's bootstrap prompt. A new Claude Code session is opened for the next cycle.
 
 ---
 
@@ -151,9 +168,10 @@ The carry-over commit pushes alongside the cycle's own commits at the end of the
 
 - **Claude (Chat) never edits production code.** Only prompts, results, memory bank files, and (when explicitly authorized) workflow/template documentation.
 - **Claude Code commits and pushes on `develop`, never on `main`.** Hotfixes are out-of-band and explicitly handled by Sebastian (see Branching strategy).
-- **Claude Code pushes `develop` itself** at the end of a cycle, after the Memory Bank update is committed and Codex review (if applicable) is clean. The per-push manual handoff is gone; the production gate is Sebastian's `develop` → `main` merge.
+- **Claude Code pushes `develop` itself** at the end of a cycle, after the Memory Bank update is committed. The per-push manual handoff is gone; the production gate is Sebastian's `develop` → `main` merge.
 - **Claude Code never merges `develop` into `main`.** That decision is Sebastian's, made when the accumulated develop state is review-ready.
-- **One cycle, one chat.** No exceptions.
+- **Claude Code: one cycle, one session.** Fresh context per cycle, no exceptions.
+- **Claude Chat: one batch, one chat.** Planning chat stays open across all cycles in a batch.
 - **STATE.md is updated by Claude Code at the end of every run.** This is what keeps the memory bank alive.
 - **Notion status is updated by Claude Code (or Claude Chat as fallback), never by Sebastian manually.**
 - **Communication with Sebastian = German. All files for coding agents = English.**

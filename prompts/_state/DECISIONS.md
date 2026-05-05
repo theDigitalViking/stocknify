@@ -10,13 +10,13 @@
 
 **Rationale:** Not every cycle has a security/correctness surface worth reviewing with a second LLM. Icon swaps and column removals are verifiable by eye on the Vercel Preview. The classification makes the decision explicit rather than ad-hoc, and saves time on cycles where the review adds no value.
 
-## 2026-05-05 — Codex review decoupled from Claude Code plugin
+## 2026-05-05 — Codex review: manual command in same session, no automatic gate
 
-**Decision:** The OpenAI Codex adversarial review is no longer run as a Claude Code plugin (`/codex:setup --enable-review-gate`). Instead, Sebastian runs Codex in a separate session after Claude Code pushes to `develop`. Claude Code's cycle ends at the push; Codex review is a post-push quality gate operated by Sebastian. The review-gate step is removed from the bootstrap prompt and from prompt templates. Findings policy (DECISIONS 2026-04-16) is unchanged.
+**Decision:** The OpenAI Codex adversarial review runs via the manual `/codex:adversarial-review` command in the **same Claude Code session** that executed the cycle — after the push. Claude Code prompts Sebastian to run the command, reads the findings directly from the session output, classifies them per DECISIONS 2026-04-16, and fixes actionable items immediately. The automatic review gate (`/codex:setup --enable-review-gate`) is banned — it hangs and triggers `codex:rescue` loops. The `Review:` header field on each prompt (`review:mandatory` / `review:recommended` / `review:skip`) determines whether the review step runs at all.
 
-**Rationale:** The Codex Claude Code plugin (`codex-companion.mjs`) was intermittently hanging, triggering stale `codex:rescue` loops, and blocking Claude Code sessions. The plugin's instability outweighed the convenience of in-session review. Decoupling preserves the quality gate (different LLM = different blind spots) while eliminating the blocking failure mode. A GitHub Action automating the Codex review on push to `develop` is planned as a future improvement.
+**Rationale:** The automatic gate was the source of the blocking failures, not the Codex review itself. The manual command works reliably. Running it in the same session means Claude Code can read and act on findings without Sebastian copying anything. This preserves the quality gate (different LLM) while eliminating both the plugin instability and manual copy-paste friction.
 
-**Supersedes:** WORKFLOW.md Step 5 (old: "Codex adversarial review (automatic via review gate)") and the bootstrap prompt's Step 1 (`/codex:setup --enable-review-gate`). The push-policy decision (2026-04-29) is updated: Claude Code still pushes `develop`, but no longer waits for Codex before pushing.
+**Supersedes:** The earlier same-day decision about decoupling Codex into a separate session. The review is no longer "separate" — it's in-session but manually triggered.
 
 ## 2026-05-05 — Cycle & batch naming convention: numbered batches, lettered cycles
 
