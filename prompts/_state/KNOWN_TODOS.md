@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-05 (Cycle 2-B shipped — movements chart polish; minor URL/preset/calendar-month follow-ups recorded)
+**Last updated:** 2026-05-05 (Cycle 2-B Codex adversarial review — both findings deferred as governance/process; new Workflow section)
 
 ---
 
@@ -37,6 +37,11 @@
 - **CSV pipeline regressions** — recurrent gap from every CSV cycle to date. Target tests: dry-run with unmapped SKU, missing-location import, batched-product-without-batchTracking import, overlapping-key round trip.
 
 ---
+
+## Workflow
+
+- **Pre-push Codex gate is intentionally absent (Cycle 2-B adversarial review fallout, 2026-05-05).** Codex's adversarial review of the working-tree workflow-doc churn flagged the post-push review model as a governance regression ([high] on `PROMPT_TEMPLATE.md`, [medium] on `WORKFLOW.md`). Both findings argue against the documented decision in DECISIONS 2026-05-05 ("Codex review decoupled from Claude Code plugin") — the `codex-companion` plugin was intermittently hanging, triggering stale `codex:rescue` loops, and blocking sessions; the gate's instability outweighed its blocking value. Production-deploy gate is preserved via Sebastian's manual `develop` → `main` merge, so unreviewed code on `develop` cannot reach prod without a deliberate human merge. The right resolution for the residual concern is the **planned GitHub Action** (already noted under WORKFLOW.md § Step 6) that runs Codex on push to `develop`, gated by the `review:mandatory` classification, with findings posted as a CI artifact and merge to `main` blocked until clean. Not a fresh decision needed — just executing the planned automation.
+- **Adversarial-review default scope is wrong post-push (Cycle 2-B fallout, 2026-05-05).** The bare `/codex:adversarial-review` invocation defaults to working-tree scope. After cycle commits have landed on `develop`, the working tree contains only carry-over churn or unrelated edits — Codex never sees the cycle's actual code. Cycle 2-B's review consequently reviewed only the `WORKFLOW.md` + `PROMPT_TEMPLATE.md` deltas instead of the chart-polish commits. **Right fix:** when the workflow's GitHub-Action automation lands, fix the scope at the trigger level. **Manual workaround until then:** explicitly pass `--base origin/main` (or `--base HEAD~N` calibrated to cycle commit count) when invoking the slash-command after a push. Worth surfacing in WORKFLOW.md § Step 6 alongside the existing review-classification table.
 
 ## Backend
 
