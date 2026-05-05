@@ -264,9 +264,20 @@ export default function StockPage(): JSX.Element {
             size="icon"
             className="h-7 w-7"
             title={t('viewMovements')}
-            disabled
+            asChild
           >
-            <Activity className="h-4 w-4" />
+            <Link
+              href={{
+                pathname: '/stock/movements',
+                query: {
+                  variantId: row.variantId,
+                  locationId: row.locationId,
+                  stockType: row.stockType,
+                },
+              }}
+            >
+              <Activity className="h-4 w-4" />
+            </Link>
           </Button>
         </div>
       ),

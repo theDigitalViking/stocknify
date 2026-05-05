@@ -73,6 +73,52 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   return json.data
 }
 
+// Variant of apiFetch that preserves the `meta` envelope alongside `data`.
+// Use it when the caller needs pagination totals or other metadata; the
+// existing `apiFetch` strips meta for the simpler single-payload case.
+export interface ApiPage<T> {
+  data: T
+  meta: { total: number; page: number; perPage: number }
+}
+
+export async function apiFetchWithMeta<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<ApiPage<T>> {
+  const headers = await getAuthHeader()
+  const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/v1${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+      ...options?.headers,
+    },
+  })
+  const contentType = res.headers.get('content-type')
+  if (!contentType?.includes('application/json')) {
+    throw new ApiError(
+      `Request failed with status ${String(res.status)}`,
+      'HTTP_ERROR',
+      res.status,
+    )
+  }
+  const json = (await res.json()) as ApiEnvelope<T> & {
+    meta?: { total: number; page: number; perPage: number }
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      json.error?.message ?? `Request failed with status ${String(res.status)}`,
+      json.error?.code ?? 'HTTP_ERROR',
+      res.status,
+    )
+  }
+  if (json.error) throw new ApiError(json.error.message, json.error.code, res.status)
+  if (json.data === undefined || !json.meta) {
+    throw new ApiError(`Malformed paginated response from ${path}`, 'MALFORMED_RESPONSE', res.status)
+  }
+  return { data: json.data, meta: json.meta }
+}
+
 export function toQueryString(
   params: Record<string, string | number | boolean | undefined | null>,
 ): string {

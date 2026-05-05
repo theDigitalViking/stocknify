@@ -1,4 +1,3 @@
-import type { StockMovement } from '@stocknify/shared'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
 import { apiFetch, toQueryString } from './client'
@@ -38,22 +37,3 @@ export function useStock(filters: StockFilters = {}): UseQueryResult<StockRow[]>
   })
 }
 
-export interface StockMovementFilters {
-  variantId?: string
-  locationId?: string
-  movementType?: string
-  from?: string
-  to?: string
-  page?: number
-  perPage?: number
-}
-
-export function useStockMovements(
-  filters: StockMovementFilters = {},
-): UseQueryResult<StockMovement[]> {
-  const query = toQueryString({ ...filters })
-  return useQuery<StockMovement[]>({
-    queryKey: ['stock', 'movements', filters],
-    queryFn: () => apiFetch<StockMovement[]>(`/stock/movements${query}`),
-  })
-}

@@ -131,6 +131,43 @@
       "description": "Verbinden Sie eine Integration, um Bestandsdaten zu synchronisieren."
     }
   },
+  "stockMovements": {
+    "title": "Bestands-Verlauf",
+    "chart": {
+      "title": "Menge im Zeitverlauf",
+      "filtersRequired": {
+        "title": "Bitte Variante, Lager und Bestandstyp wählen",
+        "description": "Der Verlauf benötigt alle drei Filter, um eine einzelne Linie darzustellen."
+      },
+      "empty": {
+        "title": "Keine Bewegungen vorhanden",
+        "description": "Bewegungen erscheinen, sobald Bestandsdaten für diese Kombination synchronisiert wurden."
+      }
+    },
+    "table": {
+      "title": "Bewegungs-Historie",
+      "empty": {
+        "title": "Keine Bewegungen gefunden",
+        "description": "Filter anpassen oder auf den nächsten Sync warten."
+      }
+    },
+    "columns": {
+      "date": "Datum",
+      "product": "Produkt",
+      "variant": "Variante",
+      "location": "Lager",
+      "stockType": "Typ",
+      "quantity": "Menge",
+      "delta": "Änderung",
+      "source": "Quelle"
+    },
+    "pagination": {
+      "previous": "Zurück",
+      "next": "Weiter",
+      "pageOf": "Seite {page} von {total}",
+      "showing": "{from}–{to} von {total}"
+    }
+  },
   "products": {
     "title": "Produkte",
     "addProduct": "Produkt hinzufügen",
@@ -185,10 +222,21 @@
       "stockValue": "Bestandswert",
       "stockBatch": "Charge",
       "stockEmpty": "Kein Bestand für dieses Produkt vorhanden.",
+      "batchListTitle": "Chargen",
       "deleteConfirmTitle": "Produkt löschen?",
       "deleteConfirmDescription": "Das Produkt und alle zugehörigen Bestände werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
       "deleteConfirm": "Löschen",
       "batchTrackingBlockedToast": "Batch-Tracking kann nicht deaktiviert werden, solange Chargenbestände vorhanden sind."
+    },
+    "batchList": {
+      "empty": "Keine Chargen vorhanden.",
+      "columns": {
+        "batch": "Charge",
+        "expiryDate": "MHD",
+        "location": "Lager",
+        "quantity": "Menge",
+        "stockType": "Bestandstyp"
+      }
     },
     "form": {
       "addTitle": "Produkt hinzufügen",

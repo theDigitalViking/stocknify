@@ -131,6 +131,43 @@
       "description": "Connect an integration to start syncing stock data."
     }
   },
+  "stockMovements": {
+    "title": "Stock movements",
+    "chart": {
+      "title": "Quantity over time",
+      "filtersRequired": {
+        "title": "Pick a variant, location, and stock type",
+        "description": "The chart needs all three filters to plot a single quantity-over-time line."
+      },
+      "empty": {
+        "title": "No movements yet",
+        "description": "Movements will appear once stock data is synced for this combination."
+      }
+    },
+    "table": {
+      "title": "Movement history",
+      "empty": {
+        "title": "No movements found",
+        "description": "Adjust the filters or wait for the next sync."
+      }
+    },
+    "columns": {
+      "date": "Date",
+      "product": "Product",
+      "variant": "Variant",
+      "location": "Warehouse",
+      "stockType": "Type",
+      "quantity": "Quantity",
+      "delta": "Change",
+      "source": "Source"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "pageOf": "Page {page} of {total}",
+      "showing": "{from}–{to} of {total}"
+    }
+  },
   "products": {
     "title": "Products",
     "addProduct": "Add product",
@@ -185,10 +222,21 @@
       "stockValue": "Stock value",
       "stockBatch": "Batch",
       "stockEmpty": "No stock available for this product.",
+      "batchListTitle": "Batches",
       "deleteConfirmTitle": "Delete product?",
       "deleteConfirmDescription": "This will delete the product and all its stock levels. This action cannot be undone.",
       "deleteConfirm": "Delete",
       "batchTrackingBlockedToast": "Cannot deactivate batch tracking while batch stock levels exist for this product."
+    },
+    "batchList": {
+      "empty": "No batches found.",
+      "columns": {
+        "batch": "Batch",
+        "expiryDate": "Best-before",
+        "location": "Warehouse",
+        "quantity": "Quantity",
+        "stockType": "Stock type"
+      }
     },
     "form": {
       "addTitle": "Add product",

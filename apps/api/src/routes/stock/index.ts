@@ -4,7 +4,6 @@ import { z } from 'zod'
 
 import {
   movementTypeSchema,
-  paginationSchema,
   upsertStockLevelSchema,
   uuidSchema,
 } from '@stocknify/shared'
@@ -27,12 +26,17 @@ const stockQuerySchema = z.object({
   perPage: z.coerce.number().int().positive().max(100).default(50),
 })
 
-const movementsQuerySchema = paginationSchema.extend({
+const movementsQuerySchema = z.object({
+  productId: uuidSchema.optional(),
   variantId: uuidSchema.optional(),
   locationId: uuidSchema.optional(),
+  stockType: z.string().min(1).optional(),
   movementType: movementTypeSchema.optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  perPage: z.coerce.number().int().positive().max(200).default(50),
+  sortDir: z.enum(['asc', 'desc']).default('desc'),
 })
 
 export async function stockRoutes(app: FastifyInstance): Promise<void> {
@@ -144,18 +148,23 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // GET /stock/movements — paginated movement history (must be before /stock/:variantId)
+  // Returns denormalized fields (variantSku, productName, location/bin names,
+  // batchNumber) so the movements page renders without secondary lookups.
   app.get('/stock/movements', async (request, reply) => {
     try {
       const query = movementsQuerySchema.safeParse(request.query)
       if (!query.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: query.error.message } })
       }
-      const { page, perPage, variantId, locationId, movementType, from, to } = query.data
+      const { page, perPage, productId, variantId, locationId, stockType, movementType, from, to, sortDir } =
+        query.data
       const skip = (page - 1) * perPage
 
       const where: Prisma.StockMovementWhereInput = { tenantId: request.tenantId }
       if (variantId) where.variantId = variantId
+      if (productId) where.variant = { productId }
       if (locationId) where.locationId = locationId
+      if (stockType) where.stockType = stockType
       if (movementType) where.movementType = movementType
       if (from ?? to) {
         where.createdAt = {}
@@ -168,12 +177,39 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
           where,
           skip,
           take: perPage,
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: sortDir },
+          include: {
+            variant: { include: { product: true } },
+            location: true,
+            storageLocation: true,
+            batch: true,
+          },
         }),
         request.db.stockMovement.count({ where }),
       ])
 
-      return reply.send({ data: movements, meta: { total, page, perPage } })
+      const data = movements.map((m) => ({
+        id: m.id,
+        variantId: m.variantId,
+        variantSku: m.variant.sku,
+        productId: m.variant.productId,
+        productName: m.variant.product.name,
+        locationId: m.locationId,
+        locationName: m.location.name,
+        storageLocationId: m.storageLocationId,
+        storageLocationName: m.storageLocation?.name ?? null,
+        batchId: m.batchId,
+        batchNumber: m.batch?.batchNumber ?? null,
+        stockType: m.stockType,
+        quantity: Number(m.quantityAfter),
+        quantityBefore: Number(m.quantityBefore),
+        delta: Number(m.delta),
+        movementType: m.movementType,
+        source: m.source,
+        createdAt: m.createdAt.toISOString(),
+      }))
+
+      return reply.send({ data, meta: { total, page, perPage } })
     } catch {
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
     }

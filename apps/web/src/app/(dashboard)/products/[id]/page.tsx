@@ -9,6 +9,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 import { EditProductDialog } from '@/components/products/edit-product-dialog'
+import { ProductBatchList } from '@/components/products/product-batch-list'
 import { ProductSourceIcons } from '@/components/products/product-source-icons'
 import { ProductStockTable } from '@/components/products/product-stock-table'
 import { PageHeader } from '@/components/shared/page-header'
@@ -268,6 +269,15 @@ export default function ProductDetailPage(): JSX.Element {
         </h2>
         <ProductStockTable productId={id} variantId={selectedVariantId ?? undefined} />
       </section>
+
+      {product.batchTracking ? (
+        <section className="px-6 py-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3">
+            {tDetail('batchListTitle')}
+          </h2>
+          <ProductBatchList productId={id} variantId={selectedVariantId ?? undefined} />
+        </section>
+      ) : null}
 
       <section className="px-6 py-4">
         <h2 className="text-sm font-semibold text-foreground mb-3">
