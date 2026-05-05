@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-05 (Cycle 2-C shipped — chart now multi-line in product mode; single-line-by-design note refined)
+**Last updated:** 2026-05-05 (Cycle 2-C Codex review — preset off-by-one + URL date validation fixed; no new deferrals)
 
 ---
 
