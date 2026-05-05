@@ -166,9 +166,22 @@
       "multiLine": {
         "title": "All movements for this product",
         "description": "Each line is one warehouse + stock-type combination.",
-        "legendToggleHint": "Click a series to toggle it.",
+        "legendToggleHint": "Click a series in the legend to fade it; use the filters above to add or remove series.",
         "seriesLabel": "{location} · {stockType}"
+      },
+      "noFilterSelected": {
+        "title": "Select at least one location and stock type",
+        "description": "Tick at least one option in each filter to see the chart."
       }
+    },
+    "filters": {
+      "locationLabel": "Location",
+      "stockTypeLabel": "Stock type",
+      "all": "All",
+      "selectedCount": "{count} selected",
+      "selectAll": "Select all",
+      "clearAll": "Clear all",
+      "noOptions": "No options available"
     },
     "table": {
       "title": "Movement history",

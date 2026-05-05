@@ -68,6 +68,11 @@ const DASH_PATTERNS = [
   '5 5',
 ] as const
 
+// Faded series stay rendered (so the operator still sees the trend) but at
+// low opacity, both on the line and in the tooltip swatch/text.
+const FADED_OPACITY = 0.2
+const FADED_TOOLTIP_OPACITY = 0.45
+
 function pickStyle(idx: number): { stroke: string; dasharray: string } {
   return {
     stroke: PALETTE[idx % PALETTE.length],
@@ -79,7 +84,7 @@ const SINGLE_SERIES_COLOR = '#0d9488' // teal-600 — preserves the original loo
 
 export function StockMovementChart(props: StockMovementChartProps): JSX.Element {
   const locale = useLocale()
-  const [hidden, setHidden] = useState<Set<string>>(() => new Set())
+  const [faded, setFaded] = useState<Set<string>>(() => new Set())
 
   const isMulti = 'series' in props && props.series !== undefined
 
@@ -166,7 +171,7 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
   const handleLegendClick = (data: { dataKey?: unknown }): void => {
     const key = typeof data.dataKey === 'string' ? data.dataKey : undefined
     if (!key) return
-    setHidden((prev) => {
+    setFaded((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -204,16 +209,55 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
               allowDecimals={false}
             />
             <Tooltip
-              labelFormatter={(value) => tooltipFormat.format(new Date(Number(value)))}
-              formatter={(value, name) => {
-                const meta = seriesMeta.find((s) => s.key === name)
-                return [value, meta?.name ?? name]
-              }}
-              contentStyle={{
-                background: '#ffffff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.375rem',
-                fontSize: '0.75rem',
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null
+                return (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.375rem',
+                      padding: '0.375rem 0.625rem',
+                      fontSize: '0.75rem',
+                      lineHeight: 1.4,
+                      color: '#374151',
+                    }}
+                  >
+                    <div style={{ marginBottom: 4, color: '#6b7280' }}>
+                      {tooltipFormat.format(new Date(Number(label)))}
+                    </div>
+                    {payload.map((entry) => {
+                      const key = String(entry.dataKey)
+                      const meta = seriesMeta.find((s) => s.key === key)
+                      const isFaded = isMulti && faded.has(key)
+                      return (
+                        <div
+                          key={key}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            opacity: isFaded ? FADED_TOOLTIP_OPACITY : 1,
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: 8,
+                              height: 8,
+                              borderRadius: '999px',
+                              background: meta?.stroke ?? entry.color ?? '#9ca3af',
+                            }}
+                          />
+                          <span style={{ color: isFaded ? '#9ca3af' : '#374151' }}>
+                            {meta?.name ?? key}:
+                          </span>
+                          <span style={{ fontWeight: 500 }}>{String(entry.value)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
               }}
             />
             {isMulti && (
@@ -223,12 +267,12 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
                 formatter={(value) => {
                   const meta = seriesMeta.find((s) => s.key === value)
                   const label = meta?.name ?? value
-                  const isHidden = hidden.has(String(value))
+                  const isFaded = faded.has(String(value))
                   return (
                     <span
                       style={{
-                        color: isHidden ? '#9ca3af' : '#374151',
-                        textDecoration: isHidden ? 'line-through' : 'none',
+                        color: isFaded ? '#9ca3af' : '#374151',
+                        opacity: isFaded ? 0.6 : 1,
                       }}
                     >
                       {label}
@@ -237,23 +281,36 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
                 }}
               />
             )}
-            {seriesMeta.map((s) => (
-              <Area
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                name={s.key}
-                stroke={s.stroke}
-                strokeWidth={2}
-                strokeDasharray={s.dasharray}
-                fill={isMulti ? 'transparent' : 'url(#stockMovementFill)'}
-                hide={hidden.has(s.key)}
-                connectNulls
-                isAnimationActive={false}
-                dot={isMulti ? { r: 2 } : false}
-                activeDot={{ r: 4 }}
-              />
-            ))}
+            {seriesMeta.map((s) => {
+              const isFaded = isMulti && faded.has(s.key)
+              return (
+                <Area
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  name={s.key}
+                  stroke={s.stroke}
+                  strokeWidth={2}
+                  strokeDasharray={s.dasharray}
+                  strokeOpacity={isFaded ? FADED_OPACITY : 1}
+                  fill={isMulti ? 'transparent' : 'url(#stockMovementFill)'}
+                  connectNulls
+                  isAnimationActive={false}
+                  dot={
+                    isMulti
+                      ? {
+                          r: 2,
+                          stroke: s.stroke,
+                          fill: s.stroke,
+                          fillOpacity: isFaded ? FADED_OPACITY : 1,
+                          strokeOpacity: isFaded ? FADED_OPACITY : 1,
+                        }
+                      : false
+                  }
+                  activeDot={{ r: 4, opacity: isFaded ? FADED_TOOLTIP_OPACITY : 1 }}
+                />
+              )
+            })}
           </AreaChart>
         </ResponsiveContainer>
       </div>

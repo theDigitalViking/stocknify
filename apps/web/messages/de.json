@@ -166,9 +166,22 @@
       "multiLine": {
         "title": "Alle Bewegungen für dieses Produkt",
         "description": "Jede Linie ist eine Kombination aus Lager und Bestandstyp.",
-        "legendToggleHint": "Auf eine Serie klicken, um sie ein-/auszublenden.",
+        "legendToggleHint": "Klick auf eine Legende blendet die Linie ab; nutze die Filter oben, um Serien hinzuzufügen oder zu entfernen.",
         "seriesLabel": "{location} · {stockType}"
+      },
+      "noFilterSelected": {
+        "title": "Wähle mindestens ein Lager und einen Bestandstyp",
+        "description": "Bitte in jedem Filter mindestens eine Option auswählen, um den Verlauf anzuzeigen."
       }
+    },
+    "filters": {
+      "locationLabel": "Lager",
+      "stockTypeLabel": "Bestandstyp",
+      "all": "Alle",
+      "selectedCount": "{count} ausgewählt",
+      "selectAll": "Alle auswählen",
+      "clearAll": "Alle abwählen",
+      "noOptions": "Keine Optionen verfügbar"
     },
     "table": {
       "title": "Bewegungs-Historie",

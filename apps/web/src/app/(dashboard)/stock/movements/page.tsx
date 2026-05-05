@@ -9,6 +9,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
 import {
+  MovementFilters,
+  selectionsEqual,
+  type FilterOption,
+  type FilterSelection,
+} from '@/components/stock/movement-filters'
+import {
   StockMovementChart,
   type StockMovementSeries,
 } from '@/components/stock/stock-movement-chart'
@@ -106,6 +112,26 @@ function dateInputToIsoEndOfDay(value: string): string | undefined {
   return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString()
 }
 
+// Parse a comma-separated multi-select URL param. Empty/missing → 'all'
+// (sentinel meaning "no explicit selection"). Explicit empty value
+// (`?locations=`) is treated as 'all' too — there is no use for an
+// "explicitly empty" URL state since the user can clear the param entirely.
+function parseFilterParam(raw: string | null, fallback: string | null | undefined): FilterSelection {
+  if (raw === null) {
+    if (fallback) return new Set([fallback])
+    return 'all'
+  }
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) return 'all'
+  return new Set(parts)
+}
+
+function selectionToParam(selection: FilterSelection): string | null {
+  if (selection === 'all') return null
+  if (selection.size === 0) return ''
+  return Array.from(selection).join(',')
+}
+
 export default function StockMovementsPage(): JSX.Element {
   const t = useTranslations('stockMovements')
   const tStock = useTranslations('stock')
@@ -117,6 +143,9 @@ export default function StockMovementsPage(): JSX.Element {
   const productId = search.get('productId') ?? undefined
   const locationId = search.get('locationId') ?? undefined
   const stockType = search.get('stockType') ?? undefined
+
+  const hasSingleLineFilters = Boolean(variantId && locationId && stockType)
+  const isProductMode = Boolean(productId) && !hasSingleLineFilters
 
   const [page, setPage] = useState(1)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -134,6 +163,24 @@ export default function StockMovementsPage(): JSX.Element {
     // the stable default range. The mount effect below rewrites the URL.
     return { ...defaultRangeRef.current, activePreset: '30d' }
   })
+
+  // Multi-line filter state. Seeded once at mount: explicit `locations`/`stockTypes`
+  // URL params win; absent → fall back to legacy single-value `locationId`/`stockType`
+  // from the URL (the "pre-selected" R4 case from the stock list / future deep links);
+  // absent again → 'all'. Single-line entries skip the legacy seed entirely since the
+  // filters aren't shown there.
+  const [selectedLocations, setSelectedLocations] = useState<FilterSelection>(() =>
+    parseFilterParam(
+      search.get('locations'),
+      hasSingleLineFilters ? null : search.get('locationId'),
+    ),
+  )
+  const [selectedStockTypes, setSelectedStockTypes] = useState<FilterSelection>(() =>
+    parseFilterParam(
+      search.get('stockTypes'),
+      hasSingleLineFilters ? null : search.get('stockType'),
+    ),
+  )
 
   const writeRangeToUrl = useCallback(
     (next: { from: string | undefined; to: string | undefined }) => {
@@ -195,6 +242,46 @@ export default function StockMovementsPage(): JSX.Element {
     })
   }, [search, writeRangeToUrl])
 
+  // Sync external URL changes for the multi-select filters back into state.
+  // After mount, the URL is the single source of truth for filter state —
+  // the legacy `locationId`/`stockType` fallback only fires at first render.
+  useEffect(() => {
+    const nextLocations = parseFilterParam(search.get('locations'), null)
+    const nextStockTypes = parseFilterParam(search.get('stockTypes'), null)
+    setSelectedLocations((prev) => (selectionsEqual(prev, nextLocations) ? prev : nextLocations))
+    setSelectedStockTypes((prev) =>
+      selectionsEqual(prev, nextStockTypes) ? prev : nextStockTypes,
+    )
+  }, [search])
+
+  const writeFilterToUrl = useCallback(
+    (paramKey: 'locations' | 'stockTypes', selection: FilterSelection) => {
+      const params = new URLSearchParams(search.toString())
+      const value = selectionToParam(selection)
+      if (value === null) params.delete(paramKey)
+      else params.set(paramKey, value)
+      const qs = params.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [pathname, router, search],
+  )
+
+  const handleLocationsChange = useCallback(
+    (next: FilterSelection) => {
+      setSelectedLocations(next)
+      writeFilterToUrl('locations', next)
+    },
+    [writeFilterToUrl],
+  )
+
+  const handleStockTypesChange = useCallback(
+    (next: FilterSelection) => {
+      setSelectedStockTypes(next)
+      writeFilterToUrl('stockTypes', next)
+    },
+    [writeFilterToUrl],
+  )
+
   const applyPreset = useCallback(
     (preset: (typeof PRESETS)[number]) => {
       const { from, to } = rangeForPreset(preset.days)
@@ -231,6 +318,9 @@ export default function StockMovementsPage(): JSX.Element {
     [range.from, writeRangeToUrl],
   )
 
+  // Table behaviour is intentionally unchanged: it always reflects the URL
+  // params (variantId / productId / locationId / stockType) and is unaffected
+  // by the multi-select chart filters (R6 non-goal).
   const tableFilters = useMemo(
     () => ({
       variantId,
@@ -246,6 +336,10 @@ export default function StockMovementsPage(): JSX.Element {
     [variantId, productId, locationId, stockType, range.from, range.to, page, sortDir],
   )
 
+  // In multi-line mode the chart drops `locationId`/`stockType` from the API
+  // call so it can populate the filter dropdowns from the full product
+  // dataset; the URL's legacy single-value params only seed the dropdown
+  // selection at mount. Single-line mode keeps the trio in the fetch.
   // Chart fetches the LATEST CHART_PER_PAGE rows in the range (sortDir desc).
   // The chart component sorts asc internally for left-to-right rendering.
   // When the range exceeds CHART_PER_PAGE, we drop the oldest tail rather
@@ -254,22 +348,20 @@ export default function StockMovementsPage(): JSX.Element {
     () => ({
       variantId,
       productId,
-      locationId,
-      stockType,
+      locationId: hasSingleLineFilters ? locationId : undefined,
+      stockType: hasSingleLineFilters ? stockType : undefined,
       from: range.from,
       to: range.to,
       page: 1,
       perPage: CHART_PER_PAGE,
       sortDir: 'desc' as const,
     }),
-    [variantId, productId, locationId, stockType, range.from, range.to],
+    [variantId, productId, locationId, stockType, hasSingleLineFilters, range.from, range.to],
   )
 
   const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
   const { data: chartData } = useStockMovements(chartFilters)
 
-  const hasSingleLineFilters = Boolean(variantId && locationId && stockType)
-  const isProductMode = Boolean(productId) && !hasSingleLineFilters
   const hasChart = hasSingleLineFilters || isProductMode
   const chartRows = chartData?.data ?? []
   const chartTotal = chartData?.meta.total ?? 0
@@ -305,6 +397,43 @@ export default function StockMovementsPage(): JSX.Element {
     }
     return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [isProductMode, chartRows, t])
+
+  const locationOptions = useMemo<FilterOption[]>(() => {
+    if (!isProductMode) return []
+    const map = new Map<string, string>()
+    for (const row of chartRows) {
+      if (!map.has(row.locationId)) map.set(row.locationId, row.locationName)
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [isProductMode, chartRows])
+
+  const stockTypeOptions = useMemo<FilterOption[]>(() => {
+    if (!isProductMode) return []
+    const set = new Set<string>()
+    for (const row of chartRows) set.add(row.stockType)
+    return Array.from(set)
+      .map((v) => ({ value: v, label: v }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [isProductMode, chartRows])
+
+  const filteredSeries = useMemo<StockMovementSeries[]>(() => {
+    if (!isProductMode) return productSeries
+    return productSeries.filter((s) => {
+      const sepIdx = s.key.indexOf('|')
+      const locId = sepIdx >= 0 ? s.key.slice(0, sepIdx) : s.key
+      const sType = sepIdx >= 0 ? s.key.slice(sepIdx + 1) : ''
+      const locOk = selectedLocations === 'all' || selectedLocations.has(locId)
+      const typeOk = selectedStockTypes === 'all' || selectedStockTypes.has(sType)
+      return locOk && typeOk
+    })
+  }, [isProductMode, productSeries, selectedLocations, selectedStockTypes])
+
+  const noFilterSelected =
+    isProductMode &&
+    ((selectedLocations !== 'all' && selectedLocations.size === 0) ||
+      (selectedStockTypes !== 'all' && selectedStockTypes.size === 0))
 
   const fromInputValue = isoToDateInput(range.from)
   const toInputValue = isoToDateInput(range.to)
@@ -388,6 +517,19 @@ export default function StockMovementsPage(): JSX.Element {
             </div>
           </div>
 
+          {isProductMode && (
+            <div className="mb-3">
+              <MovementFilters
+                locationOptions={locationOptions}
+                stockTypeOptions={stockTypeOptions}
+                selectedLocations={selectedLocations}
+                selectedStockTypes={selectedStockTypes}
+                onLocationsChange={handleLocationsChange}
+                onStockTypesChange={handleStockTypesChange}
+              />
+            </div>
+          )}
+
           {hasChart ? (
             <>
               {isProductMode && (
@@ -411,9 +553,18 @@ export default function StockMovementsPage(): JSX.Element {
                   })}
                 </p>
               )}
-              {isProductMode ? (
+              {noFilterSelected ? (
+                <div className="rounded-md border border-border h-64 flex flex-col items-center justify-center text-center px-6">
+                  <p className="text-sm font-medium text-foreground">
+                    {t('chart.noFilterSelected.title')}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t('chart.noFilterSelected.description')}
+                  </p>
+                </div>
+              ) : isProductMode ? (
                 <StockMovementChart
-                  series={productSeries}
+                  series={filteredSeries}
                   emptyTitle={chartEmptyTitle}
                   emptyDescription={chartEmptyDescription}
                   selectedRangeMs={selectedRangeMs}
