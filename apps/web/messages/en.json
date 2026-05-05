@@ -34,6 +34,12 @@
     "integrationsSub": {
       "automatic": "SFTP / FTP",
       "marketplace": "Marketplace"
+    },
+    "plans": {
+      "trial": "Trial",
+      "starter": "Starter",
+      "growth": "Growth",
+      "enterprise": "Enterprise"
     }
   },
   "auth": {

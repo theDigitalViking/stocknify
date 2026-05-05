@@ -309,21 +309,32 @@ export default function StockMovementsPage(): JSX.Element {
   const fromInputValue = isoToDateInput(range.from)
   const toInputValue = isoToDateInput(range.to)
 
+  // Drive the chart's tick granularity from the user-selected window, not
+  // the spread of the returned data points. Same-day movements inside a
+  // 30d preset still need DD.MM. ticks; only a custom ≤24h window collapses
+  // to HH:mm-only.
+  const selectedRangeMs = useMemo(() => {
+    if (!range.from || !range.to) return undefined
+    return new Date(range.to).getTime() - new Date(range.from).getTime()
+  }, [range.from, range.to])
+
   return (
     <div>
-      <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
-        <Link
-          href="/stock"
-          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          {tStock('title')}
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="font-medium">{t('title')}</span>
-      </div>
+      <div className="sticky top-0 z-20 bg-background">
+        <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
+          <Link
+            href="/stock"
+            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {tStock('title')}
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <span className="font-medium">{t('title')}</span>
+        </div>
 
-      <PageHeader title={t('title')} />
+        <PageHeader title={t('title')} noSticky />
+      </div>
 
       <div className="px-6 py-6 space-y-6">
         <section>
@@ -405,12 +416,14 @@ export default function StockMovementsPage(): JSX.Element {
                   series={productSeries}
                   emptyTitle={chartEmptyTitle}
                   emptyDescription={chartEmptyDescription}
+                  selectedRangeMs={selectedRangeMs}
                 />
               ) : (
                 <StockMovementChart
                   movements={chartRows}
                   emptyTitle={chartEmptyTitle}
                   emptyDescription={chartEmptyDescription}
+                  selectedRangeMs={selectedRangeMs}
                 />
               )}
             </>

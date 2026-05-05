@@ -17,10 +17,13 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 
+import { useAuthUser } from '@/lib/api/use-auth-user'
 import { useTenant } from '@/lib/api/use-tenant'
 import { signOut } from '@/lib/auth'
 import { useSidebarStore } from '@/lib/stores/sidebar'
 import { cn } from '@/lib/utils'
+
+import { PlanBadge } from './plan-badge'
 
 interface SubNavItem {
   key: 'automatic' | 'marketplace'
@@ -56,8 +59,10 @@ export function Sidebar(): JSX.Element {
   const router = useRouter()
   const t = useTranslations('nav')
   const { data: tenant } = useTenant()
+  const { data: authUser } = useAuthUser()
   const isCollapsed = useSidebarStore((s) => s.isCollapsed)
   const toggle = useSidebarStore((s) => s.toggle)
+  const userLabel = authUser?.displayName ?? authUser?.email ?? null
 
   async function handleSignOut(): Promise<void> {
     await signOut()
@@ -159,7 +164,25 @@ export function Sidebar(): JSX.Element {
       </nav>
 
       {tenant && !isCollapsed ? (
-        <div className="px-3 pb-2 text-xs text-muted-foreground truncate">{tenant.name}</div>
+        <div className="px-3 pb-2 min-w-0">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span
+              className="text-xs font-medium text-foreground truncate"
+              title={tenant.name}
+            >
+              {tenant.name}
+            </span>
+            <PlanBadge plan={tenant.plan} className="flex-shrink-0" />
+          </div>
+          {userLabel ? (
+            <div
+              className="text-[11px] text-muted-foreground truncate mt-0.5"
+              title={userLabel}
+            >
+              {userLabel}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <div className={cn('py-3 border-t border-border', isCollapsed ? 'px-2' : 'px-3')}>

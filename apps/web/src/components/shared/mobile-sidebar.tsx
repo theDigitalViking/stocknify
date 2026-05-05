@@ -17,10 +17,13 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useEffect } from 'react'
 
+import { useAuthUser } from '@/lib/api/use-auth-user'
 import { useTenant } from '@/lib/api/use-tenant'
 import { signOut } from '@/lib/auth'
 import { useSidebarStore } from '@/lib/stores/sidebar'
 import { cn } from '@/lib/utils'
+
+import { PlanBadge } from './plan-badge'
 
 interface NavItem {
   key: 'stock' | 'products' | 'rules' | 'integrations' | 'notifications' | 'settings'
@@ -42,8 +45,10 @@ export function MobileSidebar(): JSX.Element {
   const router = useRouter()
   const t = useTranslations('nav')
   const { data: tenant } = useTenant()
+  const { data: authUser } = useAuthUser()
   const isOpen = useSidebarStore((s) => s.isMobileOpen)
   const close = useSidebarStore((s) => s.closeMobile)
+  const userLabel = authUser?.displayName ?? authUser?.email ?? null
 
   useEffect(() => {
     if (!isOpen) return
@@ -124,7 +129,25 @@ export function MobileSidebar(): JSX.Element {
         </nav>
 
         {tenant ? (
-          <div className="px-3 pb-2 text-xs text-muted-foreground truncate">{tenant.name}</div>
+          <div className="px-3 pb-2 min-w-0">
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <span
+                className="text-xs font-medium text-foreground truncate"
+                title={tenant.name}
+              >
+                {tenant.name}
+              </span>
+              <PlanBadge plan={tenant.plan} className="flex-shrink-0" />
+            </div>
+            {userLabel ? (
+              <div
+                className="text-[11px] text-muted-foreground truncate mt-0.5"
+                title={userLabel}
+              >
+                {userLabel}
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="px-3 py-3 border-t border-border">

@@ -105,7 +105,7 @@ export default function ProductDetailPage(): JSX.Element {
 
   return (
     <div>
-      <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
+      <div className="sticky top-0 z-20 h-12 border-b border-border bg-background px-6 flex items-center gap-2 text-sm">
         <Link
           href="/products"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -126,12 +126,6 @@ export default function ProductDetailPage(): JSX.Element {
             ) : null}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/stock/movements?productId=${id}`}>
-                <BarChart3 className="h-4 w-4" />
-                {tStock('viewMovements')}
-              </Link>
-            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -230,10 +224,12 @@ export default function ProductDetailPage(): JSX.Element {
                     className={cn(
                       'border-b border-border last:border-b-0 transition-colors',
                       isSelectable &&
-                        'cursor-pointer border-l-4 border-l-transparent hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                        'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                      // Borders on <tr> are dropped under border-collapse: collapse (Tailwind preflight),
+                      // so the brand-tinted left rail uses an inset box-shadow that paints reliably.
                       isSelectable &&
                         isSelected &&
-                        'bg-brand-50 border-l-brand-600 hover:bg-brand-50',
+                        'bg-brand-100 hover:bg-brand-100 shadow-[inset_4px_0_0_0_#0d9488]',
                     )}
                   >
                     <td className="px-4 py-2">
@@ -279,9 +275,23 @@ export default function ProductDetailPage(): JSX.Element {
       </section>
 
       <section className="px-6 py-4">
-        <h2 className="text-sm font-semibold text-foreground mb-3">
-          {tDetail('stockTitle')}
-        </h2>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-foreground">
+            {tDetail('stockTitle')}
+          </h2>
+          <Button asChild variant="outline" size="sm">
+            <Link
+              href={
+                selectedVariantId
+                  ? `/stock/movements?productId=${id}&variantId=${selectedVariantId}`
+                  : `/stock/movements?productId=${id}`
+              }
+            >
+              <BarChart3 className="h-4 w-4" />
+              {tStock('viewMovements')}
+            </Link>
+          </Button>
+        </div>
         <ProductStockTable productId={id} variantId={selectedVariantId ?? undefined} />
       </section>
 

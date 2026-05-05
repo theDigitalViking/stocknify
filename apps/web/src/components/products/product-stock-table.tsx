@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 
+import { HorizontalScrollFade } from '@/components/shared/horizontal-scroll-fade'
 import { QuantityCell } from '@/components/shared/quantity-cell'
 import { StockTypeBadge } from '@/components/stock/stock-type-badge'
 import { useStock } from '@/lib/api/use-stock'
@@ -66,7 +67,7 @@ export function ProductStockTable({
   }
 
   return (
-    <div className="rounded-md border border-border overflow-x-auto">
+    <HorizontalScrollFade>
       <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/30">
@@ -122,6 +123,6 @@ export function ProductStockTable({
           })}
         </tbody>
       </table>
-    </div>
+    </HorizontalScrollFade>
   )
 }

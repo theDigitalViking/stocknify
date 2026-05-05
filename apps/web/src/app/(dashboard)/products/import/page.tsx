@@ -11,7 +11,7 @@ export default function ProductImportPage(): JSX.Element {
 
   return (
     <div>
-      <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
+      <div className="sticky top-0 z-20 h-12 border-b border-border bg-background px-6 flex items-center gap-2 text-sm">
         <Link
           href="/products"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"

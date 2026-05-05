@@ -26,12 +26,17 @@ type StockMovementChartProps =
       movements: StockMovementRow[]
       emptyTitle: string
       emptyDescription: string
+      // Total span of the user-selected date range in ms. Drives tick
+      // granularity so a 30d preset that happens to contain only same-day
+      // data still shows DD.MM. on the X-axis instead of collapsing to HH:mm.
+      selectedRangeMs?: number
       series?: never
     }
   | {
       series: StockMovementSeries[]
       emptyTitle: string
       emptyDescription: string
+      selectedRangeMs?: number
       movements?: never
     }
 
@@ -131,10 +136,14 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
     )
   }
 
-  const rangeMs =
+  // Prefer the user-selected range when available — same-day data within a
+  // 30d preset still belongs in DD.MM. territory. Fall back to the data
+  // spread for callers that don't know their window upfront.
+  const dataRangeMs =
     mergedPoints.length > 1
       ? mergedPoints[mergedPoints.length - 1].timestamp - mergedPoints[0].timestamp
       : 0
+  const rangeMs = props.selectedRangeMs ?? dataRangeMs
 
   const dayMonth = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' })
   const hourMinute = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
