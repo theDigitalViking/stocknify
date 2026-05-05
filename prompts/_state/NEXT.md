@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-05 (Batch 2 planned. Naming convention changed: see DECISIONS 2026-05-05.)
+**Last updated:** 2026-05-06 (Batch 2 abgeschlossen — alle Cycles 2-A bis 2-E auf `develop`. Wartet auf Sebastians `develop` → `main` merge.)
 
 ---
 
@@ -10,32 +10,19 @@
 
 **Batch 1** (retroactively named) ist abgeschlossen: Cycles 1-A through 1-E + 1-TH (Test Harness) + 1-FIX (Restore 400). Alles auf `develop` und `main` gemerged. 12 Backend-Tests grün.
 
+**Batch 2** ist abgeschlossen: Cycles 2-A (UI Micro-Fixes), 2-B (Chart Polish + Date-Range), 2-B-FIX (Codex pass-2), 2-C (Movements von Produktseite + Multi-Line), 2-D (Production review fixes), 2-E (Filters + Legend Fade). Alles auf `develop`. Sebastian merged manuell auf `main` wenn der Vercel-Preview reviewed ist.
+
 **Naming convention (neu):** Batches sind nummeriert (1, 2, 3…). Cycles innerhalb eines Batches starten bei A (2-A, 2-B, 2-C). Sonder-Cycles bekommen ein Kürzel-Prefix (z.B. 2-FIX). Siehe DECISIONS 2026-05-05.
 
-**Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün (2 smoke + 2 upsert + 4 restore + 4 movements).
+**Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün (2 smoke + 2 upsert + 4 restore + 4 movements). Cycles 2-A–2-E waren reine Frontend-Cycles, daher kein neuer Test.
 
 ---
 
-## 🟢 Batch 2 — UX Polish + Movements Enhancement
+## 🟢 Nächster Schritt: Batch 2 abschließen
 
-Drei Cycles, aufsteigend in Komplexität. Alle auf dem Movements-/UX-Polish-Pfad.
-
-### 2-A · UI Micro-Fixes (XS) — `high`
-Items 2 + 3 + 4 aus Sebastians Review (2026-05-05). Drei isolierte Änderungen, kein Backend-Touch:
-- **Varianten-Selektion UX** — bei einer Variante: kein klickbarer Highlight, kein `cursor-pointer`, kein `aria-selected`. Bei mehreren: stärkerer visueller Indikator (kräftigere `border-left` oder deutlicherer Hintergrund).
-- **Activity-Icon → `BarChart3`** — überall wo das Heartbeat-Icon für Movements steht (Stock-Liste, ggf. Quick-View).
-- **Bestandswert-Spalte entfernen** — aus `ProductStockTable` und Quick-View. Zeigt nur "—". Kommt mit Kostenfeld-Feature zurück (Backlog Item 13).
-
-### 2-B · Movements-Chart Polish (S–M) — `xhigh`
-Items 5 + 6. Beide betreffen denselben Chart und dieselbe Page:
-- **Uhrzeit auf der Zeitachse** — bei mehreren Entries am selben Tag: minutengenaue Ticks (`DD.MM. HH:mm` oder intelligent je nach Zeitraum-Spanne).
-- **Zeitraum-Auswahl** — Date-Range-Picker (von–bis) über dem Chart + Preset-Buttons ("Diese Woche", "Letzte 14 Tage", "Dieser Monat"). `from`/`to` Query-Params an `useStockMovements` durchreichen — Backend unterstützt die Filter bereits.
-
-### 2-C · Movements von Produktseite (M) — `xhigh`
-Item 8. Baut auf dem verbesserten Chart aus 2-B auf:
-- **Link von Produkt-Detail → Movements** — Button auf der Produktseite → `/stock/movements?productId=xxx` (Gesamtübersicht ohne Vorselektion).
-- **Multi-Line-Chart** — verschiedene Linien pro Location oder StockType (farbcodiert, togglebare Legende). Von Stock-Liste: vorselektiert auf eine Kombination. Von Produktseite: Gesamtübersicht.
-- Backend: `productId`-Filter auf `GET /v1/stock/movements` existiert bereits (Cycle 1-E).
+1. Sebastian reviewed Vercel Preview von `develop` (Movements-Filter + Legend-Fade live testen).
+2. Sebastian merged `develop` → `main` (Production-Deploy-Gate, manuell).
+3. Claude (Chat) plant Batch 3 nach dem Merge.
 
 ---
 
