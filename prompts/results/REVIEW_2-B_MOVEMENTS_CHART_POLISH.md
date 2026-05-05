@@ -1,9 +1,10 @@
 # Review Result: 2-B Movements-Chart Polish
 
-> Written by Codex via `/codex:adversarial-review` (working-tree scope, no flags)
+> Two Codex adversarial-review passes were run for this cycle:
+> - **Pass 1** — `/codex:adversarial-review` (default working-tree scope) — caught only unrelated workflow-doc churn; both findings deferred (governance, not code).
+> - **Pass 2** — `/codex:adversarial-review --base origin/main` — caught the cycle's actual code; **two ACTIONABLE findings, both fixed in commit `83ae51f`**.
 > Reviewed at: 2026-05-05
-> Verdict: needs-attention (per Codex)
-> Cycle disposition: **all findings deferred** — both target a deliberate workflow decision, not Cycle 2-B's code.
+> Final cycle disposition: **2 findings fixed, 2 findings deferred (governance/process).**
 
 ---
 
@@ -88,8 +89,67 @@ For workflow tooling (separate cycle, when prioritized):
 
 ---
 
-## Memory Bank updates
+## Memory Bank updates (Pass 1 — governance findings)
 
 - [x] This review file written.
 - [x] `KNOWN_TODOS.md` — new "Workflow" entry capturing the deferred governance findings + cross-reference to DECISIONS 2026-05-05.
 - [x] `STATE.md` — review-disposition note appended under the Cycle 2-B entry; Last-updated bumped.
+
+---
+
+# Pass 2 — `/codex:adversarial-review --base origin/main`
+
+After Pass 1's scope-mismatch finding was processed, the review was re-run with an explicit base ref so Codex could see the cycle's actual feature code (chart polish + range picker). Two fresh findings, both about the just-shipped code.
+
+## Pass 2 Summary
+
+- [high] Chart silently truncated to first 200 oldest movements in the selected range (`movements/page.tsx:167-169`).
+- [medium] Range state initialized from URL once at mount but never re-synced; browser back/forward + on-page navigation could leave queries running on stale `from`/`to` while the address bar shows different values (`movements/page.tsx:83-91`).
+
+Both fall under **Correctness / Data Integrity in view** — operator-visible defects that affect the data shown on the page. Per the findings policy (DECISIONS 2026-04-16), both ACTIONABLE.
+
+## Pass 2 Findings & disposition
+
+### [high] Chart silently truncates movement history to first 200 oldest points — FIXED
+
+- **File:** `apps/web/src/app/(dashboard)/stock/movements/page.tsx:167-169`
+- **Codex's claim:** `chartFilters` hard-limits to `perPage: 200` with `sortDir: 'asc'`. With more than 200 movements in the selected range, the UI shows the EARLIEST 200 records and silently drops everything more recent. Operators see an apparently valid trend that excludes the latest activity, with no warning.
+- **Classification:** ACTIONABLE — Correctness / Data Integrity in view.
+- **Fix (commit `83ae51f`):**
+  1. Flipped `chartFilters.sortDir` from `'asc'` to `'desc'`. The API now returns the LATEST 200 movements in the range. The chart component already sorts ascending internally before rendering (left-to-right time order is preserved), so this is a server-query change, not a chart-logic change.
+  2. Compute `isChartTruncated = chartTotal > chartRows.length` from the `meta.total` already returned by `apiFetchWithMeta`. When true, render a small amber `<p role="status">` notice above the chart: "Showing the latest {shown} of {total} movements in this range. Narrow the time range for the full series." (en + de). New i18n key `stockMovements.chart.truncatedNotice` with `{shown}` / `{total}` ICU placeholders.
+- **Why this approach over Codex's "unpaginated chart endpoint" alternative:** Codex offered two options — (a) dedicated unpaginated endpoint/stream for the chart, or (b) latest-window + truncation indicator. Option (a) is a backend change and inflates per-request payloads for high-throughput tenants without solving the bigger render-density problem. Option (b) is a frontend-only fix that converts a silent failure into a visible one immediately, while leaving the long-term server-side downsampling work (already tracked in KNOWN_TODOS as "stock_movements chart aggregation/downsampling") as the right destination when a tenant reports the cap is biting in real use. Per DECISIONS 2026-04-16, MVP scale doesn't warrant the bigger rebuild yet.
+
+### [medium] Range state decoupled from URL after initial render — FIXED
+
+- **File:** `apps/web/src/app/(dashboard)/stock/movements/page.tsx:83-91`
+- **Codex's claim:** `range` is initialized from `search` once via `useState`, then becomes pure local state. If URL query params change while the user stays on the page (browser back/forward, deep-link route updates), queries run with stale `from`/`to` values while the address bar shows different ones. Bad for shared URLs and incident reproduction.
+- **Classification:** ACTIONABLE — Correctness.
+- **Fix (commit `83ae51f`):** Three coordinated changes:
+  1. **`defaultRangeRef`** — a `useRef` holding the mount-time 30d ISOs. Without it, the sync effect's URL-empty branch would recompute `subDays(now, 30)` on each fire, producing ISOs that drift by milliseconds and triggering needless TanStack Query refetches.
+  2. **Mount-writer effect** — runs once on mount; if the URL has neither `from` nor `to`, calls `writeRangeToUrl` with the default 30d ISOs. After this fires, the URL is **always** the single source of truth for the active range — no more URL-empty-vs-state asymmetry. This intentionally changes the prior "URL stays clean for the default" behavior; the asymmetry was the root of the desync.
+  3. **Sync effect** — keyed on `search`, runs on every URL change (including our own writes). The equality short-circuit (`prev.from === urlFrom && prev.to === urlTo`) makes our own writes no-ops; the URL-empty branch resets to the stable `defaultRangeRef.current`; everything else updates `range` to match the URL and clears `activePreset` (since we cannot tell from a URL alone which preset, if any, was active — URL→preset rehydration stays a tracked TODO).
+- **Behavioral consequence (intentional):** A fresh load on `/stock/movements` now always lands on `?from=…&to=…` rather than a clean URL. That's the correct trade for a filter that materially shapes the data the operator sees: shareable URLs always mean what they appear to mean, browser back/forward never desyncs from rendered data, and the previous "URL→preset rehydration on load = future TODO" entry in KNOWN_TODOS is unchanged.
+
+## Pass 2 Findings classification table
+
+| # | Severity | File | Domain | Classification | Action |
+|---|----------|------|--------|----------------|--------|
+| 3 | high | `movements/page.tsx:167-169` | Correctness — chart silent truncation | ACTIONABLE | Fixed in `83ae51f` (desc + meta.total notice + i18n) |
+| 4 | medium | `movements/page.tsx:83-91` | Correctness — URL/state desync | ACTIONABLE | Fixed in `83ae51f` (defaultRef + mount-writer + sync effect) |
+
+## Codex's reasoning notes (observed but not elevated)
+
+Codex's chain-of-thought mentioned a few additional observations that did **not** make the final findings list. Recorded here for transparency; no action taken:
+
+- **Possible 31-vs-30-day count for the 30d preset.** `subDays(startOfDay(now), 30)` to `endOfDay(now)` covers ~30 calendar days inclusive of today's partial day. This is the standard "Last N days" semantic. Not actionable.
+- **`apiFetch` may set `Content-Type: application/json` on FormData bodies.** Possible but no current caller sends FormData via `apiFetch`. Existing CSV uploads use a separate path. If a future caller adds FormData to `apiFetch`, the helper should be hardened then; not a Cycle 2-B regression.
+- **`new Date(iso)` in `isoToDateInput` could shift display in negative TZs when URL was created externally with UTC midnight.** Acknowledged in the original RESULT_2-B "Key decisions" — operators in different TZs sharing the same URL see slightly different boundaries. Not a Cycle 2-B regression; same trade-off as before. The mount-writer fix actually narrows this surface because URLs are now always operator-local-day-anchored on creation.
+- **`<input type="date">` UI prevents invalid dates like `2026-02-31`, but a manually edited URL could carry one and `new Date(y, m-1, d)` would normalize.** Edge case; bounded to manual URL edits. Not actionable here.
+
+## Memory Bank updates (Pass 2 — code findings)
+
+- [x] Both findings fixed in commit `83ae51f`.
+- [x] This review file extended with the Pass 2 section.
+- [x] `STATE.md` — added Cycle 2-B-FIX entry; Last-updated bumped.
+- [x] `KNOWN_TODOS.md` — note added under Frontend referencing the truncation-notice as the explicit user-facing signal that supersedes the older "downsampling" item's silent-truncation concern (the long-term downsampling work itself remains tracked).
