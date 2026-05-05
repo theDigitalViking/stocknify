@@ -219,7 +219,6 @@
       "stockStorageLocation": "Storage location",
       "stockType": "Type",
       "stockQuantity": "Qty",
-      "stockValue": "Stock value",
       "stockBatch": "Batch",
       "stockEmpty": "No stock available for this product.",
       "batchListTitle": "Batches",

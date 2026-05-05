@@ -200,25 +200,33 @@ export default function ProductDetailPage(): JSX.Element {
             <tbody>
               {product.variants.map((v) => {
                 const isSelected = selectedVariantId === v.id
+                const isSelectable = product.variants.length > 1
                 return (
                   <tr
                     key={v.id}
-                    onClick={() => {
-                      setSelectedVariantId(v.id)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedVariantId(v.id)
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-selected={isSelected}
+                    {...(isSelectable
+                      ? {
+                          onClick: () => {
+                            setSelectedVariantId(v.id)
+                          },
+                          onKeyDown: (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setSelectedVariantId(v.id)
+                            }
+                          },
+                          tabIndex: 0,
+                          role: 'button',
+                          'aria-selected': isSelected,
+                        }
+                      : {})}
                     className={cn(
-                      'border-b border-border last:border-b-0 cursor-pointer transition-colors',
-                      'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-                      isSelected && 'bg-brand-50/60 hover:bg-brand-50/60',
+                      'border-b border-border last:border-b-0 transition-colors',
+                      isSelectable &&
+                        'cursor-pointer border-l-4 border-l-transparent hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                      isSelectable &&
+                        isSelected &&
+                        'bg-brand-50 border-l-brand-600 hover:bg-brand-50',
                     )}
                   >
                     <td className="px-4 py-2">

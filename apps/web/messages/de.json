@@ -219,7 +219,6 @@
       "stockStorageLocation": "Lagerplatz",
       "stockType": "Typ",
       "stockQuantity": "Menge",
-      "stockValue": "Bestandswert",
       "stockBatch": "Charge",
       "stockEmpty": "Kein Bestand für dieses Produkt vorhanden.",
       "batchListTitle": "Chargen",

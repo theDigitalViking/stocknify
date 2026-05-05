@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { de as deLocale } from 'date-fns/locale'
-import { Activity, Eye, Package, Upload } from 'lucide-react'
+import { BarChart3, Eye, Package, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -276,7 +276,7 @@ export default function StockPage(): JSX.Element {
                 },
               }}
             >
-              <Activity className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4" />
             </Link>
           </Button>
         </div>

@@ -82,9 +82,6 @@ export function ProductStockTable({
             <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {t('stockQuantity')}
             </th>
-            <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {t('stockValue')}
-            </th>
             <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {t('stockBatch')}
             </th>
@@ -112,9 +109,6 @@ export function ProductStockTable({
                 </td>
                 <td className="px-4 py-2 text-right">
                   <QuantityCell quantity={row.quantity} />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <span className="text-xs text-muted-foreground">—</span>
                 </td>
                 <td className="px-4 py-2">
                   {row.batchNumber ? (
