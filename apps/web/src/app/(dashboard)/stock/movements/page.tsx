@@ -112,17 +112,23 @@ function dateInputToIsoEndOfDay(value: string): string | undefined {
   return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString()
 }
 
-// Parse a comma-separated multi-select URL param. Empty/missing → 'all'
-// (sentinel meaning "no explicit selection"). Explicit empty value
-// (`?locations=`) is treated as 'all' too — there is no use for an
-// "explicitly empty" URL state since the user can clear the param entirely.
+// Parse a comma-separated multi-select URL param.
+// - Missing param (`raw === null`): apply legacy fallback (mount-time only)
+//   or default to 'all'.
+// - Explicit empty value (`?locations=`): means "explicit Clear-all" — round-
+//   trips back to an empty Set so the user's deselection survives the URL
+//   round-trip and the noFilterSelected branch stays reachable.
+// - Comma-separated list: explicit selection.
 function parseFilterParam(raw: string | null, fallback: string | null | undefined): FilterSelection {
   if (raw === null) {
     if (fallback) return new Set([fallback])
     return 'all'
   }
+  if (raw === '') return new Set()
   const parts = raw.split(',').map((p) => p.trim()).filter(Boolean)
-  if (parts.length === 0) return 'all'
+  // Malformed but non-empty (e.g. ",,,") — treat as Clear-all rather than
+  // bouncing back to 'all', which would also restart the URL/state ping-pong.
+  if (parts.length === 0) return new Set()
   return new Set(parts)
 }
 
