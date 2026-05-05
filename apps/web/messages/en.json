@@ -155,7 +155,8 @@
       "emptyRange": {
         "title": "No movements in this time range",
         "description": "Pick a different range or wait for the next sync."
-      }
+      },
+      "truncatedNotice": "Showing the latest {shown} of {total} movements in this range. Narrow the time range for the full series."
     },
     "table": {
       "title": "Movement history",

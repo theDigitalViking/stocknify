@@ -5,7 +5,7 @@ import { ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
 import { StockMovementChart } from '@/components/stock/stock-movement-chart'
@@ -80,14 +80,17 @@ export default function StockMovementsPage(): JSX.Element {
   const [page, setPage] = useState(1)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  // Stable default-30d ISOs computed once at mount. Reused by the URL-empty
+  // sync branch below so URL→state→URL round-trips don't bounce on millis.
+  const defaultRangeRef = useRef<{ from: string; to: string }>(rangeForPreset(DEFAULT_RANGE_DAYS))
+
   const [range, setRange] = useState<RangeState>(() => {
     const urlFrom = search.get('from') ?? undefined
     const urlTo = search.get('to') ?? undefined
     if (urlFrom || urlTo) {
       return { from: urlFrom, to: urlTo, activePreset: null }
     }
-    const { from, to } = rangeForPreset(DEFAULT_RANGE_DAYS)
-    return { from, to, activePreset: '30d' }
+    return { ...defaultRangeRef.current, activePreset: '30d' }
   })
 
   const writeRangeToUrl = useCallback(
@@ -102,6 +105,38 @@ export default function StockMovementsPage(): JSX.Element {
     },
     [pathname, router, search],
   )
+
+  // On mount, if the URL has no range params, push the default 30d range into
+  // the URL so the address bar always reflects the active filter. Without
+  // this, the URL is "default" but state has explicit ISOs — the asymmetry
+  // makes shared/back-button navigation desync from rendered data.
+  useEffect(() => {
+    if (!search.get('from') && !search.get('to')) {
+      writeRangeToUrl(defaultRangeRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync external URL changes (browser back/forward, deep-link nav while on
+  // this page) into range state. Our own writeRangeToUrl calls also fire
+  // this effect, but the equality short-circuit makes them no-ops.
+  useEffect(() => {
+    const urlFrom = search.get('from') ?? undefined
+    const urlTo = search.get('to') ?? undefined
+    setRange((prev) => {
+      if (prev.from === urlFrom && prev.to === urlTo) return prev
+      if (!urlFrom && !urlTo) {
+        if (
+          prev.from === defaultRangeRef.current.from &&
+          prev.to === defaultRangeRef.current.to
+        ) {
+          return prev
+        }
+        return { ...defaultRangeRef.current, activePreset: '30d' }
+      }
+      return { from: urlFrom, to: urlTo, activePreset: null }
+    })
+  }, [search])
 
   const applyPreset = useCallback(
     (preset: (typeof PRESETS)[number]) => {
@@ -154,8 +189,10 @@ export default function StockMovementsPage(): JSX.Element {
     [variantId, productId, locationId, stockType, range.from, range.to, page, sortDir],
   )
 
-  // The chart needs ascending data over a wider window. Use a separate query
-  // so chart and table can paginate/sort independently.
+  // Chart fetches the LATEST CHART_PER_PAGE rows in the range (sortDir desc).
+  // The chart component sorts asc internally for left-to-right rendering.
+  // When the range exceeds CHART_PER_PAGE, we drop the oldest tail rather
+  // than the most-recent head — and a partial-data notice is rendered.
   const chartFilters = useMemo(
     () => ({
       variantId,
@@ -166,7 +203,7 @@ export default function StockMovementsPage(): JSX.Element {
       to: range.to,
       page: 1,
       perPage: CHART_PER_PAGE,
-      sortDir: 'asc' as const,
+      sortDir: 'desc' as const,
     }),
     [variantId, productId, locationId, stockType, range.from, range.to],
   )
@@ -176,6 +213,8 @@ export default function StockMovementsPage(): JSX.Element {
 
   const hasChartFilters = Boolean(variantId && locationId && stockType)
   const chartRows = chartData?.data ?? []
+  const chartTotal = chartData?.meta.total ?? 0
+  const isChartTruncated = chartTotal > chartRows.length
   const hasRange = Boolean(range.from || range.to)
   const chartEmptyTitle = hasRange ? t('chart.emptyRange.title') : t('chart.empty.title')
   const chartEmptyDescription = hasRange
@@ -254,11 +293,24 @@ export default function StockMovementsPage(): JSX.Element {
           </div>
 
           {hasChartFilters ? (
-            <StockMovementChart
-              movements={chartRows}
-              emptyTitle={chartEmptyTitle}
-              emptyDescription={chartEmptyDescription}
-            />
+            <>
+              {isChartTruncated && (
+                <p
+                  role="status"
+                  className="mb-2 text-xs text-amber-700 dark:text-amber-400"
+                >
+                  {t('chart.truncatedNotice', {
+                    shown: chartRows.length,
+                    total: chartTotal,
+                  })}
+                </p>
+              )}
+              <StockMovementChart
+                movements={chartRows}
+                emptyTitle={chartEmptyTitle}
+                emptyDescription={chartEmptyDescription}
+              />
+            </>
           ) : (
             <div className="rounded-md border border-border h-64 flex flex-col items-center justify-center text-center px-6">
               <p className="text-sm font-medium text-foreground">

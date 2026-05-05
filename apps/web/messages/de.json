@@ -155,7 +155,8 @@
       "emptyRange": {
         "title": "Keine Bewegungen in diesem Zeitraum",
         "description": "Bitte einen anderen Zeitraum wählen oder auf den nächsten Sync warten."
-      }
+      },
+      "truncatedNotice": "Zeigt die neuesten {shown} von {total} Bewegungen in diesem Zeitraum. Bitte Zeitraum verkleinern für die vollständige Serie."
     },
     "table": {
       "title": "Bewegungs-Historie",
