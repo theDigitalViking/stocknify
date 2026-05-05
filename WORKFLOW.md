@@ -32,15 +32,14 @@ At the start of every Claude Code session, paste this prompt with `<NAME>` repla
 You're running a Stocknify cycle. Before doing anything else:
 
 0. Branch check. Verify you're on `develop`: `git rev-parse --abbrev-ref HEAD`. If you're on `main` or another branch, run `git checkout develop` (or `git checkout -b develop` if it doesn't exist locally yet — but it should). All cycle commits land on `develop`. Never commit or push to `main`.
-1. Review gate. Run `/codex:setup --enable-review-gate` so Codex automatically reviews before you finish. If the command fails or the plugin is unavailable, note it and continue — Sebastian will run the review manually.
-2. Carry-over commit. Run `git status --porcelain`. If there are uncommitted changes in any of these whitelisted paths — `prompts/_state/`, `prompts/PROMPT_*.md`, `prompts/results/`, `WORKFLOW.md`, `PROJECT.md` — stage and commit ONLY those paths with the message `chore(memory-bank): carry over updates from prior chat session`. Do NOT touch other uncommitted paths (`.gitignore`, `test-data/`, anything outside the whitelist). If the whitelist is empty, skip this step silently. See WORKFLOW.md § Carry-over commits.
-3. Read `WORKFLOW.md` (this file)
-4. Read `prompts/_state/STATE.md`
-5. Read `prompts/_state/NEXT.md`
-6. Read `prompts/_state/DECISIONS.md`
-7. Read `prompts/_state/KNOWN_TODOS.md`
+1. Carry-over commit. Run `git status --porcelain`. If there are uncommitted changes in any of these whitelisted paths — `prompts/_state/`, `prompts/PROMPT_*.md`, `prompts/results/`, `WORKFLOW.md`, `PROJECT.md` — stage and commit ONLY those paths with the message `chore(memory-bank): carry over updates from prior chat session`. Do NOT touch other uncommitted paths (`.gitignore`, `test-data/`, anything outside the whitelist). If the whitelist is empty, skip this step silently. See WORKFLOW.md § Carry-over commits.
+2. Read `WORKFLOW.md` (this file)
+3. Read `prompts/_state/STATE.md`
+4. Read `prompts/_state/NEXT.md`
+5. Read `prompts/_state/DECISIONS.md`
+6. Read `prompts/_state/KNOWN_TODOS.md`
 
-Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed and the Codex review gate has passed (or been skipped with Sebastian's approval), run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step.
+Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed, run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step. Sebastian runs the Codex review separately after the push.
 ```
 
 Claude (Chat) hands this prompt over with the filename pre-filled at the start of every cycle, so Sebastian never has to remember it. The bootstrap stays the same for frontend, backend, or any other type of cycle — file-specific context lives inside the referenced PROMPT file, not in the bootstrap.
@@ -81,7 +80,7 @@ These four files are deliberately small. Re-load as needed; do not summarize.
 Claude (Chat) creates the Notion entry in the **Prompts & AI Sessions** database with status `🚧 In Arbeit`, then writes `prompts/PROMPT_<name>.md` **directly into the repo** via Filesystem MCP. No manual copying by Sebastian.
 
 ### 3. Run + commit (on `develop`)
-Claude Code reads the prompt and executes. Commits land on `develop` (see Branching strategy below). Commit messages clear and conventional. Does **not** push yet — Codex review (step 5) and Memory Bank update (step 4) come first.
+Claude Code reads the prompt and executes. Commits land on `develop` (see Branching strategy below). Commit messages clear and conventional.
 
 ### 4. Update memory bank + Notion (mandatory, in the same run)
 At the end of every Claude Code run, before pushing:
@@ -92,30 +91,32 @@ At the end of every Claude Code run, before pushing:
 
 This is non-negotiable. Without these steps, state drifts and the next session starts blind. Sebastian never updates Notion or memory bank files manually.
 
-### 5. Codex adversarial review (automatic via review gate)
-The Codex plugin's **review gate** is enabled at the start of every Claude Code session (`/codex:setup --enable-review-gate`). It runs automatically before Claude Code finishes a run — no manual slash command needed. If the review finds issues, the run is blocked so Claude Code can address them first.
-
-**Important:** The review gate can create long-running Claude/Codex loops. Only use it in sessions you actively monitor (which is all Stocknify sessions — Sebastian is always present).
-
-**If the review gate hangs or loops:** press `Esc` to abort, then run the review manually:
-
-```
-/codex:adversarial-review --base origin/develop --wait
-```
-
-Findings are classified by Claude Code following the policy in DECISIONS 2026-04-16:
-- **Security / Data Integrity / Correctness** → fix in another commit, possibly another round. Do not push until clean.
-- **Hypothetical / MVP-irrelevant / deployment ergonomics** → append to `KNOWN_TODOS.md`, proceed to push.
-
-The review gate is the quality gate for the push to `develop`. Pure documentation cycles skip this step (no security/correctness surface).
-
-### 6. Push (`develop` → no production deploy)
-Claude Code runs `git push origin develop` after the Memory Bank update is committed and Codex review (if applicable) is clean. This pushes to `origin/develop`:
+### 5. Push (`develop` → no production deploy)
+Claude Code runs `git push origin develop` after the Memory Bank update is committed. This pushes to `origin/develop`:
 - **CI runs** (typecheck, lint, test, build) — safety net before any merge.
 - **Vercel auto-creates a Preview Deployment** for the `develop` branch with a stable URL. Use this to review frontend state.
 - **No production deploy** is triggered. Production deploys only happen on `main` (see Branching strategy).
 
 The production-deploy gate is Sebastian's manual `develop` → `main` merge, not the per-cycle push.
+
+### 6. Codex adversarial review (Sebastian, after push)
+After Claude Code pushes to `develop`, Sebastian decides whether a Codex review is needed based on the cycle's **review classification** (assigned by Claude Chat in the prompt header).
+
+**Review classifications:**
+
+| Classification | When to assign | Codex review? |
+|----------------|---------------|---------------|
+| `review:mandatory` | Backend logic, DB/schema changes, Auth/RLS surface, API contract changes, security-adjacent code, data-flow logic | Yes — run before next cycle |
+| `review:recommended` | Mixed frontend+backend without schema change, new hooks with fetch logic, complex state management | Yes if time allows; skip won't block |
+| `review:skip` | Purely visual changes (icon swaps, CSS, column add/remove without logic), i18n-only, documentation-only, pure renames | No — Vercel Preview is the review |
+
+Claude (Chat) assigns the classification when writing the prompt. If missing, default to `review:mandatory`.
+
+When a review runs, Sebastian opens a separate Codex session targeting the diff. Findings are classified following DECISIONS 2026-04-16:
+- **Security / Data Integrity / Correctness** → open a fix cycle (e.g. `2-FIX`) before continuing.
+- **Hypothetical / MVP-irrelevant / deployment ergonomics** → append to `KNOWN_TODOS.md` in the next cycle's carry-over, proceed.
+
+**Future automation (planned):** A GitHub Action that triggers on push to `develop` and runs the Codex review automatically for `review:mandatory` cycles, posting findings as a CI artifact.
 
 ### 7. Chat close
 Chat closes. The next cycle opens a fresh chat.

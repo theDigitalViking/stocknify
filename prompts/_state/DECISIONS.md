@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-05 — Review classification policy for Codex reviews
+
+**Decision:** Every prompt gets a `Review:` header field with one of three classifications: `review:mandatory` (backend logic, schema, auth, API contracts, data-flow), `review:recommended` (mixed frontend+backend without schema change, complex state), or `review:skip` (purely visual, i18n-only, docs-only, renames). Claude (Chat) assigns the classification when writing the prompt. If missing, default to `review:mandatory`. Sebastian uses the classification to decide whether to run a separate Codex review session after Claude Code pushes.
+
+**Rationale:** Not every cycle has a security/correctness surface worth reviewing with a second LLM. Icon swaps and column removals are verifiable by eye on the Vercel Preview. The classification makes the decision explicit rather than ad-hoc, and saves time on cycles where the review adds no value.
+
+## 2026-05-05 — Codex review decoupled from Claude Code plugin
+
+**Decision:** The OpenAI Codex adversarial review is no longer run as a Claude Code plugin (`/codex:setup --enable-review-gate`). Instead, Sebastian runs Codex in a separate session after Claude Code pushes to `develop`. Claude Code's cycle ends at the push; Codex review is a post-push quality gate operated by Sebastian. The review-gate step is removed from the bootstrap prompt and from prompt templates. Findings policy (DECISIONS 2026-04-16) is unchanged.
+
+**Rationale:** The Codex Claude Code plugin (`codex-companion.mjs`) was intermittently hanging, triggering stale `codex:rescue` loops, and blocking Claude Code sessions. The plugin's instability outweighed the convenience of in-session review. Decoupling preserves the quality gate (different LLM = different blind spots) while eliminating the blocking failure mode. A GitHub Action automating the Codex review on push to `develop` is planned as a future improvement.
+
+**Supersedes:** WORKFLOW.md Step 5 (old: "Codex adversarial review (automatic via review gate)") and the bootstrap prompt's Step 1 (`/codex:setup --enable-review-gate`). The push-policy decision (2026-04-29) is updated: Claude Code still pushes `develop`, but no longer waits for Codex before pushing.
+
 ## 2026-05-05 — Cycle & batch naming convention: numbered batches, lettered cycles
 
 **Decision:** Batches are numbered sequentially (Batch 1, 2, 3…). Within each batch, cycles use uppercase letters starting at A (2-A, 2-B, 2-C…). Special/infrastructure cycles within a batch get a descriptive prefix instead of a letter (e.g. 1-TH for Test Harness, 2-FIX for a hotfix). Prompt files follow the pattern `PROMPT_2-A_<SLUG>.md`; Notion titles use `2-A <Title>`. The previous globally-incrementing letter scheme (A, B, C… through H) is retroactively Batch 1: cycles 1-A through 1-E, plus 1-TH and 1-FIX.
