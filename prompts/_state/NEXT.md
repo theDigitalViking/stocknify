@@ -2,50 +2,57 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-05 (Batch A–E complete + Sebastian's review findings documented. One fix prompt pending, then new chat for next batch.)
+**Last updated:** 2026-05-05 (Batch 2 planned. Naming convention changed: see DECISIONS 2026-05-05.)
 
 ---
 
 ## Context
 
-Batch A–E ist **shipped und reviewed**. Alle fünf Cycles + Test-Harness Foundation sind auf `develop` und `main` gemerged. Sebastian hat eine manuelle Review durchgeführt (2026-05-05); Findings sind unten dokumentiert.
+**Batch 1** (retroactively named) ist abgeschlossen: Cycles 1-A through 1-E + 1-TH (Test Harness) + 1-FIX (Restore 400). Alles auf `develop` und `main` gemerged. 12 Backend-Tests grün.
+
+**Naming convention (neu):** Batches sind nummeriert (1, 2, 3…). Cycles innerhalb eines Batches starten bei A (2-A, 2-B, 2-C). Sonder-Cycles bekommen ein Kürzel-Prefix (z.B. 2-FIX). Siehe DECISIONS 2026-05-05.
 
 **Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün (2 smoke + 2 upsert + 4 restore + 4 movements).
 
 ---
 
-## 🟢 Active cycle (prompt pending)
+## 🟢 Batch 2 — UX Polish + Movements Enhancement
 
-### Fix: Restore 400 Error
-- **Bug:** `POST /products/:id/restore` gibt 400 statt Erfolg zurück (Frontend-Request-Problem oder Validierung)
-- **Prompt:** wird in diesem Chat geschrieben
-- **Estimate:** XS
+Drei Cycles, aufsteigend in Komplexität. Alle auf dem Movements-/UX-Polish-Pfad.
+
+### 2-A · UI Micro-Fixes (XS) — `high`
+Items 2 + 3 + 4 aus Sebastians Review (2026-05-05). Drei isolierte Änderungen, kein Backend-Touch:
+- **Varianten-Selektion UX** — bei einer Variante: kein klickbarer Highlight, kein `cursor-pointer`, kein `aria-selected`. Bei mehreren: stärkerer visueller Indikator (kräftigere `border-left` oder deutlicherer Hintergrund).
+- **Activity-Icon → `BarChart3`** — überall wo das Heartbeat-Icon für Movements steht (Stock-Liste, ggf. Quick-View).
+- **Bestandswert-Spalte entfernen** — aus `ProductStockTable` und Quick-View. Zeigt nur "—". Kommt mit Kostenfeld-Feature zurück (Backlog Item 13).
+
+### 2-B · Movements-Chart Polish (S–M) — `xhigh`
+Items 5 + 6. Beide betreffen denselben Chart und dieselbe Page:
+- **Uhrzeit auf der Zeitachse** — bei mehreren Entries am selben Tag: minutengenaue Ticks (`DD.MM. HH:mm` oder intelligent je nach Zeitraum-Spanne).
+- **Zeitraum-Auswahl** — Date-Range-Picker (von–bis) über dem Chart + Preset-Buttons ("Diese Woche", "Letzte 14 Tage", "Dieser Monat"). `from`/`to` Query-Params an `useStockMovements` durchreichen — Backend unterstützt die Filter bereits.
+
+### 2-C · Movements von Produktseite (M) — `xhigh`
+Item 8. Baut auf dem verbesserten Chart aus 2-B auf:
+- **Link von Produkt-Detail → Movements** — Button auf der Produktseite → `/stock/movements?productId=xxx` (Gesamtübersicht ohne Vorselektion).
+- **Multi-Line-Chart** — verschiedene Linien pro Location oder StockType (farbcodiert, togglebare Legende). Von Stock-Liste: vorselektiert auf eine Kombination. Von Produktseite: Gesamtübersicht.
+- Backend: `productId`-Filter auf `GET /v1/stock/movements` existiert bereits (Cycle 1-E).
 
 ---
 
-## 🟡 Review-Findings für nächste Batch-Planung
+## 🟡 Review-Findings für spätere Batches
 
-Aus Sebastians Review vom 2026-05-05. Werden im neuen Chat priorisiert und zu Cycles gebündelt.
+Aus Sebastians Review vom 2026-05-05. Items die nicht in Batch 2 aufgenommen wurden.
 
-### Bugs
-1. ~~**Restore 400 Error** — wird als Fix-Prompt in diesem Chat behandelt~~ → siehe Active cycle
+### Schema-Changes (M–L, Backend + Frontend)
+7. **Movements-Quelle granularer** — "sync" aufschlüsseln in CSV-Import, SFTP, Integration, manuell. Braucht `sourceDetail`-Feld auf `stock_movements`.
+10. **Lager + Lagerplatz Pflichtfeld-Kaskade** — Bestände brauchen immer Lager UND Lagerplatz. Default-Hierarchie: Import-Einstellung → Integrations-Default → Globaler Default (Settings-Page).
+11. **CSV Duplikat-Handling** — drei Modi (aufsummieren, letzter Wert gewinnt, Fehler werfen), einstellbar pro Integration.
+13. **Bestandswert-Feature** — Kostenfeld auf Variant/Movement-Ebene, Bewertungsmethode, dann echte Werte.
 
-### UX-Fixes (nächster Batch)
-2. **Varianten-Selektion UX** — bei nur einer Variante nicht anklickbar machen. Bei mehreren: deutlicherer Highlight (stärkere Farbe oder zusätzliches Indikator-Element). Aktueller Highlight ist auf manchen Bildschirmen unsichtbar.
-3. **Activity-Icon austauschen** — `Activity` (Heartbeat) → Chart/Diagramm-Icon (z.B. `BarChart3` oder `TrendingUp` aus lucide-react).
-4. **Bestandswert-Spalte rausnehmen** — zeigt nur "—" weil kein Kostenfeld existiert. Verwirrt Nutzer. Wieder entfernen; als Zukunftsfeature mit Kostenfeld-Schema-Change zurückbringen.
-5. **Movements-Chart: Uhrzeit anzeigen** — bei mehreren Einträgen am selben Tag muss die Zeitachse minutengenau sein, nicht nur Datum.
-6. **Movements-Chart: Zeitraum-Auswahl** — Kalender-Picker (von–bis), nur Tage auswählbar an denen Daten existieren. Plus vorgefertigte Preset-Buttons: aktuelle Woche, letzte 14 Tage, aktueller Monat.
-7. **Movements-Quelle granularer** — "sync" aufschlüsseln in CSV-Import, SFTP, Integration, manuell. Braucht `sourceDetail`-Feld auf `stock_movements` (Schema-Change).
-8. **Movements von Produktseite erreichbar** — Link von Produkt-Detail → `/stock/movements?productId=xxx`. Zeigt alle Locations/StockTypes für dieses Produkt. Multi-Line-Chart (verschiedene Farben pro Location/StockType, togglebar). Vom Stock-List-Icon: vorselektiert auf eine Kombination. Von der Produktseite: Gesamtübersicht.
-9. **Performance/Smoothness** — Ladeanimationen, Skeleton-Loader, schnellere Seitenübergänge. Seiten laden manchmal behäbig; beim Wechsel zwischen Produkten sieht man kurz alte Daten. Global als Optimierungs-Cycle oder pro Seite.
-
-### Architektur / größere Features (Backlog)
-10. **Lager + Lagerplatz Pflichtfeld-Kaskade** — Bestände brauchen immer Lager UND Lagerplatz. Default-Hierarchie: Import-Einstellung → Integrations-Default → Globaler Default (Settings-Page). Größeres Feature: Settings UI + Schema + Import-Flow-Anpassung.
-11. **CSV Duplikat-Handling** (gleiche SKU + gleicher Lagerplatz in einer Datei) — drei Modi, einstellbar pro Integration (mit Global-Fallback): (a) Werte aufsummieren, (b) letzter Wert gewinnt, (c) Fehler werfen + Zeile ignorieren. Einstellung in Settings → Integration → Import.
-12. **Website + Help Center** — alle Feature-Dokumentation so strukturieren, dass daraus später Docs/Help-Center gebaut werden kann. Separate Website mit öffentlicher Roadmap.
-13. **Bestandswert-Feature (Zukunft)** — Kostenfeld auf Variant oder Movement-Ebene, Bewertungsmethode (Last Cost / Weighted Average / FIFO), dann Bestandswert-Spalte mit echten Werten.
-14. **Öffentliche Roadmap** — auf der Website, damit Kunden sehen was als nächstes entwickelt wird.
+### Meta / Infra
+9. **Performance/Smoothness** — Skeleton-Loader, schnellere Seitenübergänge, Ladeanimationen.
+12. **Website + Help Center** — Feature-Dokumentation, öffentliche Seite.
+14. **Öffentliche Roadmap** — auf der Website.
 
 ---
 

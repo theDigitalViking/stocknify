@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-05-05 — Cycle & batch naming convention: numbered batches, lettered cycles
+
+**Decision:** Batches are numbered sequentially (Batch 1, 2, 3…). Within each batch, cycles use uppercase letters starting at A (2-A, 2-B, 2-C…). Special/infrastructure cycles within a batch get a descriptive prefix instead of a letter (e.g. 1-TH for Test Harness, 2-FIX for a hotfix). Prompt files follow the pattern `PROMPT_2-A_<SLUG>.md`; Notion titles use `2-A <Title>`. The previous globally-incrementing letter scheme (A, B, C… through H) is retroactively Batch 1: cycles 1-A through 1-E, plus 1-TH and 1-FIX.
+
+**Rationale:** A single global letter sequence exhausts the alphabet within a few months at current velocity (~3–5 cycles/week). Numbering batches and resetting cycle letters per batch keeps identifiers short, readable, and unlimited. Batch numbers also group related work visually in Notion and git history.
+
+**Alternatives considered:**
+- Numeric cycles within numeric batches (1.1, 1.2, 2.1) — rejected: looks like version numbers and loses the mnemonic quality of letters for short sequences.
+- Keep global letters, switch to AA/AB after Z — rejected: ugly, unfamiliar, no natural grouping.
+
 ## 2026-05-05 — Bestands-Verlauf is a dedicated page, not a sheet/drawer
 
 **Decision:** The stock-movement history surface (Cycle E) lives at the route `/stock/movements`, not as a Sheet/Drawer triggered from the stock list. The stock list's Activity icon navigates there with the row's filter trio (`variantId`, `locationId`, `stockType`) pre-filled in the query string.
