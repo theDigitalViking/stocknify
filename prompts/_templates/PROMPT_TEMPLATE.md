@@ -55,7 +55,7 @@ After commit, in the same commit or a follow-up commit, update the memory bank:
 
 ## Push (mandatory final step on `develop`)
 
-After the Memory Bank update is committed and Codex review (if part of this cycle) is clean:
+After the Memory Bank update is committed and the Codex review gate has passed (or been skipped with Sebastian's approval):
 
 ```
 git push origin develop
@@ -68,6 +68,6 @@ This pushes to `origin/develop` only. CI runs and a Vercel Preview Deployment is
 ## Reminders
 
 - **Branch is `develop`.** Verify with `git rev-parse --abbrev-ref HEAD` before committing.
-- **Do not push to `main`** under any circumstances. Hotfix flow is out-of-band, Sebastian-only.
-- If a Codex review is part of this cycle, run it via `/codex:adversarial-review --base origin/develop [focus]` **before** the push. Classify findings: Security / Data Integrity / Correctness → fix and re-review. Hypothetical / MVP-irrelevant → log in `KNOWN_TODOS.md`, then push.
+- **Do not push to `main`** under any circumstances.
+- **Codex review gate** is enabled automatically via Step 1 of the bootstrap. It will run before the session finishes. If it hangs, Sebastian will `Esc` and run `/codex:adversarial-review --base origin/develop --wait` manually.
 - Pure documentation cycles skip Codex review (no security/correctness surface) but still push to `develop`.

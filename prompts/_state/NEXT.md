@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-04 (Cycle D shipped — restore endpoint + tests + frontend; only Cycle E remains in batch)
+**Last updated:** 2026-05-05 (Cycle E prompt written, ready for Claude Code — last cycle in batch A–E)
 
 ---
 
@@ -16,21 +16,20 @@ Frontend-Review hat 15 Bugs/Ideen + 1 geparkte Idee ergeben. Triage gebündelt z
 
 ---
 
-## 🟢 Active cycle
+## 🟢 Active cycle (prompt written, ready for Claude Code)
 
-Nothing active — Cycle D shipped. Next chat opens Cycle E.
+### Cycle E — Bestands-Verlauf + Chargen-Liste
+- **Prompt:** `prompts/PROMPT_CYCLE_E_BESTANDS_VERLAUF_CHARGEN.md`
+- **Notion:** https://www.notion.so/35724fe1d88a8151a53bf3bcc9ca9b13
+- **Items:** R1 GET /stock/movements endpoint, R2 backend tests (empty state + filters + pagination + cross-tenant), R3 movements page with chart + table, R4 enable Activity icon on stock list, R5 Chargen-Liste on product detail, R6 i18n
+- **Estimate:** L
+- **Effort:** `xhigh` (default — new endpoint + chart + multi-component frontend feature)
 
 ---
 
-## 🟡 Queued cycles (next chat opens these in order)
+## 🟡 Queued cycles
 
-### Cycle E — Bestands-Verlauf + Chargen-Liste
-- **Type:** Feature (größtes Stück, sauber als letztes)
-- **Items:**
-  - **#12** Bestands-Verlauf-Surface mit Chart + Bewegungstabelle. `GET /stock/movements` endpoint.
-  - **#11** Chargen-Liste als eigener Block auf der Produkt-Detailseite.
-  - **NEU: Backend tests for `GET /stock/movements`.**
-- **Estimate:** L
+None — Cycle E is the last cycle in batch A–E. After it ships, Sebastian reviews `develop` and merges to `main`.
 
 ---
 

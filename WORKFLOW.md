@@ -32,14 +32,15 @@ At the start of every Claude Code session, paste this prompt with `<NAME>` repla
 You're running a Stocknify cycle. Before doing anything else:
 
 0. Branch check. Verify you're on `develop`: `git rev-parse --abbrev-ref HEAD`. If you're on `main` or another branch, run `git checkout develop` (or `git checkout -b develop` if it doesn't exist locally yet — but it should). All cycle commits land on `develop`. Never commit or push to `main`.
-1. Carry-over commit. Run `git status --porcelain`. If there are uncommitted changes in any of these whitelisted paths — `prompts/_state/`, `prompts/PROMPT_*.md`, `prompts/results/`, `WORKFLOW.md`, `PROJECT.md` — stage and commit ONLY those paths with the message `chore(memory-bank): carry over updates from prior chat session`. Do NOT touch other uncommitted paths (`.gitignore`, `test-data/`, anything outside the whitelist). If the whitelist is empty, skip this step silently. See WORKFLOW.md § Carry-over commits.
-2. Read `WORKFLOW.md` (this file)
-3. Read `prompts/_state/STATE.md`
-4. Read `prompts/_state/NEXT.md`
-5. Read `prompts/_state/DECISIONS.md`
-6. Read `prompts/_state/KNOWN_TODOS.md`
+1. Review gate. Run `/codex:setup --enable-review-gate` so Codex automatically reviews before you finish. If the command fails or the plugin is unavailable, note it and continue — Sebastian will run the review manually.
+2. Carry-over commit. Run `git status --porcelain`. If there are uncommitted changes in any of these whitelisted paths — `prompts/_state/`, `prompts/PROMPT_*.md`, `prompts/results/`, `WORKFLOW.md`, `PROJECT.md` — stage and commit ONLY those paths with the message `chore(memory-bank): carry over updates from prior chat session`. Do NOT touch other uncommitted paths (`.gitignore`, `test-data/`, anything outside the whitelist). If the whitelist is empty, skip this step silently. See WORKFLOW.md § Carry-over commits.
+3. Read `WORKFLOW.md` (this file)
+4. Read `prompts/_state/STATE.md`
+5. Read `prompts/_state/NEXT.md`
+6. Read `prompts/_state/DECISIONS.md`
+7. Read `prompts/_state/KNOWN_TODOS.md`
 
-Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed and (if applicable) Codex review has passed, run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step.
+Then execute `prompts/PROMPT_<NAME>.md` exactly as specified. The "Memory Bank update" section at the end of that prompt is mandatory and must be completed before you push. After the Memory Bank update is committed and the Codex review gate has passed (or been skipped with Sebastian's approval), run `git push origin develop`. Never push to `main` — that is Sebastian's manual merge step.
 ```
 
 Claude (Chat) hands this prompt over with the filename pre-filled at the start of every cycle, so Sebastian never has to remember it. The bootstrap stays the same for frontend, backend, or any other type of cycle — file-specific context lives inside the referenced PROMPT file, not in the bootstrap.
@@ -91,18 +92,22 @@ At the end of every Claude Code run, before pushing:
 
 This is non-negotiable. Without these steps, state drifts and the next session starts blind. Sebastian never updates Notion or memory bank files manually.
 
-### 5. Codex adversarial review (when applicable)
-For non-trivial cycles, after the Memory Bank update is committed but **before** the push:
+### 5. Codex adversarial review (automatic via review gate)
+The Codex plugin's **review gate** is enabled at the start of every Claude Code session (`/codex:setup --enable-review-gate`). It runs automatically before Claude Code finishes a run — no manual slash command needed. If the review finds issues, the run is blocked so Claude Code can address them first.
+
+**Important:** The review gate can create long-running Claude/Codex loops. Only use it in sessions you actively monitor (which is all Stocknify sessions — Sebastian is always present).
+
+**If the review gate hangs or loops:** press `Esc` to abort, then run the review manually:
 
 ```
-/codex:adversarial-review --base origin/develop [focus text]
+/codex:adversarial-review --base origin/develop --wait
 ```
 
-Findings are classified by Claude (Chat) — or, when Claude Code runs the review autonomously, by Claude Code following the policy in DECISIONS 2026-04-16:
-- **Security / Data Integrity / Correctness** → fix in another commit, possibly another Codex round. Do not push until clean.
+Findings are classified by Claude Code following the policy in DECISIONS 2026-04-16:
+- **Security / Data Integrity / Correctness** → fix in another commit, possibly another round. Do not push until clean.
 - **Hypothetical / MVP-irrelevant / deployment ergonomics** → append to `KNOWN_TODOS.md`, proceed to push.
 
-Codex review is the gate for the push to `develop`. Pure documentation cycles skip this step (no security/correctness surface).
+The review gate is the quality gate for the push to `develop`. Pure documentation cycles skip this step (no security/correctness surface).
 
 ### 6. Push (`develop` → no production deploy)
 Claude Code runs `git push origin develop` after the Memory Bank update is committed and Codex review (if applicable) is clean. This pushes to `origin/develop`:
