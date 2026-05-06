@@ -741,8 +741,10 @@ model ExternalReference {
 model IntegrationCredential {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String    @map("tenant_id") @db.Uuid
-  integrationId  String    @map("integration_id") @db.Uuid
-  credentialType String    @map("credential_type") @db.Text // 'api_key' | 'sftp' | 'ftp' | 'oauth' | 'webhook' | 'basic_auth'
+  // Optional. NULL = tenant-level credential, reusable across multiple integrations
+  // (DECISIONS 2026-05-07 — credential vault: reusable, separate entity).
+  integrationId  String?   @map("integration_id") @db.Uuid
+  credentialType String    @map("credential_type") @db.Text // 'api_key' | 'sftp' | 'ftp' | 'ftps' | 'oauth' | 'webhook' | 'basic_auth'
   name           String    @db.Text // e.g. "Hive Production API", "Xentral SFTP Export"
   // Credential fields — all AES-256-GCM encrypted at rest
   host           String?   @db.Text // SFTP/FTP host
@@ -760,8 +762,8 @@ model IntegrationCredential {
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  tenant      Tenant      @relation(fields: [tenantId], references: [id])
-  integration Integration @relation(fields: [integrationId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  integration Integration?  @relation(fields: [integrationId], references: [id])
   schedules   IntegrationSchedule[]
 
   @@index([tenantId])
