@@ -34,6 +34,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "basic-ftp": "^6.0.1",
     "bullmq": "^5.12.0",
+    "cron-parser": "^5.5.0",
     "csv-parse": "^6.2.1",
     "fastify": "^4.28.0",
     "iconv-lite": "^0.7.2",
