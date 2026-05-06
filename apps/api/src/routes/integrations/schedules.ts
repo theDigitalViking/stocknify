@@ -12,6 +12,8 @@
  * scheduler if Redis is reset.
  */
 
+import { randomUUID } from 'node:crypto'
+
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
@@ -131,6 +133,7 @@ interface ScheduleRow {
   timeOfDay: string | null
   weekdays: number[]
   cronExpression: string
+  timezone: string
   csvMappingTemplateId: string | null
   credentialId: string | null
   lastRunAt: Date | null
@@ -150,15 +153,12 @@ interface ScheduleResponse extends Omit<ScheduleRow, 'lastRunAt' | 'nextRunAt' |
   deletedAt: string | null
   cronDescription: string
   cronDescriptionDe: string
-  timezone: string
 }
 
-// We don't carry timezone on the schedule row today — that's tracked in
-// `additionalAttributes` on the credential or elsewhere. For this cycle we
-// store it in a dedicated column? No — schema doesn't have one. Instead we
-// store it inside the cron-string string field is not safe. Use an
-// in-memory default for the response.
-function shapeSchedule(row: ScheduleRow, timezone: string): ScheduleResponse {
+// Timezone is now persisted on the schedule row (Cycle 3-E review fix), so
+// the response shape pulls it directly from the row instead of the route's
+// in-memory default.
+function shapeSchedule(row: ScheduleRow): ScheduleResponse {
   return {
     ...row,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
@@ -168,17 +168,22 @@ function shapeSchedule(row: ScheduleRow, timezone: string): ScheduleResponse {
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     cronDescription: describeCron(row.cronExpression, 'en'),
     cronDescriptionDe: describeCron(row.cronExpression, 'de'),
-    timezone,
   }
 }
 
-// Schedule timezone is not on the schema — DECISIONS callout:
-// `IntegrationSchedule` does not currently carry a `timezone` column. We
-// persist the cron string + a default timezone (`Europe/Berlin`) for the
-// `nextRunAt` computation and the BullMQ scheduler. When tenants need
-// per-schedule timezone control, add a column and thread it through
-// upsertJobScheduler. Tracked in KNOWN_TODOS.
 const DEFAULT_SCHEDULE_TIMEZONE = 'Europe/Berlin'
+
+// Validate as IANA via Intl.DateTimeFormat — Node throws RangeError on an
+// unknown timezone identifier. Used by both POST and PATCH so the same
+// surface returns 400 instead of letting cron-parser blow up downstream.
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date())
+    return true
+  } catch {
+    return false
+  }
+}
 
 // ---------------------------------------------------------------------------
 // BullMQ scheduler helpers — wrap the queue calls so route handlers stay
@@ -320,7 +325,7 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
     })
 
     return reply.send({
-      data: rows.map((r) => shapeSchedule(r as unknown as ScheduleRow, DEFAULT_SCHEDULE_TIMEZONE)),
+      data: rows.map((r) => shapeSchedule(r as unknown as ScheduleRow)),
     })
   })
 
@@ -374,6 +379,15 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    if (!isValidTimezone(body.data.timezone)) {
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Unknown IANA timezone: ${body.data.timezone}`,
+        },
+      })
+    }
+
     let cron: string
     try {
       cron = buildCronExpression(body.data as { scheduleType: ScheduleType; intervalValue?: number; timeOfDay?: string; weekdays?: number[] })
@@ -393,36 +407,63 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       request.log.warn({ err, cron }, 'failed to compute nextRunAt')
     }
 
-    const created = await request.db.integrationSchedule.create({
-      data: {
-        tenantId: request.tenantId,
-        integrationId: integration.id,
-        name: body.data.name,
-        resourceType: body.data.resourceType,
-        direction: body.data.direction,
-        scheduleType: body.data.scheduleType,
-        intervalValue: body.data.intervalValue ?? null,
-        timeOfDay: body.data.timeOfDay ?? null,
-        weekdays: body.data.weekdays ?? [],
-        cronExpression: cron,
-        csvMappingTemplateId: body.data.csvMappingTemplateId ?? null,
-        credentialId: body.data.credentialId,
-        nextRunAt,
-        isActive: true,
-      },
-    })
-
-    // Register the BullMQ scheduler. Failure here logs but does not roll
-    // back the DB row — the schedule remains visible in the UI; a manual
-    // toggle re-registers it once Redis is reachable.
+    // Atomicity fix (Cycle 3-E review): generate the schedule UUID upfront
+    // and register the BullMQ scheduler BEFORE the DB insert. If Redis is
+    // unreachable the DB row is never written and the route returns 503,
+    // so the operator never sees a "successful" schedule that won't fire.
+    // If the DB insert later fails we best-effort tear down the registered
+    // scheduler so it can't fire against a non-existent schedule row.
+    const scheduleId = randomUUID()
     try {
-      await registerScheduler(created.id, cron, body.data.timezone)
+      await registerScheduler(scheduleId, cron, body.data.timezone)
     } catch (err) {
-      request.log.error({ err, scheduleId: created.id }, 'failed to register BullMQ scheduler')
+      request.log.error({ err, scheduleId }, 'failed to register BullMQ scheduler — refusing schedule create')
+      return reply.code(503).send({
+        error: {
+          code: 'SCHEDULER_UNAVAILABLE',
+          message: 'Schedule queue is not reachable — please retry shortly',
+        },
+      })
+    }
+
+    let created
+    try {
+      created = await request.db.integrationSchedule.create({
+        data: {
+          id: scheduleId,
+          tenantId: request.tenantId,
+          integrationId: integration.id,
+          name: body.data.name,
+          resourceType: body.data.resourceType,
+          direction: body.data.direction,
+          scheduleType: body.data.scheduleType,
+          intervalValue: body.data.intervalValue ?? null,
+          timeOfDay: body.data.timeOfDay ?? null,
+          weekdays: body.data.weekdays ?? [],
+          cronExpression: cron,
+          timezone: body.data.timezone,
+          csvMappingTemplateId: body.data.csvMappingTemplateId ?? null,
+          credentialId: body.data.credentialId,
+          nextRunAt,
+          isActive: true,
+        },
+      })
+    } catch (err) {
+      // Tear down the registered scheduler so a phantom job can't fire
+      // against a missing DB row. Best-effort — log, don't double-fail.
+      try {
+        await removeScheduler(scheduleId)
+      } catch (cleanupErr) {
+        request.log.error(
+          { err: cleanupErr, scheduleId },
+          'failed to remove orphaned scheduler after DB insert failure',
+        )
+      }
+      throw err
     }
 
     return reply.code(201).send({
-      data: shapeSchedule(created as unknown as ScheduleRow, body.data.timezone),
+      data: shapeSchedule(created as unknown as ScheduleRow),
     })
   })
 
@@ -531,12 +572,47 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const timezone = body.data.timezone ?? DEFAULT_SCHEDULE_TIMEZONE
+    // Use the persisted column as the timezone source of truth — only
+    // override when the body explicitly carries one. Cycle 3-E review fix.
+    const existingTimezone =
+      (existing as unknown as { timezone?: string }).timezone ?? DEFAULT_SCHEDULE_TIMEZONE
+    const timezone = body.data.timezone ?? existingTimezone
+    if (body.data.timezone !== undefined && !isValidTimezone(timezone)) {
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Unknown IANA timezone: ${timezone}`,
+        },
+      })
+    }
     let nextRunAt: Date | null = existing.nextRunAt
     try {
       nextRunAt = nextRunTimes(cron, 1, timezone)[0] ?? null
     } catch (err) {
       request.log.warn({ err, cron }, 'failed to recompute nextRunAt')
+    }
+
+    // Atomicity fix (Cycle 3-E review): sync the BullMQ scheduler BEFORE
+    // updating the DB so a queue failure doesn't leave the row pointing at
+    // a cron that won't fire (or, on disable, that's still firing). We
+    // perform the sync against the new state — register if the post-update
+    // row would be active, remove otherwise. The DB write only proceeds if
+    // the queue side succeeds.
+    const willBeActive = body.data.isActive ?? existing.isActive
+    try {
+      if (willBeActive) {
+        await registerScheduler(existing.id, cron, timezone)
+      } else {
+        await removeScheduler(existing.id)
+      }
+    } catch (err) {
+      request.log.error({ err, scheduleId: existing.id }, 'failed to sync BullMQ scheduler on update — refusing patch')
+      return reply.code(503).send({
+        error: {
+          code: 'SCHEDULER_UNAVAILABLE',
+          message: 'Schedule queue is not reachable — please retry shortly',
+        },
+      })
     }
 
     const updated = await request.db.integrationSchedule.update({
@@ -548,29 +624,19 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
         timeOfDay: merged.timeOfDay ?? null,
         weekdays: merged.weekdays,
         cronExpression: cron,
+        timezone,
         credentialId: body.data.credentialId ?? existing.credentialId,
         csvMappingTemplateId:
           body.data.csvMappingTemplateId === undefined
             ? existing.csvMappingTemplateId
             : body.data.csvMappingTemplateId,
-        isActive: body.data.isActive ?? existing.isActive,
+        isActive: willBeActive,
         nextRunAt,
       },
     })
 
-    // Re-register (or remove) the scheduler to match the updated row.
-    try {
-      if (updated.isActive) {
-        await registerScheduler(updated.id, cron, timezone)
-      } else {
-        await removeScheduler(updated.id)
-      }
-    } catch (err) {
-      request.log.error({ err, scheduleId: updated.id }, 'failed to sync BullMQ scheduler on update')
-    }
-
     return reply.send({
-      data: shapeSchedule(updated as unknown as ScheduleRow, timezone),
+      data: shapeSchedule(updated as unknown as ScheduleRow),
     })
   })
 
@@ -600,16 +666,25 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
+    // Atomicity fix (Cycle 3-E review): remove the scheduler first. On
+    // failure return 503 so the operator can retry instead of being told
+    // the schedule was deleted while it keeps firing in the background.
+    try {
+      await removeScheduler(existing.id)
+    } catch (err) {
+      request.log.error({ err, scheduleId: existing.id }, 'failed to remove BullMQ scheduler on delete — refusing delete')
+      return reply.code(503).send({
+        error: {
+          code: 'SCHEDULER_UNAVAILABLE',
+          message: 'Schedule queue is not reachable — please retry shortly',
+        },
+      })
+    }
+
     await request.db.integrationSchedule.update({
       where: { id: existing.id },
       data: { deletedAt: new Date(), isActive: false },
     })
-
-    try {
-      await removeScheduler(existing.id)
-    } catch (err) {
-      request.log.error({ err, scheduleId: existing.id }, 'failed to remove BullMQ scheduler on delete')
-    }
 
     return reply.send({ data: { id: existing.id, deleted: true } })
   })
@@ -640,23 +715,37 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const nextActive = !existing.isActive
+
+    // Atomicity fix (Cycle 3-E review): sync the BullMQ scheduler before
+    // flipping the DB so we never report "active" against a queue that
+    // doesn't have the job registered (or "inactive" against a queue that's
+    // still firing). The persisted `timezone` column is the source of
+    // truth — no fallback to the route default.
+    const persistedTimezone =
+      (existing as unknown as { timezone?: string }).timezone ?? DEFAULT_SCHEDULE_TIMEZONE
+    try {
+      if (nextActive) {
+        await registerScheduler(existing.id, existing.cronExpression, persistedTimezone)
+      } else {
+        await removeScheduler(existing.id)
+      }
+    } catch (err) {
+      request.log.error({ err, scheduleId: existing.id }, 'failed to sync BullMQ scheduler on toggle — refusing toggle')
+      return reply.code(503).send({
+        error: {
+          code: 'SCHEDULER_UNAVAILABLE',
+          message: 'Schedule queue is not reachable — please retry shortly',
+        },
+      })
+    }
+
     const updated = await request.db.integrationSchedule.update({
       where: { id: existing.id },
       data: { isActive: nextActive },
     })
 
-    try {
-      if (nextActive) {
-        await registerScheduler(updated.id, updated.cronExpression, DEFAULT_SCHEDULE_TIMEZONE)
-      } else {
-        await removeScheduler(updated.id)
-      }
-    } catch (err) {
-      request.log.error({ err, scheduleId: updated.id }, 'failed to sync BullMQ scheduler on toggle')
-    }
-
     return reply.send({
-      data: shapeSchedule(updated as unknown as ScheduleRow, DEFAULT_SCHEDULE_TIMEZONE),
+      data: shapeSchedule(updated as unknown as ScheduleRow),
     })
   })
 }

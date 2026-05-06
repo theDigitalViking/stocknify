@@ -756,3 +756,261 @@ describe('cross-tenant isolation', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 3-E Codex stop-time review fixes
+// ---------------------------------------------------------------------------
+
+describe('schedule queue/DB atomicity (Cycle 3-E review fix)', () => {
+  it('returns 503 when the BullMQ scheduler registration fails on POST and writes no DB row', async () => {
+    const seed = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      mockedUpsert.mockRejectedValueOnce(new Error('Redis unreachable'))
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'Daily 06:00',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          credentialId: seed.credential.id,
+        },
+      })
+      expect(res.statusCode).toBe(503)
+      expect((res.json() as ErrorBody).error.code).toBe('SCHEDULER_UNAVAILABLE')
+
+      // No DB row was created — the route refused before the insert.
+      const rows = await testDb.integrationSchedule.findMany({
+        where: { integrationId: seed.integration.id, deletedAt: null },
+      })
+      expect(rows).toHaveLength(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('returns 503 when the BullMQ scheduler removal fails on DELETE and keeps the row', async () => {
+    const seed = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'Daily 06:00',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          credentialId: seed.credential.id,
+        },
+      })
+      const cBody = created.json() as ScheduleBody
+
+      mockedRemove.mockRejectedValueOnce(new Error('Redis unreachable'))
+      const del = await app.inject({
+        method: 'DELETE',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${cBody.data.id}`,
+        headers: seed.headers,
+      })
+      expect(del.statusCode).toBe(503)
+      expect((del.json() as ErrorBody).error.code).toBe('SCHEDULER_UNAVAILABLE')
+
+      // Row is still active — DELETE didn't get to the soft-delete write.
+      const dbRow = await testDb.integrationSchedule.findUnique({
+        where: { id: cBody.data.id },
+      })
+      expect(dbRow?.deletedAt).toBeNull()
+      expect(dbRow?.isActive).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('returns 503 when the BullMQ scheduler removal fails on TOGGLE and keeps the prior state', async () => {
+    const seed = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'Daily 06:00',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          credentialId: seed.credential.id,
+        },
+      })
+      const cBody = created.json() as ScheduleBody
+
+      // Currently active → toggle would deactivate → calls remove. Force a
+      // remove failure and confirm the row stays active.
+      mockedRemove.mockRejectedValueOnce(new Error('Redis unreachable'))
+      const toggle = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${cBody.data.id}/toggle`,
+        headers: seed.headers,
+      })
+      expect(toggle.statusCode).toBe(503)
+
+      const dbRow = await testDb.integrationSchedule.findUnique({
+        where: { id: cBody.data.id },
+      })
+      expect(dbRow?.isActive).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+describe('schedule timezone persistence (Cycle 3-E review fix)', () => {
+  it('persists timezone on POST and uses it on TOGGLE re-registration (no fallback to default)', async () => {
+    const seed = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'NYC daily',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          credentialId: seed.credential.id,
+          timezone: 'America/New_York',
+        },
+      })
+      expect(created.statusCode).toBe(201)
+      const cBody = created.json() as ScheduleBody
+      expect(cBody.data.timezone).toBe('America/New_York')
+
+      const dbRow = await testDb.integrationSchedule.findUnique({
+        where: { id: cBody.data.id },
+      })
+      expect((dbRow as unknown as { timezone: string }).timezone).toBe(
+        'America/New_York',
+      )
+
+      // Toggle off then back on — the re-register call must use the stored
+      // timezone, not the route's Europe/Berlin default.
+      const toggleOff = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${cBody.data.id}/toggle`,
+        headers: seed.headers,
+      })
+      expect(toggleOff.statusCode).toBe(200)
+
+      mockedUpsert.mockClear()
+      const toggleOn = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${cBody.data.id}/toggle`,
+        headers: seed.headers,
+      })
+      expect(toggleOn.statusCode).toBe(200)
+      expect(mockedUpsert).toHaveBeenCalledTimes(1)
+      const [, repeatOpts] = mockedUpsert.mock.calls[0] ?? []
+      expect(repeatOpts).toEqual({
+        pattern: '0 6 * * *',
+        tz: 'America/New_York',
+      })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects an unknown IANA timezone with 400 on POST', async () => {
+    const seed = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'bad tz',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          credentialId: seed.credential.id,
+          timezone: 'Mars/Olympus_Mons',
+        },
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as ErrorBody).error.code).toBe('VALIDATION_ERROR')
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+describe('import_runs FK enforcement (Cycle 3-E review fix)', () => {
+  it('rejects an import_run write referencing a non-existent schedule_id', async () => {
+    const seed = await seedScenario()
+    // Issue raw INSERT with a random schedule_id that doesn't exist anywhere.
+    // Postgres now rejects this via the new schedule_id FK constraint.
+    const orphanId = '00000000-0000-0000-0000-000000000000'
+    await expect(
+      testDb.$executeRawUnsafe(
+        `INSERT INTO import_runs (id, tenant_id, integration_id, schedule_id, trigger, status, started_at, created_at)
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, 'scheduled', 'failed', now(), now())`,
+        seed.tenant.id,
+        seed.integration.id,
+        orphanId,
+      ),
+    ).rejects.toThrow(/foreign key|violates/i)
+  })
+
+  it('rejects an import_run write referencing a non-existent credential_id', async () => {
+    const seed = await seedScenario()
+    const orphanId = '00000000-0000-0000-0000-000000000001'
+    await expect(
+      testDb.$executeRawUnsafe(
+        `INSERT INTO import_runs (id, tenant_id, integration_id, credential_id, trigger, status, started_at, created_at)
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, 'scheduled', 'failed', now(), now())`,
+        seed.tenant.id,
+        seed.integration.id,
+        orphanId,
+      ),
+    ).rejects.toThrow(/foreign key|violates/i)
+  })
+
+  it('SET NULL: deleting a credential clears credential_id on its import_runs', async () => {
+    const seed = await seedScenario()
+    // Use a fresh, unbound credential so the credential delete path isn't
+    // blocked by the schedules-in-use guard.
+    const cred = await testDb.integrationCredential.create({
+      data: {
+        tenantId: seed.tenant.id,
+        credentialType: 'sftp',
+        name: 'standalone',
+        host: 'sftp.example.com',
+        port: 22,
+        username: 'u',
+        password: 'enc',
+      },
+    })
+    const run = await testDb.importRun.create({
+      data: {
+        tenantId: seed.tenant.id,
+        integrationId: seed.integration.id,
+        credentialId: cred.id,
+        trigger: 'manual',
+        status: 'success',
+      },
+    })
+    await testDb.integrationCredential.delete({ where: { id: cred.id } })
+    const refreshed = await testDb.importRun.findUnique({ where: { id: run.id } })
+    expect(refreshed?.credentialId).toBeNull()
+  })
+})

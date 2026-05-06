@@ -767,6 +767,7 @@ model IntegrationCredential {
   tenant      Tenant       @relation(fields: [tenantId], references: [id])
   integration Integration?  @relation(fields: [integrationId], references: [id])
   schedules   IntegrationSchedule[]
+  importRuns  ImportRun[]
 
   @@index([tenantId])
   @@index([tenantId, integrationId])
@@ -883,6 +884,11 @@ model IntegrationSchedule {
   weekdays      Int[]     @map("weekdays") // for weekly: [1,3,5] = Mon,Wed,Fri (ISO: 1=Mon, 7=Sun)
   // Computed cron expression (generated from above fields, never entered by user)
   cronExpression String   @map("cron_expression") @db.Text // e.g. "30 6 * * 1,3,5"
+  // IANA timezone name (e.g. "Europe/Berlin", "America/New_York"). Used for
+  // both the cron firing schedule (BullMQ scheduler tz) and `nextRunAt`
+  // computation. Persisted so PATCH/toggle re-registration uses the
+  // tenant's tz instead of silently falling back to a default.
+  timezone      String    @default("Europe/Berlin") @map("timezone") @db.Text
   // Optional: link to CSV mapping template (for CSV integrations)
   csvMappingTemplateId String? @map("csv_mapping_template_id") @db.Uuid
   // Optional: which credentials to use for this schedule
@@ -901,6 +907,7 @@ model IntegrationSchedule {
   integration        Integration            @relation(fields: [integrationId], references: [id])
   csvMappingTemplate CsvMappingTemplate?    @relation(fields: [csvMappingTemplateId], references: [id])
   credential         IntegrationCredential? @relation(fields: [credentialId], references: [id])
+  importRuns         ImportRun[]
 
   @@index([tenantId])
   @@index([tenantId, integrationId])
@@ -963,8 +970,13 @@ model ImportRun {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  tenant      Tenant      @relation(fields: [tenantId], references: [id])
-  integration Integration @relation(fields: [integrationId], references: [id])
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id])
+  integration Integration            @relation(fields: [integrationId], references: [id])
+  // Set null on parent delete so an import_runs row survives a credential
+  // hard-delete or schedule soft-delete; auditability matters more than
+  // strict referential integrity for completed-run rows.
+  schedule    IntegrationSchedule?   @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  credential  IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([tenantId, integrationId])
