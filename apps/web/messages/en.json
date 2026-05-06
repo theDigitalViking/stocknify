@@ -497,6 +497,198 @@
       "title": "SFTP / FTP",
       "comingSoon": "Automated import and export via SFTP/FTP \u2014 coming soon."
     },
+    "sftp": {
+      "list": {
+        "addIntegration": "Add integration",
+        "addFirst": "Add your first integration",
+        "emptyTitle": "No automated integrations yet.",
+        "emptyBody": "Connect any SFTP, FTP, or FTPS server to import stock on a schedule.",
+        "lastSync": "Last sync: {date}",
+        "notYetRun": "Not yet run",
+        "noSchedule": "Manual imports only",
+        "configure": "Configure",
+        "toggleFailed": "Could not update status."
+      },
+      "config": {
+        "loading": "Loading\u2026",
+        "notFoundTitle": "Integration not found",
+        "notFoundBody": "This integration may have been uninstalled.",
+        "backToList": "Back to integrations",
+        "credentialsSection": "Credentials",
+        "directorySection": "Remote directory",
+        "mappingSection": "Field mapping",
+        "scheduleSection": "Schedule",
+        "scheduleActive": "Active",
+        "scheduleInactive": "Inactive",
+        "needCredential": "Pick a credential to continue.",
+        "createSchedule": "Create schedule",
+        "updateSchedule": "Save schedule",
+        "deleteSchedule": "Delete schedule",
+        "nextRunLabel": "Next run",
+        "lastSuccessLabel": "Last successful sync",
+        "lastErrorLabel": "Last error",
+        "consecutiveFailuresLabel": "Consecutive failures",
+        "never": "Never",
+        "toggleFailed": "Could not update status.",
+        "scheduleCreatedToast": "Schedule created.",
+        "scheduleSavedToast": "Schedule saved.",
+        "scheduleDeletedToast": "Schedule deleted.",
+        "scheduleSaveFailedToast": "Could not save schedule.",
+        "scheduleDeleteFailedToast": "Could not delete schedule.",
+        "scheduleToggleFailedToast": "Could not toggle schedule."
+      },
+      "health": {
+        "healthy": "Healthy",
+        "degraded": "Degraded",
+        "failing": "Failing",
+        "paused": "Paused",
+        "unknown": "Unknown"
+      },
+      "credentialSelector": {
+        "loading": "Loading credentials\u2026",
+        "placeholder": "Select credentials\u2026",
+        "newOption": "New credentials",
+        "hostLabel": "Host",
+        "usernameLabel": "User",
+        "remotePathLabel": "Path"
+      },
+      "credentialForm": {
+        "nameLabel": "Name",
+        "namePlaceholder": "e.g. Hive nightly export",
+        "protocolLabel": "Protocol",
+        "hostLabel": "Host",
+        "portLabel": "Port",
+        "usernameLabel": "Username",
+        "passwordLabel": "Password",
+        "remotePathLabel": "Remote path",
+        "remotePathHelp": "Default directory the importer reads from.",
+        "save": "Save credentials",
+        "saving": "Saving\u2026",
+        "savedToast": "Credentials \u201c{name}\u201d saved.",
+        "saveFailedToast": "Could not save credentials."
+      },
+      "connectionTest": {
+        "label": "Test connection",
+        "testing": "Testing\u2026",
+        "success": "Connected",
+        "retry": "Retry",
+        "genericError": "Connection failed."
+      },
+      "directoryBrowser": {
+        "browse": "Browse",
+        "loading": "Listing remote files\u2026",
+        "empty": "No CSV files found in this directory.",
+        "needCredential": "Select credentials to browse files.",
+        "pathPlaceholder": "/inbound/stock",
+        "columnName": "Name",
+        "columnSize": "Size",
+        "columnModified": "Modified",
+        "genericError": "Could not list remote files."
+      },
+      "mappingSelector": {
+        "loading": "Loading templates\u2026",
+        "placeholder": "Select a mapping template\u2026",
+        "defaultOption": "Default (column-name matching)",
+        "defaultHelp": "The importer matches CSV columns by their header names.",
+        "templateHelp": "The selected template controls how CSV columns map to Stocknify fields.",
+        "manageTemplates": "Manage templates"
+      },
+      "scheduleBuilder": {
+        "typeLabel": "Type",
+        "typeIntervalMinutes": "Every N minutes",
+        "typeIntervalHours": "Every N hours",
+        "typeDaily": "Daily",
+        "typeWeekly": "Weekly",
+        "intervalMinutesLabel": "Interval (minutes)",
+        "intervalHoursLabel": "Interval (hours)",
+        "unitMinutes": "min",
+        "unitHours": "h",
+        "timeOfDayLabel": "Time of day",
+        "weekdaysLabel": "Weekdays",
+        "previewLabel": "Preview",
+        "previewIncomplete": "Pick a value to preview the schedule.",
+        "previewIntervalMinutes": "Every {n} minutes",
+        "previewIntervalHours": "Every {n} hours",
+        "previewDaily": "Every day at {time}",
+        "previewWeekly": "Every {days} at {time}"
+      },
+      "runs": {
+        "title": "Import history",
+        "loading": "Loading runs\u2026",
+        "empty": "No imports yet. Run your first import or configure a schedule.",
+        "importNow": "Import now",
+        "columnDate": "Date",
+        "columnFile": "File",
+        "columnStatus": "Status",
+        "columnRows": "Rows",
+        "columnDuration": "Duration",
+        "pagination": "Page {page} of {total} \u2014 {count} runs",
+        "status": {
+          "success": "Success",
+          "partial": "Partial",
+          "failed": "Failed",
+          "running": "Running"
+        },
+        "importDialog": {
+          "title": "Import now",
+          "credentialLabel": "Credentials",
+          "fileLabel": "File (optional)",
+          "autoNewest": "Leave empty to import the newest CSV in the directory.",
+          "fileSelected": "Selected: {path}",
+          "confirm": "Run import",
+          "running": "Running\u2026",
+          "successToast": "Import complete \u2014 {rows} row(s) processed.",
+          "partialToast": "Import finished with row errors. See history for details.",
+          "failedToast": "Import failed."
+        }
+      },
+      "wizard": {
+        "title": "Set up SFTP/FTP integration",
+        "next": "Next",
+        "back": "Back",
+        "submit": "Create integration",
+        "successToast": "Integration created.",
+        "failedToast": "Setup failed.",
+        "steps": {
+          "connection": "Connection",
+          "directory": "Directory",
+          "mapping": "Mapping",
+          "schedule": "Schedule",
+          "summary": "Summary"
+        },
+        "step1": {
+          "description": "Pick the protocol and credentials this integration will use.",
+          "alreadyInstalledNote": "An SFTP/FTP integration is already installed; this wizard will configure the existing one.",
+          "nameLabel": "Integration name",
+          "namePlaceholder": "e.g. Hive nightly stock",
+          "credentialLabel": "Credentials"
+        },
+        "step2": {
+          "description": "Pick a directory to monitor. You can change it later.",
+          "noIntegrationYetNote": "The remote directory will become browsable after the integration is created. The importer auto-picks the newest CSV unless a specific file is chosen.",
+          "selectedFile": "Selected: {path}"
+        },
+        "step3": {
+          "description": "Choose how CSV columns map to Stocknify fields. The default mapping works if your CSV columns match our standard names."
+        },
+        "step4": {
+          "description": "Run the import on a recurring schedule, or skip this and import manually.",
+          "manualOnlyLabel": "No schedule \u2014 manual imports only"
+        },
+        "step5": {
+          "description": "Review the settings before creating the integration.",
+          "integrationLabel": "Integration",
+          "connectionLabel": "Connection",
+          "directoryLabel": "Directory / file",
+          "mappingLabel": "Mapping",
+          "scheduleLabel": "Schedule",
+          "defaultName": "SFTP / FTP",
+          "autoNewest": "Newest CSV (auto)",
+          "mappingDefault": "Default (column-name matching)",
+          "manualOnly": "Manual imports only"
+        }
+      }
+    },
     "marketplace": {
       "title": "Marketplace",
       "comingSoon": "Connect external services like Shopify, Hive, Xentral and more \u2014 coming soon.",

@@ -71,6 +71,42 @@ export interface ToggleIntegrationInput {
   isEnabled: boolean
 }
 
+// Shape returned by GET /integrations/:id — covers the fields the config page
+// renders (name + protocol-derived metadata + health status). Backend returns
+// the full Integration row; we only type the bits we use to keep this hook
+// tightly coupled to the renderer.
+export interface IntegrationDetail {
+  id: string
+  tenantId: string
+  type: string
+  name: string
+  status: string
+  isEnabled: boolean
+  marketplaceKey: string | null
+  category: string | null
+  healthStatus: string
+  lastSuccessfulSyncAt: string | null
+  lastErrorAt: string | null
+  consecutiveFailures: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface IntegrationDetailEnvelope {
+  integration: IntegrationDetail
+  // Locked templates are only relevant on marketplace integrations; the SFTP
+  // config page doesn't need them today, but the envelope shape is fixed.
+  lockedTemplates: unknown[]
+}
+
+export function useIntegration(id: string | undefined): UseQueryResult<IntegrationDetailEnvelope> {
+  return useQuery<IntegrationDetailEnvelope>({
+    queryKey: ['integration', id],
+    queryFn: () => apiFetch<IntegrationDetailEnvelope>(`/integrations/${id ?? ''}`),
+    enabled: Boolean(id),
+  })
+}
+
 export function useToggleIntegration(): UseMutationResult<unknown, Error, ToggleIntegrationInput> {
   const qc = useQueryClient()
   return useMutation({

@@ -27,6 +27,18 @@ export interface MarketplaceIntegration {
 
 export const MARKETPLACE_CATALOG: MarketplaceIntegration[] = [
   {
+    // SFTP/FTP/FTPS automated stock import. Single catalog entry covering all
+    // three transports — the wizard collects the protocol choice + credentials
+    // at install time, since most operators don't think of SFTP and FTPS as
+    // separate "products" to install. The Cycle 3-E setup wizard takes over
+    // from MarketplaceInstallDialog when this entry is installed.
+    key: 'sftp',
+    name: 'SFTP / FTP',
+    description: 'Automated stock import from any SFTP, FTP, or FTPS server.',
+    category: 'erp',
+    logoUrl: '/integrations/logos/placeholder.svg',
+  },
+  {
     key: 'shopify',
     name: 'Shopify',
     description: 'Sync products and inventory with your Shopify store.',

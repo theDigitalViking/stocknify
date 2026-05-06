@@ -497,6 +497,198 @@
       "title": "SFTP / FTP",
       "comingSoon": "Automatischer Im- und Export via SFTP/FTP \u2014 kommt bald."
     },
+    "sftp": {
+      "list": {
+        "addIntegration": "Integration hinzuf\u00fcgen",
+        "addFirst": "Erste Integration anlegen",
+        "emptyTitle": "Noch keine automatischen Integrationen.",
+        "emptyBody": "Verbinde einen beliebigen SFTP-, FTP- oder FTPS-Server, um Best\u00e4nde zeitgesteuert zu importieren.",
+        "lastSync": "Letzter Sync: {date}",
+        "notYetRun": "Noch kein Lauf",
+        "noSchedule": "Nur manueller Import",
+        "configure": "Konfigurieren",
+        "toggleFailed": "Status konnte nicht ge\u00e4ndert werden."
+      },
+      "config": {
+        "loading": "L\u00e4dt\u2026",
+        "notFoundTitle": "Integration nicht gefunden",
+        "notFoundBody": "Diese Integration wurde m\u00f6glicherweise deinstalliert.",
+        "backToList": "Zur\u00fcck zur \u00dcbersicht",
+        "credentialsSection": "Zugangsdaten",
+        "directorySection": "Remote-Verzeichnis",
+        "mappingSection": "Feld-Mapping",
+        "scheduleSection": "Zeitplan",
+        "scheduleActive": "Aktiv",
+        "scheduleInactive": "Inaktiv",
+        "needCredential": "W\u00e4hle Zugangsdaten zum Fortfahren.",
+        "createSchedule": "Zeitplan anlegen",
+        "updateSchedule": "Zeitplan speichern",
+        "deleteSchedule": "Zeitplan l\u00f6schen",
+        "nextRunLabel": "N\u00e4chster Lauf",
+        "lastSuccessLabel": "Letzter erfolgreicher Sync",
+        "lastErrorLabel": "Letzter Fehler",
+        "consecutiveFailuresLabel": "Aufeinanderfolgende Fehler",
+        "never": "Nie",
+        "toggleFailed": "Status konnte nicht ge\u00e4ndert werden.",
+        "scheduleCreatedToast": "Zeitplan angelegt.",
+        "scheduleSavedToast": "Zeitplan gespeichert.",
+        "scheduleDeletedToast": "Zeitplan gel\u00f6scht.",
+        "scheduleSaveFailedToast": "Zeitplan konnte nicht gespeichert werden.",
+        "scheduleDeleteFailedToast": "Zeitplan konnte nicht gel\u00f6scht werden.",
+        "scheduleToggleFailedToast": "Zeitplan konnte nicht umgeschaltet werden."
+      },
+      "health": {
+        "healthy": "Gesund",
+        "degraded": "Beeintr\u00e4chtigt",
+        "failing": "Fehlerhaft",
+        "paused": "Pausiert",
+        "unknown": "Unbekannt"
+      },
+      "credentialSelector": {
+        "loading": "Zugangsdaten werden geladen\u2026",
+        "placeholder": "Zugangsdaten ausw\u00e4hlen\u2026",
+        "newOption": "Neue Zugangsdaten",
+        "hostLabel": "Host",
+        "usernameLabel": "Benutzer",
+        "remotePathLabel": "Pfad"
+      },
+      "credentialForm": {
+        "nameLabel": "Name",
+        "namePlaceholder": "z. B. Hive n\u00e4chtlicher Export",
+        "protocolLabel": "Protokoll",
+        "hostLabel": "Host",
+        "portLabel": "Port",
+        "usernameLabel": "Benutzername",
+        "passwordLabel": "Passwort",
+        "remotePathLabel": "Remote-Pfad",
+        "remotePathHelp": "Standard-Verzeichnis, aus dem importiert wird.",
+        "save": "Zugangsdaten speichern",
+        "saving": "Wird gespeichert\u2026",
+        "savedToast": "Zugangsdaten \u201e{name}\u201c gespeichert.",
+        "saveFailedToast": "Zugangsdaten konnten nicht gespeichert werden."
+      },
+      "connectionTest": {
+        "label": "Verbindung testen",
+        "testing": "Wird getestet\u2026",
+        "success": "Verbunden",
+        "retry": "Erneut",
+        "genericError": "Verbindung fehlgeschlagen."
+      },
+      "directoryBrowser": {
+        "browse": "Durchsuchen",
+        "loading": "Remote-Dateien werden geladen\u2026",
+        "empty": "Keine CSV-Dateien in diesem Verzeichnis gefunden.",
+        "needCredential": "W\u00e4hle Zugangsdaten, um Dateien zu durchsuchen.",
+        "pathPlaceholder": "/inbound/stock",
+        "columnName": "Name",
+        "columnSize": "Gr\u00f6\u00dfe",
+        "columnModified": "Ge\u00e4ndert",
+        "genericError": "Remote-Dateien konnten nicht aufgelistet werden."
+      },
+      "mappingSelector": {
+        "loading": "Templates werden geladen\u2026",
+        "placeholder": "Mapping-Template ausw\u00e4hlen\u2026",
+        "defaultOption": "Standard (Spaltenname-Mapping)",
+        "defaultHelp": "Der Importer ordnet CSV-Spalten anhand ihrer Headernamen zu.",
+        "templateHelp": "Das gew\u00e4hlte Template steuert, wie CSV-Spalten auf Stocknify-Felder abgebildet werden.",
+        "manageTemplates": "Templates verwalten"
+      },
+      "scheduleBuilder": {
+        "typeLabel": "Typ",
+        "typeIntervalMinutes": "Alle N Minuten",
+        "typeIntervalHours": "Alle N Stunden",
+        "typeDaily": "T\u00e4glich",
+        "typeWeekly": "W\u00f6chentlich",
+        "intervalMinutesLabel": "Intervall (Minuten)",
+        "intervalHoursLabel": "Intervall (Stunden)",
+        "unitMinutes": "Min",
+        "unitHours": "h",
+        "timeOfDayLabel": "Uhrzeit",
+        "weekdaysLabel": "Wochentage",
+        "previewLabel": "Vorschau",
+        "previewIncomplete": "Wert ausw\u00e4hlen, um Vorschau zu sehen.",
+        "previewIntervalMinutes": "Alle {n} Minuten",
+        "previewIntervalHours": "Alle {n} Stunden",
+        "previewDaily": "T\u00e4glich um {time}",
+        "previewWeekly": "Jeden {days} um {time}"
+      },
+      "runs": {
+        "title": "Import-Historie",
+        "loading": "L\u00e4ufe werden geladen\u2026",
+        "empty": "Noch keine Importe. Starte den ersten Lauf oder lege einen Zeitplan an.",
+        "importNow": "Jetzt importieren",
+        "columnDate": "Datum",
+        "columnFile": "Datei",
+        "columnStatus": "Status",
+        "columnRows": "Zeilen",
+        "columnDuration": "Dauer",
+        "pagination": "Seite {page} von {total} \u2014 {count} L\u00e4ufe",
+        "status": {
+          "success": "Erfolgreich",
+          "partial": "Teilweise",
+          "failed": "Fehlgeschlagen",
+          "running": "L\u00e4uft"
+        },
+        "importDialog": {
+          "title": "Jetzt importieren",
+          "credentialLabel": "Zugangsdaten",
+          "fileLabel": "Datei (optional)",
+          "autoNewest": "Leer lassen, um die neueste CSV im Verzeichnis zu importieren.",
+          "fileSelected": "Ausgew\u00e4hlt: {path}",
+          "confirm": "Import starten",
+          "running": "L\u00e4uft\u2026",
+          "successToast": "Import abgeschlossen \u2014 {rows} Zeile(n) verarbeitet.",
+          "partialToast": "Import mit Zeilen-Fehlern beendet. Details in der Historie.",
+          "failedToast": "Import fehlgeschlagen."
+        }
+      },
+      "wizard": {
+        "title": "SFTP/FTP-Integration einrichten",
+        "next": "Weiter",
+        "back": "Zur\u00fcck",
+        "submit": "Integration anlegen",
+        "successToast": "Integration angelegt.",
+        "failedToast": "Einrichtung fehlgeschlagen.",
+        "steps": {
+          "connection": "Verbindung",
+          "directory": "Verzeichnis",
+          "mapping": "Mapping",
+          "schedule": "Zeitplan",
+          "summary": "Zusammenfassung"
+        },
+        "step1": {
+          "description": "W\u00e4hle Protokoll und Zugangsdaten f\u00fcr diese Integration.",
+          "alreadyInstalledNote": "Eine SFTP/FTP-Integration ist bereits installiert; dieser Wizard konfiguriert die bestehende.",
+          "nameLabel": "Integrationsname",
+          "namePlaceholder": "z. B. Hive n\u00e4chtlicher Bestand",
+          "credentialLabel": "Zugangsdaten"
+        },
+        "step2": {
+          "description": "W\u00e4hle ein Verzeichnis. Du kannst es sp\u00e4ter \u00e4ndern.",
+          "noIntegrationYetNote": "Das Verzeichnis l\u00e4sst sich erst nach dem Anlegen der Integration durchsuchen. Der Importer w\u00e4hlt automatisch die neueste CSV, wenn keine Datei festgelegt ist.",
+          "selectedFile": "Ausgew\u00e4hlt: {path}"
+        },
+        "step3": {
+          "description": "W\u00e4hle, wie CSV-Spalten auf Stocknify-Felder abgebildet werden. Die Standard-Zuordnung funktioniert, wenn deine CSV-Spalten unseren Standard-Namen entsprechen."
+        },
+        "step4": {
+          "description": "Importiere zeitgesteuert oder \u00fcberspringe und importiere manuell.",
+          "manualOnlyLabel": "Kein Zeitplan \u2014 nur manuell"
+        },
+        "step5": {
+          "description": "Pr\u00fcfe die Einstellungen vor dem Anlegen.",
+          "integrationLabel": "Integration",
+          "connectionLabel": "Verbindung",
+          "directoryLabel": "Verzeichnis / Datei",
+          "mappingLabel": "Mapping",
+          "scheduleLabel": "Zeitplan",
+          "defaultName": "SFTP / FTP",
+          "autoNewest": "Neueste CSV (auto)",
+          "mappingDefault": "Standard (Spaltenname-Mapping)",
+          "manualOnly": "Nur manuell"
+        }
+      }
+    },
     "marketplace": {
       "title": "Marketplace",
       "comingSoon": "Verbinde externe Dienste wie Shopify, Hive, Xentral und mehr \u2014 kommt bald.",

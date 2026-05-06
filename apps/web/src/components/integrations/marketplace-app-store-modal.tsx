@@ -6,6 +6,7 @@ import { useState } from 'react'
 
 import { IntegrationLogoPlaceholder } from '@/components/integrations/integration-logo-placeholder'
 import { MarketplaceInstallDialog } from '@/components/integrations/marketplace-install-dialog'
+import { SetupWizard } from '@/components/integrations/setup-wizard'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -58,6 +59,12 @@ export function MarketplaceAppStoreModal({
     null,
   )
   const [installDialogOpen, setInstallDialogOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
+
+  // SFTP/FTP catalog entries open the dedicated setup wizard instead of the
+  // generic install dialog. Other entries (Shopify, etc.) keep the existing
+  // shell until per-integration UX cycles land for each.
+  const WIZARD_KEYS = new Set(['sftp', 'ftp', 'ftps'])
 
   // Show all catalog entries; already-installed ones are present but their
   // Install button is disabled and labelled accordingly so users see what they
@@ -73,6 +80,11 @@ export function MarketplaceAppStoreModal({
   })
 
   function openInstallDialog(integration: MarketplaceCatalogEntry): void {
+    if (WIZARD_KEYS.has(integration.key)) {
+      setWizardOpen(true)
+      onOpenChange(false)
+      return
+    }
     setSelectedIntegration(integration)
     setInstallDialogOpen(true)
   }
@@ -166,6 +178,8 @@ export function MarketplaceAppStoreModal({
         open={installDialogOpen}
         onOpenChange={setInstallDialogOpen}
       />
+
+      <SetupWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </>
   )
 }
