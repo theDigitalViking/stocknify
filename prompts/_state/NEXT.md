@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-06 (Cycle 2-F vorbereitet — letzter Cycle in Batch 2.)
+**Last updated:** 2026-05-06 (Cycle 2-F geliefert — Batch 2 vollständig auf `develop`, wartet auf Sebastians `develop → main` Merge)
 
 ---
 
@@ -10,36 +10,26 @@
 
 **Batch 1** (retroactively named) ist abgeschlossen: Cycles 1-A through 1-E + 1-TH (Test Harness) + 1-FIX (Restore 400). Alles auf `develop` und `main` gemerged. 12 Backend-Tests grün.
 
-**Batch 2** läuft. Cycles 2-A bis 2-E auf `develop` (2-A–2-C deployed auf `main`, 2-D + 2-E noch nicht gemerged). Sebastians Production-Review nach 2-D/2-E hat fünf + einen weiteren Fix ergeben → **Cycle 2-F** ist der letzte Cycle im Batch.
+**Batch 2** ist auf `develop` vollständig: Cycles 2-A bis 2-F. 2-A–2-C bereits auf `main` gemerged; 2-D, 2-E, 2-F warten auf Sebastians `develop → main` Merge.
 
 **Naming convention:** Batches nummeriert (1, 2, 3…). Cycles pro Batch alphabetisch (2-A, 2-B…). Sonder-Cycles: Kürzel-Prefix (2-FIX). Siehe DECISIONS 2026-05-05.
 
-**Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün. Cycles 2-A–2-E waren reine Frontend-Cycles.
+**Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün. Cycles 2-A–2-F waren reine Frontend-Cycles.
 
 ---
 
-## 🟢 Nächster Schritt: Cycle 2-F ausführen
+## 🟢 Nächster Schritt
 
-**Prompt:** `prompts/PROMPT_2-F_FINAL_POLISH.md`
-**Notion:** https://www.notion.so/35724fe1d88a81ef8b63c4fe2ba5d07f
-**Effort:** `xhigh`
-**Review:** `review:recommended`
-
-Sechs Fixes aus Sebastians Production-Review:
-1. **Lagerplatz-Filter** auf Movements-Seite (kaskadierend: Lager → Lagerplatz → Bestandstyp, Referenz: Bestandsseite)
-2. **Single-Line-Modus abschaffen** → immer Multi-Line + Filter, Einstiegspunkt steuert Vorauswahl
-3. **Einzelne Variante highlighten** (auch bei nur einer Variante)
-4. **X-Achse konsistenter** (immer Datum, Zeit nur bei Mehrfach-Einträgen am selben Tag)
-5. **Scroll-Gradient auffälliger** (breiter, stärkere Opacity)
-6. **Dashboard-Content Spacing** (mehr horizontales Padding auf allen Seiten, Tabellen nicht an den Rand gequetscht)
-
-**Nach 2-F + Review:** Sebastian merged `develop → main`. Dann Batch 2 Production-Review (Checkliste für 2-D, 2-E, 2-F). Danach Batch 3 Planung.
+1. **Codex review für 2-F** (`review:recommended`). Sebastian läuft `/codex:adversarial-review --base origin/main` in dieser Session. Findings werden direkt in der Session bearbeitet (Fixes commit-en, REVIEW-Datei schreiben, push).
+2. **Sebastian merged `develop → main`.** `git checkout main && git merge develop --ff-only && git push`. Triggert Vercel-Production für 2-D + 2-E + 2-F sowie alle Codex-Review-Fixes seit 2-C.
+3. **Batch-2-Production-Review** durch Sebastian: Checkliste in der Plannung-Chat-Session abarbeiten (sticky header, sticky breadcrumb, Lager+Lagerplatz+Bestandstyp Filter, single-line removal, X-Achse Date+Time, Variantenmarkierung bei Single-Variant-Produkten, Scroll-Indicator, Content-Padding).
+4. **Batch 3 Planung** in der Chat-Session.
 
 ---
 
 ## 🟡 Review-Findings für spätere Batches
 
-Aus Sebastians Review vom 2026-05-05. Items die nicht in Batch 2 aufgenommen wurden.
+Aus Sebastians Reviews vom 2026-05-05 + 2026-05-06. Items die nicht in Batch 2 aufgenommen wurden.
 
 ### Schema-Changes (M–L, Backend + Frontend)
 7. **Movements-Quelle granularer** — "sync" aufschlüsseln in CSV-Import, SFTP, Integration, manuell. Braucht `sourceDetail`-Feld auf `stock_movements`.
@@ -72,3 +62,4 @@ Aus Sebastians Review vom 2026-05-05. Items die nicht in Batch 2 aufgenommen wur
 - **CSV stock import: storage-location silent fallback.**
 - **CSV stock import: dry-run "created" mismatch for batched rows.**
 - **CSV stock import: `batchTracking=false` silently drops batch columns.**
+- **`StockMovementChart.selectedRangeMs` prop deprecated** — kept on the discriminated union for backwards-compat after Cycle 2-F's tick-formatter rewrite. Remove together with the now-dead `ONE_DAY_MS`/`SEVEN_DAYS_MS` thinking when convenient.
