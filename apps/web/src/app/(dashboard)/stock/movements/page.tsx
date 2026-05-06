@@ -215,6 +215,17 @@ export default function StockMovementsPage(): JSX.Element {
     parseFilterParam(search.get('stockTypes'), legacyStockType ?? null),
   )
 
+  // True while the user hasn't touched any filter dropdown AND the page was
+  // entered with at least one legacy single-value URL param (the stock-list
+  // deep-link path). While pristine, the chart fetch is narrowed to the
+  // entry-point scope at the API — guaranteeing the selected series is
+  // present in the CHART_PER_PAGE-capped response (Codex 2026-05-06 [high]).
+  // The flag flips to false on the first filter touch, after which the chart
+  // fetch broadens so dropdowns can populate from the full dataset.
+  const [pristineEntry, setPristineEntry] = useState<boolean>(() =>
+    Boolean(legacyLocationId || legacyStorageLocationId || legacyStockType),
+  )
+
   const writeRangeToUrl = useCallback(
     (next: { from: string | undefined; to: string | undefined }) => {
       const params = new URLSearchParams(search.toString())
@@ -348,14 +359,18 @@ export default function StockMovementsPage(): JSX.Element {
     [range.from, writeRangeToUrl],
   )
 
-  // Table behaviour is intentionally unchanged: it always reflects the URL
-  // params (variantId / productId / locationId / stockType) and is unaffected
-  // by the multi-select chart filters (Cycle 2-E non-goal).
+  // Table reflects all legacy single-value URL params from the entry-point
+  // row click (variantId / productId / locationId / storageLocationId /
+  // stockType) and is unaffected by the multi-select chart filters
+  // (Cycle 2-E non-goal). storageLocationId added in 2-F review-fix so a
+  // bin-scoped deep-link narrows the table to the bin too (Codex 2026-05-06
+  // [medium]).
   const tableFilters = useMemo(
     () => ({
       variantId,
       productId,
       locationId: legacyLocationId,
+      storageLocationId: legacyStorageLocationId,
       stockType: legacyStockType,
       from: range.from,
       to: range.to,
@@ -363,28 +378,56 @@ export default function StockMovementsPage(): JSX.Element {
       perPage: DEFAULT_PER_PAGE,
       sortDir,
     }),
-    [variantId, productId, legacyLocationId, legacyStockType, range.from, range.to, page, sortDir],
+    [
+      variantId,
+      productId,
+      legacyLocationId,
+      legacyStorageLocationId,
+      legacyStockType,
+      range.from,
+      range.to,
+      page,
+      sortDir,
+    ],
   )
 
-  // Chart fetch always runs the broad query (no per-warehouse / per-bin /
-  // per-stock-type filter at the API) so the multi-select dropdowns can be
-  // populated from the full dataset and the user can broaden their selection
-  // beyond the entry-point pre-selection without a refetch.
-  // Fetches the LATEST CHART_PER_PAGE rows in the range (sortDir desc); the
-  // chart component sorts asc internally for left-to-right rendering. When
-  // the range exceeds CHART_PER_PAGE, the oldest tail is dropped and a
-  // partial-data notice is rendered.
+  // Chart fetch — two modes:
+  //  - **Pristine entry** (user came in via stock-list deep-link, no filter
+  //    touched yet): narrow the API call to the legacy URL trio so the
+  //    selected series is guaranteed within the CHART_PER_PAGE cap. Without
+  //    this, a high-throughput tenant could see their selected line silently
+  //    excluded when the latest 200 rows are dominated by other series
+  //    (Codex 2026-05-06 [high]).
+  //  - **After filter touch** (or no legacy params): broad fetch — drops
+  //    every per-row filter so the multi-select dropdowns populate from the
+  //    full dataset and the user can broaden beyond the pre-selection. When
+  //    the range exceeds CHART_PER_PAGE, the oldest tail is dropped and the
+  //    truncatedNotice renders.
+  // Always sortDir desc so the LATEST rows in range win the cap; the chart
+  // component sorts asc internally for left-to-right rendering.
   const chartFilters = useMemo(
     () => ({
       variantId,
       productId,
+      locationId: pristineEntry ? legacyLocationId : undefined,
+      storageLocationId: pristineEntry ? legacyStorageLocationId : undefined,
+      stockType: pristineEntry ? legacyStockType : undefined,
       from: range.from,
       to: range.to,
       page: 1,
       perPage: CHART_PER_PAGE,
       sortDir: 'desc' as const,
     }),
-    [variantId, productId, range.from, range.to],
+    [
+      variantId,
+      productId,
+      pristineEntry,
+      legacyLocationId,
+      legacyStorageLocationId,
+      legacyStockType,
+      range.from,
+      range.to,
+    ],
   )
 
   const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
@@ -505,6 +548,7 @@ export default function StockMovementsPage(): JSX.Element {
 
   const handleLocationsChange = useCallback(
     (next: FilterSelection) => {
+      setPristineEntry(false)
       setSelectedLocations(next)
       const prunedStorage = pruneStorageForLocations(next, selectedStorageLocations)
       const updates: Parameters<typeof writeFiltersToUrl>[0] = { locations: next }
@@ -519,6 +563,7 @@ export default function StockMovementsPage(): JSX.Element {
 
   const handleStorageLocationsChange = useCallback(
     (next: FilterSelection) => {
+      setPristineEntry(false)
       setSelectedStorageLocations(next)
       writeFiltersToUrl({ storageLocations: next })
     },
@@ -527,6 +572,7 @@ export default function StockMovementsPage(): JSX.Element {
 
   const handleStockTypesChange = useCallback(
     (next: FilterSelection) => {
+      setPristineEntry(false)
       setSelectedStockTypes(next)
       writeFiltersToUrl({ stockTypes: next })
     },

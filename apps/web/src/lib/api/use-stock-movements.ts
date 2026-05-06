@@ -27,6 +27,7 @@ export interface StockMovementsFilters {
   productId?: string
   variantId?: string
   locationId?: string
+  storageLocationId?: string
   stockType?: string
   movementType?: string
   from?: string

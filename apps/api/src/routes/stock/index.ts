@@ -30,6 +30,7 @@ const movementsQuerySchema = z.object({
   productId: uuidSchema.optional(),
   variantId: uuidSchema.optional(),
   locationId: uuidSchema.optional(),
+  storageLocationId: uuidSchema.optional(),
   stockType: z.string().min(1).optional(),
   movementType: movementTypeSchema.optional(),
   from: z.string().datetime().optional(),
@@ -156,14 +157,26 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
       if (!query.success) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: query.error.message } })
       }
-      const { page, perPage, productId, variantId, locationId, stockType, movementType, from, to, sortDir } =
-        query.data
+      const {
+        page,
+        perPage,
+        productId,
+        variantId,
+        locationId,
+        storageLocationId,
+        stockType,
+        movementType,
+        from,
+        to,
+        sortDir,
+      } = query.data
       const skip = (page - 1) * perPage
 
       const where: Prisma.StockMovementWhereInput = { tenantId: request.tenantId }
       if (variantId) where.variantId = variantId
       if (productId) where.variant = { productId }
       if (locationId) where.locationId = locationId
+      if (storageLocationId) where.storageLocationId = storageLocationId
       if (stockType) where.stockType = stockType
       if (movementType) where.movementType = movementType
       if (from ?? to) {

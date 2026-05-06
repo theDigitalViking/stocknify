@@ -254,6 +254,73 @@ describe('GET /stock/movements (Cycle E)', () => {
     }
   })
 
+  it('filters by storageLocationId (Cycle 2-F review fix)', async () => {
+    const { tenantId, userId, variantAId, locationId } = await createMovementsFixture()
+
+    // Two bins under the same warehouse; we want the filter to scope results
+    // to a single bin so a deep-link from the stock list narrows correctly.
+    const binA = await testDb.storageLocation.create({
+      data: { tenantId, locationId, name: 'Bin A', type: 'shelf' },
+    })
+    const binB = await testDb.storageLocation.create({
+      data: { tenantId, locationId, name: 'Bin B', type: 'shelf' },
+    })
+
+    await seedMovement({
+      tenantId,
+      variantId: variantAId,
+      locationId,
+    })
+    // Bin-scoped seeds — storageLocationId comes from the create call below
+    // so we keep the helper signature unchanged.
+    await testDb.stockMovement.create({
+      data: {
+        tenantId,
+        variantId: variantAId,
+        locationId,
+        storageLocationId: binA.id,
+        stockType: 'available',
+        quantityBefore: 0,
+        quantityAfter: 7,
+        delta: 7,
+        movementType: 'sync',
+        source: 'csv',
+      },
+    })
+    await testDb.stockMovement.create({
+      data: {
+        tenantId,
+        variantId: variantAId,
+        locationId,
+        storageLocationId: binB.id,
+        stockType: 'available',
+        quantityBefore: 0,
+        quantityAfter: 3,
+        delta: 3,
+        movementType: 'sync',
+        source: 'csv',
+      },
+    })
+
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?storageLocationId=${binA.id}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as MovementResponseBody
+      // Only the bin-A movement matches; the bin-agnostic and bin-B rows
+      // are excluded.
+      expect(body.meta.total).toBe(1)
+      expect(body.data).toHaveLength(1)
+      expect(body.data[0]?.delta).toBe(7)
+    } finally {
+      await app.close()
+    }
+  })
+
   it('isolates movements across tenants (RLS)', async () => {
     const { tenantId: tenantAId, variantAId, locationId } = await createMovementsFixture()
     await seedMovement({
