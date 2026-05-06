@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-07 (Cycle 3-B — credential vault deferrals: SSH key auth, additionalAttributes encryption, connection-test rate limit, encryption-lib unit tests)
+**Last updated:** 2026-05-07 (Cycle 3-B Codex review — both findings fixed in-session; new follow-up: schedule-create handler must guard against soft-deleted credentials, picked up in Cycle 3-D)
 
 ---
 
@@ -45,6 +45,7 @@
 
 ## Backend
 
+- **Credential vault: schedule-create handler must guard against soft-deleted credentials (Cycle 3-B Codex review fallout, picked up in Cycle 3-D).** The DELETE handler now runs the in-use check + soft-delete inside a single SERIALIZABLE transaction (Codex review fix), so a concurrent schedule INSERT triggers `serialization_failure` and one transaction is aborted. The symmetric race — admin schedules a job *after* another admin deletes the credential — is not yet guarded because the schedule-create handler does not exist yet (Cycle 3-D scope). When that handler is built, it must atomically validate the referenced credential's `deletedAt IS NULL` and `isActive = true` inside the same transaction that does the schedule INSERT (also under SERIALIZABLE isolation). Without this, an active schedule could end up referencing a soft-deleted credential and the worker would fail at job-execution time. Add a regression test that pins the schedule-create flow rejects (or aborts via P2034) when the referenced credential was deleted concurrently.
 - **Credential vault: SSH key auth not wired (Cycle 3-B fallout).** `IntegrationCredential` has `password`/`token`/`secret` columns but no dedicated `privateKey`/`publicKey` field. The SFTP wrapper (`ssh2-sftp-client`) supports key-based auth via a `privateKey` parameter; today only password auth is wired in `testSftpConnection`. When SSH key support is added: pick a storage location (new column vs `additionalAttributes`), wire encryption, extend the POST/PATCH Zod schema, and extend the connector wrapper to pass `privateKey`/`passphrase` when present. Operators stay on password-only until then.
 - **Credential vault: `additionalAttributes` Json column is not encrypted (Cycle 3-B fallout).** `password`/`token`/`secret` are AES-256-GCM encrypted, but the catch-all `additionalAttributes: Json` field is plain JSON. Today nothing writes to it. If a future cycle stashes secrets there (e.g. an SSH private key or an OAuth refresh token before a dedicated column exists), they'd land in plaintext. Either route those values to `secret` / a new column, or extend the encryption layer to encrypt selected keys inside `additionalAttributes`.
 - **Credential vault: connection-test rate limiting (Cycle 3-B fallout).** Both `POST /credentials/test` and `POST /credentials/:id/test` open a real socket on every call with no per-tenant or per-credential rate limit. A malicious tenant could use Stocknify as a port-scanning relay against arbitrary hosts. Right fix: per-tenant token bucket on these endpoints (e.g. 10 calls / minute) or block on a remote-host allowlist tied to the active credential. Out of scope for the credential vault cycle.
