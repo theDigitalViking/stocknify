@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-06 (Batch 2 abgeschlossen — alle Cycles 2-A bis 2-E auf `develop`. Wartet auf Sebastians `develop` → `main` merge.)
+**Last updated:** 2026-05-06 (Cycle 2-F vorbereitet — letzter Cycle in Batch 2.)
 
 ---
 
@@ -10,19 +10,30 @@
 
 **Batch 1** (retroactively named) ist abgeschlossen: Cycles 1-A through 1-E + 1-TH (Test Harness) + 1-FIX (Restore 400). Alles auf `develop` und `main` gemerged. 12 Backend-Tests grün.
 
-**Batch 2** ist abgeschlossen: Cycles 2-A (UI Micro-Fixes), 2-B (Chart Polish + Date-Range), 2-B-FIX (Codex pass-2), 2-C (Movements von Produktseite + Multi-Line), 2-D (Production review fixes), 2-E (Filters + Legend Fade). Alles auf `develop`. Sebastian merged manuell auf `main` wenn der Vercel-Preview reviewed ist.
+**Batch 2** läuft. Cycles 2-A bis 2-E auf `develop` (2-A–2-C deployed auf `main`, 2-D + 2-E noch nicht gemerged). Sebastians Production-Review nach 2-D/2-E hat fünf + einen weiteren Fix ergeben → **Cycle 2-F** ist der letzte Cycle im Batch.
 
-**Naming convention (neu):** Batches sind nummeriert (1, 2, 3…). Cycles innerhalb eines Batches starten bei A (2-A, 2-B, 2-C). Sonder-Cycles bekommen ein Kürzel-Prefix (z.B. 2-FIX). Siehe DECISIONS 2026-05-05.
+**Naming convention:** Batches nummeriert (1, 2, 3…). Cycles pro Batch alphabetisch (2-A, 2-B…). Sonder-Cycles: Kürzel-Prefix (2-FIX). Siehe DECISIONS 2026-05-05.
 
-**Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün (2 smoke + 2 upsert + 4 restore + 4 movements). Cycles 2-A–2-E waren reine Frontend-Cycles, daher kein neuer Test.
+**Testing-Strategie (2026-05-02, hybrid Option D):** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. Frontend-Tests out of scope. 12 Backend-Tests grün. Cycles 2-A–2-E waren reine Frontend-Cycles.
 
 ---
 
-## 🟢 Nächster Schritt: Batch 2 abschließen
+## 🟢 Nächster Schritt: Cycle 2-F ausführen
 
-1. Sebastian reviewed Vercel Preview von `develop` (Movements-Filter + Legend-Fade live testen).
-2. Sebastian merged `develop` → `main` (Production-Deploy-Gate, manuell).
-3. Claude (Chat) plant Batch 3 nach dem Merge.
+**Prompt:** `prompts/PROMPT_2-F_FINAL_POLISH.md`
+**Notion:** https://www.notion.so/35724fe1d88a81ef8b63c4fe2ba5d07f
+**Effort:** `xhigh`
+**Review:** `review:recommended`
+
+Sechs Fixes aus Sebastians Production-Review:
+1. **Lagerplatz-Filter** auf Movements-Seite (kaskadierend: Lager → Lagerplatz → Bestandstyp, Referenz: Bestandsseite)
+2. **Single-Line-Modus abschaffen** → immer Multi-Line + Filter, Einstiegspunkt steuert Vorauswahl
+3. **Einzelne Variante highlighten** (auch bei nur einer Variante)
+4. **X-Achse konsistenter** (immer Datum, Zeit nur bei Mehrfach-Einträgen am selben Tag)
+5. **Scroll-Gradient auffälliger** (breiter, stärkere Opacity)
+6. **Dashboard-Content Spacing** (mehr horizontales Padding auf allen Seiten, Tabellen nicht an den Rand gequetscht)
+
+**Nach 2-F + Review:** Sebastian merged `develop → main`. Dann Batch 2 Production-Review (Checkliste für 2-D, 2-E, 2-F). Danach Batch 3 Planung.
 
 ---
 
