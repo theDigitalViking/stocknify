@@ -160,6 +160,12 @@ jobs:
       - name: Install dependencies for migrations
         run: pnpm install --frozen-lockfile
 
+      - name: Run Prisma migrations
+        run: pnpm --filter api exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+
       - name: Run manual SQL migrations
         run: pnpm --filter api db:migrate:manual
         env:
