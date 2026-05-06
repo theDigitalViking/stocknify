@@ -114,11 +114,24 @@ async function loadIntegrationAndCredential(
 ): Promise<LoadedContext | null> {
   const integration = await request.db.integration.findFirst({
     where: { id: integrationId, tenantId: request.tenantId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, isEnabled: true },
   })
   if (!integration) {
     await reply.code(404).send({
       error: { code: 'INTEGRATION_NOT_FOUND', message: 'Integration not found' },
+    })
+    return null
+  }
+  // Codex review fix — refuse to act on disabled integrations. Operators
+  // toggle `isEnabled` to halt all syncs from a connector during incident
+  // response or rollback; running a manual import (or even listing remote
+  // files) against a disabled integration would defeat that gate.
+  if (!integration.isEnabled) {
+    await reply.code(409).send({
+      error: {
+        code: 'INTEGRATION_DISABLED',
+        message: 'Integration is disabled — re-enable it before running imports',
+      },
     })
     return null
   }
@@ -128,6 +141,37 @@ async function loadIntegrationAndCredential(
   if (!credential) {
     await reply.code(404).send({
       error: { code: 'CREDENTIAL_NOT_FOUND', message: 'Credential not found' },
+    })
+    return null
+  }
+  // Codex review fix — credential/integration binding. When a credential is
+  // bound to a specific integration (`integrationId !== null`), it must
+  // match the path's `:id`. Otherwise a tenant could mix credentials from
+  // integration B into integration A's import flow — wrong attribution on
+  // the import_runs row, wrong source data into the wrong connector.
+  // Reusable tenant-level credentials (`integrationId === null` per
+  // DECISIONS 2026-05-07) are explicitly allowed.
+  if (
+    credential.integrationId !== null &&
+    credential.integrationId !== integration.id
+  ) {
+    await reply.code(409).send({
+      error: {
+        code: 'CREDENTIAL_INTEGRATION_MISMATCH',
+        message: 'Credential is bound to a different integration',
+      },
+    })
+    return null
+  }
+  // Codex review fix — refuse to act on credentials the operator marked
+  // inactive. Symmetric to the integration-disabled gate above; lets an
+  // operator stand down a single credential without deleting it.
+  if (!credential.isActive) {
+    await reply.code(409).send({
+      error: {
+        code: 'CREDENTIAL_INACTIVE',
+        message: 'Credential is marked inactive — re-activate it before running imports',
+      },
     })
     return null
   }

@@ -241,6 +241,139 @@ describe('GET /v1/integrations/:id/files (Cycle 3-C R4)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Codex review fixes — 2026-05-08
+// ---------------------------------------------------------------------------
+
+describe('credential/integration binding + operational state (Codex review fix)', () => {
+  it('rejects with 409 CREDENTIAL_INTEGRATION_MISMATCH when the credential belongs to a different integration', async () => {
+    const { tenant, credential, headers } = await seedScenario()
+    // A second integration in the same tenant, with no credentials of its
+    // own. seedScenario's credential is bound to its own integration, so
+    // using it against `otherIntegration.id` must be rejected.
+    const otherIntegration = await testDb.integration.create({
+      data: {
+        tenantId: tenant.id,
+        type: 'sftp',
+        name: 'Second SFTP',
+        status: 'active',
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${otherIntegration.id}/import-now`,
+        headers,
+        payload: { credentialId: credential.id, filePath: '/exports/x.csv' },
+      })
+      expect(res.statusCode).toBe(409)
+      expect((res.json() as ErrorBody).error.code).toBe('CREDENTIAL_INTEGRATION_MISMATCH')
+      // Connector was never invoked.
+      expect(mockedStreamSftp).not.toHaveBeenCalled()
+      // No ImportRun shell was created either — the gate fires before the
+      // run row is inserted.
+      const runs = await testDb.importRun.count({
+        where: { integrationId: otherIntegration.id },
+      })
+      expect(runs).toBe(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('reusable tenant-level credentials (integrationId=null) are accepted on any integration of the same tenant', async () => {
+    const { tenant, integration, headers } = await seedScenario()
+    // A standalone credential not bound to any integration (the
+    // DECISIONS 2026-05-07 reusability use case).
+    const reusable = await testDb.integrationCredential.create({
+      data: {
+        tenantId: tenant.id,
+        // integrationId is left undefined → column NULL
+        credentialType: 'sftp',
+        name: 'Reusable',
+        host: 'sftp.example.com',
+        port: 22,
+        username: 'sebastian',
+        password: encryptCredential('supersecret'),
+        remotePath: '/exports',
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      mockedStreamSftp.mockResolvedValue(makeStreamHandle(STOCK_CSV))
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { credentialId: reusable.id, filePath: '/exports/x.csv' },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as ImportRunBody
+      expect(body.data.status).toBe('success')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects with 409 INTEGRATION_DISABLED when integration.isEnabled is false', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { isEnabled: false },
+    })
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { credentialId: credential.id, filePath: '/exports/x.csv' },
+      })
+      expect(res.statusCode).toBe(409)
+      expect((res.json() as ErrorBody).error.code).toBe('INTEGRATION_DISABLED')
+      expect(mockedStreamSftp).not.toHaveBeenCalled()
+      // The same gate fires on the listing route too.
+      const list = await app.inject({
+        method: 'GET',
+        url: `/v1/integrations/${integration.id}/files?credentialId=${credential.id}`,
+        headers,
+      })
+      expect(list.statusCode).toBe(409)
+      expect((list.json() as ErrorBody).error.code).toBe('INTEGRATION_DISABLED')
+      // And no run row was created.
+      const runs = await testDb.importRun.count({
+        where: { integrationId: integration.id },
+      })
+      expect(runs).toBe(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects with 409 CREDENTIAL_INACTIVE when credential.isActive is false', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    await testDb.integrationCredential.update({
+      where: { id: credential.id },
+      data: { isActive: false },
+    })
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { credentialId: credential.id, filePath: '/exports/x.csv' },
+      })
+      expect(res.statusCode).toBe(409)
+      expect((res.json() as ErrorBody).error.code).toBe('CREDENTIAL_INACTIVE')
+      expect(mockedStreamSftp).not.toHaveBeenCalled()
+    } finally {
+      await app.close()
+    }
+  })
+})
+
 describe('POST /v1/integrations/:id/import-now (Cycle 3-C R5)', () => {
   it('streams a remote CSV through the pipeline, creates an ImportRun, and tags movements with source=sftp', async () => {
     const { tenant, integration, credential, variant, headers } = await seedScenario()
