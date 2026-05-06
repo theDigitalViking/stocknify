@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -6,6 +6,7 @@ import { testFtpConnection } from '../../integrations/ftp-client.js'
 import { testSftpConnection } from '../../integrations/sftp-client.js'
 import { decryptCredential, encryptCredential, MASKED_SECRET } from '../../lib/encryption.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import { requireRole } from '../../middleware/require-role.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
 
 // ---------------------------------------------------------------------------
@@ -178,6 +179,10 @@ async function runConnectionTest(
 export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware)
   app.addHook('preHandler', tenantMiddleware)
+  // Credentials carry secret material and outbound network capability; restrict
+  // to admins (Codex review fix — original cycle exposed mutation + connection
+  // tests to viewer/manager since the userRole check was missing).
+  app.addHook('preHandler', requireRole('admin'))
 
   // -------------------------------------------------------------------------
   // GET /credentials — list with active-schedule usageCount
@@ -359,6 +364,15 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
 
   // -------------------------------------------------------------------------
   // DELETE /credentials/:id — soft-delete
+  //
+  // The active-schedule check + soft-delete update run inside a single
+  // SERIALIZABLE transaction (Codex review fix — the original count + update
+  // pair was a check-then-act race: a concurrent INSERT into
+  // integration_schedules could land between the two statements, leaving a
+  // soft-deleted credential referenced by an active schedule). With
+  // SERIALIZABLE, Postgres detects the conflicting read+write set and aborts
+  // one transaction with `serialization_failure` (Prisma error code P2034);
+  // we retry once, then surface 503.
   // -------------------------------------------------------------------------
   app.delete('/credentials/:id', async (request, reply) => {
     const params = idParamSchema.safeParse(request.params)
@@ -378,28 +392,83 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const activeSchedules = await request.db.integrationSchedule.count({
-      where: {
-        tenantId: request.tenantId,
-        credentialId: params.data.id,
-        deletedAt: null,
-      },
-    })
-    if (activeSchedules > 0) {
+    type DeleteOutcome =
+      | { kind: 'deleted' }
+      | { kind: 'inUse'; count: number }
+
+    const credentialId = params.data.id
+    const tenantId = request.tenantId
+    const MAX_RETRIES = 1
+
+    const runDelete = async (): Promise<DeleteOutcome> =>
+      request.db.$transaction(
+        async (tx) => {
+          const activeSchedules = await tx.integrationSchedule.count({
+            where: { tenantId, credentialId, deletedAt: null },
+          })
+          if (activeSchedules > 0) {
+            return { kind: 'inUse', count: activeSchedules }
+          }
+          await tx.integrationCredential.update({
+            where: { id: credentialId },
+            data: { deletedAt: new Date(), isActive: false },
+          })
+          return { kind: 'deleted' }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+
+    let outcome: DeleteOutcome | undefined
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        outcome = await runDelete()
+        break
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034' &&
+          attempt < MAX_RETRIES
+        ) {
+          request.log.warn(
+            { credentialId, attempt: attempt + 1 },
+            'Serialization conflict on credential delete; retrying',
+          )
+          continue
+        }
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034'
+        ) {
+          request.log.warn(
+            { credentialId },
+            'Serialization conflict on credential delete; retries exhausted',
+          )
+          return reply.code(503).send({
+            error: {
+              code: 'SERIALIZATION_FAILED',
+              message: 'Concurrent change detected — please retry',
+            },
+          })
+        }
+        throw err
+      }
+    }
+
+    if (!outcome) {
+      // Defensive — the loop above always assigns or throws.
+      throw new Error('credential delete: outcome unset after retry loop')
+    }
+
+    if (outcome.kind === 'inUse') {
       return reply.code(409).send({
         error: {
           code: 'CREDENTIAL_IN_USE',
-          message: `Cannot delete: ${String(activeSchedules)} active schedule(s) reference this credential`,
+          message: `Cannot delete: ${String(outcome.count)} active schedule(s) reference this credential`,
         },
       })
     }
 
-    await request.db.integrationCredential.update({
-      where: { id: params.data.id },
-      data: { deletedAt: new Date(), isActive: false },
-    })
-
-    return reply.send({ data: { id: params.data.id, deleted: true } })
+    return reply.send({ data: { id: credentialId, deleted: true } })
   })
 
   // -------------------------------------------------------------------------

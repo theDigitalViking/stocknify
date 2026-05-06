@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Prisma } from '@prisma/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { testFtpConnection } from '../../../integrations/ftp-client.js'
 import { testSftpConnection } from '../../../integrations/sftp-client.js'
 import { decryptCredential, MASKED_SECRET } from '../../../lib/encryption.js'
+import { prisma as appPrisma } from '../../../middleware/tenant.js'
 import { authedHeaders } from '../../../test/auth.js'
 import { buildTestApp } from '../../../test/build-app.js'
 import { createTestTenant, testDb } from '../../../test/db.js'
@@ -430,6 +432,223 @@ describe('credentials routes (Cycle 3-B)', () => {
         where: { tenantId: tenant.id },
       })
       expect(count).toBe(0)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Codex review fix — 2026-05-07
+// ---------------------------------------------------------------------------
+
+describe('credentials routes — admin-only authorization (Codex review fix)', () => {
+  // Every credential route must reject non-admin roles. Codex flagged that
+  // the original cycle only ran auth + tenant middleware, leaving viewer
+  // (the auth middleware's fallback role) able to mutate credentials and
+  // trigger SFTP/FTP connection tests to arbitrary hosts.
+  it.each([
+    ['GET', '/v1/credentials', undefined],
+    ['POST', '/v1/credentials', { name: 'X', credentialType: 'sftp', host: 'h', username: 'u' }],
+    ['POST', '/v1/credentials/test', { name: 'X', credentialType: 'sftp', host: 'h', username: 'u' }],
+    ['PATCH', '/v1/credentials/00000000-0000-0000-0000-000000000001', { name: 'Y' }],
+    ['DELETE', '/v1/credentials/00000000-0000-0000-0000-000000000001', undefined],
+    ['POST', '/v1/credentials/00000000-0000-0000-0000-000000000001/test', undefined],
+  ] as const)(
+    '%s %s rejects viewer role with 403 FORBIDDEN',
+    async (method, url, payload) => {
+      const { tenant, user } = await createTestTenant(testDb)
+      const app = await buildTestApp()
+      try {
+        const res = await app.inject({
+          method: method as 'GET' | 'POST' | 'PATCH' | 'DELETE',
+          url,
+          headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'viewer' }),
+          ...(payload !== undefined ? { payload } : {}),
+        })
+        expect(res.statusCode).toBe(403)
+        expect((res.json() as { error: { code: string } }).error.code).toBe('FORBIDDEN')
+      } finally {
+        await app.close()
+      }
+    },
+  )
+
+  it('manager role is also rejected (only admin is allowed)', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/credentials',
+        // 'manager' is not in the allowed-roles list passed to requireRole.
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'manager' }),
+      })
+      expect(res.statusCode).toBe(403)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+describe('credentials DELETE — atomic in-use check (Codex review fix)', () => {
+  // The active-schedule check + soft-delete now run in a single SERIALIZABLE
+  // transaction so a concurrent INSERT into integration_schedules cannot
+  // bypass the in-use guard. Postgres surfaces the conflict as P2034 (write
+  // conflict / deadlock); the route retries once.
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('retries the delete transaction once when Prisma raises P2034 (serialization failure)', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/credentials',
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+        payload: {
+          name: 'Retry SFTP',
+          credentialType: 'sftp',
+          host: 'sftp.example.com',
+          username: 'sebastian',
+        },
+      })
+      const credentialId = (created.json() as SingleBody).data.id
+
+      // First $transaction call raises P2034; subsequent calls fall back to
+      // the original implementation, which commits the soft-delete.
+      const txSpy = vi.spyOn(appPrisma, '$transaction')
+      txSpy.mockImplementationOnce(() => {
+        throw new Prisma.PrismaClientKnownRequestError(
+          'Transaction failed due to a write conflict or a deadlock.',
+          { code: 'P2034', clientVersion: '5.22.0' },
+        )
+      })
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/v1/credentials/${credentialId}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+      expect((res.json() as DeleteBody).data).toEqual({ id: credentialId, deleted: true })
+
+      // Two $transaction calls: one that threw P2034, one that succeeded.
+      expect(txSpy).toHaveBeenCalledTimes(2)
+
+      // Soft-delete actually committed.
+      const dbRow = await testDb.integrationCredential.findUniqueOrThrow({
+        where: { id: credentialId },
+      })
+      expect(dbRow.deletedAt).not.toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('returns 503 SERIALIZATION_FAILED when P2034 persists past the retry budget', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/credentials',
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+        payload: {
+          name: 'Persistent-conflict SFTP',
+          credentialType: 'sftp',
+          host: 'sftp.example.com',
+          username: 'sebastian',
+        },
+      })
+      const credentialId = (created.json() as SingleBody).data.id
+
+      const txSpy = vi.spyOn(appPrisma, '$transaction')
+      const p2034 = (): Prisma.PrismaClientKnownRequestError =>
+        new Prisma.PrismaClientKnownRequestError(
+          'Transaction failed due to a write conflict or a deadlock.',
+          { code: 'P2034', clientVersion: '5.22.0' },
+        )
+      txSpy.mockImplementationOnce(() => {
+        throw p2034()
+      })
+      txSpy.mockImplementationOnce(() => {
+        throw p2034()
+      })
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/v1/credentials/${credentialId}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(503)
+      expect((res.json() as ErrorBody).error.code).toBe('SERIALIZATION_FAILED')
+
+      // Credential is NOT soft-deleted because every transaction rolled back.
+      const dbRow = await testDb.integrationCredential.findUniqueOrThrow({
+        where: { id: credentialId },
+      })
+      expect(dbRow.deletedAt).toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects the delete with 409 when an active schedule references the credential (regression — flow runs inside the new SERIALIZABLE transaction)', async () => {
+    // The pre-Codex test in the parent describe block predates the
+    // transactional refactor; this assertion pins that the same 409 path
+    // still fires from inside the SERIALIZABLE transaction's count branch.
+    const { tenant, user } = await createTestTenant(testDb)
+    const integration = await testDb.integration.create({
+      data: { tenantId: tenant.id, type: 'sftp', name: 'Hive', status: 'active' },
+    })
+    const app = await buildTestApp()
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/credentials',
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+        payload: {
+          name: 'In-use-after-refactor',
+          credentialType: 'sftp',
+          host: 'sftp.example.com',
+          username: 'sebastian',
+          integrationId: integration.id,
+        },
+      })
+      const credentialId = (created.json() as SingleBody).data.id
+
+      await testDb.integrationSchedule.create({
+        data: {
+          tenantId: tenant.id,
+          integrationId: integration.id,
+          name: 'Daily',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          weekdays: [],
+          cronExpression: '0 6 * * *',
+          credentialId,
+        },
+      })
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/v1/credentials/${credentialId}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(409)
+      expect((res.json() as ErrorBody).error.code).toBe('CREDENTIAL_IN_USE')
+
+      // Credential remains intact.
+      const dbRow = await testDb.integrationCredential.findUniqueOrThrow({
+        where: { id: credentialId },
+      })
+      expect(dbRow.deletedAt).toBeNull()
     } finally {
       await app.close()
     }
