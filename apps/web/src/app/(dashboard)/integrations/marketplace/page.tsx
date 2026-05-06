@@ -21,7 +21,7 @@ export default function MarketplacePage(): JSX.Element {
     <div>
       <PageHeader title={t('title')} />
 
-      <div className="px-6 py-6 space-y-8">
+      <div className="px-6 md:px-8 py-6 space-y-8">
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-foreground">{t('activeTitle')}</h2>

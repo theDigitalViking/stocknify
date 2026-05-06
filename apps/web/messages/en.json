@@ -150,13 +150,13 @@
     "toLabel": "To",
     "chart": {
       "title": "Quantity over time",
-      "filtersRequired": {
-        "title": "Pick a variant, location, and stock type",
-        "description": "The chart needs all three filters to plot a single quantity-over-time line."
+      "missingScope": {
+        "title": "Open this page from a product or stock row",
+        "description": "Click a product detail page or a stock-list row's chart icon to see its movements here."
       },
       "empty": {
         "title": "No movements yet",
-        "description": "Movements will appear once stock data is synced for this combination."
+        "description": "Movements will appear once stock data is synced."
       },
       "emptyRange": {
         "title": "No movements in this time range",
@@ -164,10 +164,9 @@
       },
       "truncatedNotice": "Showing the latest {shown} of {total} movements in this range. Narrow the time range for the full series.",
       "multiLine": {
-        "title": "All movements for this product",
-        "description": "Each line is one warehouse + stock-type combination.",
         "legendToggleHint": "Click a series in the legend to fade it; use the filters above to add or remove series.",
-        "seriesLabel": "{location} · {stockType}"
+        "seriesLabel": "{location} · {stockType}",
+        "seriesLabelWithBin": "{location} · {storageLocation} · {stockType}"
       },
       "noFilterSelected": {
         "title": "Select at least one location and stock type",
@@ -176,6 +175,7 @@
     },
     "filters": {
       "locationLabel": "Location",
+      "storageLocationLabel": "Storage location",
       "stockTypeLabel": "Stock type",
       "all": "All",
       "selectedCount": "{count} selected",

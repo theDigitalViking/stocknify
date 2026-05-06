@@ -108,19 +108,25 @@ function SingleFilter({ label, options, selection, onChange }: SingleFilterProps
 
 interface MovementFiltersProps {
   locationOptions: FilterOption[]
+  storageLocationOptions: FilterOption[]
   stockTypeOptions: FilterOption[]
   selectedLocations: FilterSelection
+  selectedStorageLocations: FilterSelection
   selectedStockTypes: FilterSelection
   onLocationsChange: (next: FilterSelection) => void
+  onStorageLocationsChange: (next: FilterSelection) => void
   onStockTypesChange: (next: FilterSelection) => void
 }
 
 export function MovementFilters({
   locationOptions,
+  storageLocationOptions,
   stockTypeOptions,
   selectedLocations,
+  selectedStorageLocations,
   selectedStockTypes,
   onLocationsChange,
+  onStorageLocationsChange,
   onStockTypesChange,
 }: MovementFiltersProps): JSX.Element {
   const t = useTranslations('stockMovements.filters')
@@ -131,6 +137,12 @@ export function MovementFilters({
         options={locationOptions}
         selection={selectedLocations}
         onChange={onLocationsChange}
+      />
+      <SingleFilter
+        label={t('storageLocationLabel')}
+        options={storageLocationOptions}
+        selection={selectedStorageLocations}
+        onChange={onStorageLocationsChange}
       />
       <SingleFilter
         label={t('stockTypeLabel')}

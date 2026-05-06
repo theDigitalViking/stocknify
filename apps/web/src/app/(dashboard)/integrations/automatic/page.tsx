@@ -10,7 +10,7 @@ export default function AutomaticPage(): JSX.Element {
   return (
     <div>
       <PageHeader title={t('title')} />
-      <div className="px-6 py-6 text-muted-foreground text-sm">{t('comingSoon')}</div>
+      <div className="px-6 md:px-8 py-6 text-muted-foreground text-sm">{t('comingSoon')}</div>
     </div>
   )
 }

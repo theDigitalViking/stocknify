@@ -15,7 +15,7 @@ export function PageHeader({ title, children, noSticky = false }: PageHeaderProp
   return (
     <div
       className={cn(
-        'h-12 border-b border-border bg-background px-6 flex items-center justify-between',
+        'h-12 border-b border-border bg-background px-6 md:px-8 flex items-center justify-between',
         !noSticky && 'sticky top-0 z-20',
       )}
     >

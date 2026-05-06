@@ -75,7 +75,7 @@ export default function ProductDetailPage(): JSX.Element {
     return (
       <div>
         <PageHeader title={t('title')} />
-        <div className="px-6 py-6">
+        <div className="px-6 md:px-8 py-6">
           <div className="h-5 w-48 bg-muted animate-pulse rounded" />
         </div>
       </div>
@@ -86,7 +86,7 @@ export default function ProductDetailPage(): JSX.Element {
     return (
       <div>
         <PageHeader title={t('title')} />
-        <div className="px-6 py-16 text-center">
+        <div className="px-6 md:px-8 py-16 text-center">
           <p className="text-sm text-muted-foreground">{tDetail('notFound')}</p>
           <Link
             href="/products"
@@ -105,7 +105,7 @@ export default function ProductDetailPage(): JSX.Element {
 
   return (
     <div>
-      <div className="sticky top-0 z-20 h-12 border-b border-border bg-background px-6 flex items-center gap-2 text-sm">
+      <div className="sticky top-0 z-20 h-12 border-b border-border bg-background px-6 md:px-8 flex items-center gap-2 text-sm">
         <Link
           href="/products"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -117,7 +117,7 @@ export default function ProductDetailPage(): JSX.Element {
         <span className="font-medium truncate">{product.name}</span>
       </div>
 
-      <div className="px-6 py-5 border-b border-border">
+      <div className="px-6 md:px-8 py-5 border-b border-border">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-base font-semibold text-foreground truncate">{product.name}</h1>
@@ -175,7 +175,7 @@ export default function ProductDetailPage(): JSX.Element {
         </p>
       </div>
 
-      <section className="px-6 py-4">
+      <section className="px-6 md:px-8 py-4">
         <h2 className="text-sm font-semibold text-foreground mb-3">{tDetail('variantsTitle')}</h2>
         <div className="rounded-md border border-border overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
@@ -201,11 +201,17 @@ export default function ProductDetailPage(): JSX.Element {
             <tbody>
               {product.variants.map((v) => {
                 const isSelected = selectedVariantId === v.id
-                const isSelectable = product.variants.length > 1
+                // The active variant is always highlighted, even on single-variant
+                // products — the highlight signals "this is the row driving the
+                // stock table / Bewegungen-link below". Multi-variant products
+                // additionally make rows clickable so the operator can swap; on
+                // a single-variant product, the lone row stays pinned.
+                const isClickable = product.variants.length > 1
                 return (
                   <tr
                     key={v.id}
-                    {...(isSelectable
+                    aria-selected={isSelected}
+                    {...(isClickable
                       ? {
                           onClick: () => {
                             setSelectedVariantId(v.id)
@@ -218,17 +224,15 @@ export default function ProductDetailPage(): JSX.Element {
                           },
                           tabIndex: 0,
                           role: 'button',
-                          'aria-selected': isSelected,
                         }
                       : {})}
                     className={cn(
                       'border-b border-border last:border-b-0 transition-colors',
-                      isSelectable &&
+                      isClickable &&
                         'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                       // Borders on <tr> are dropped under border-collapse: collapse (Tailwind preflight),
                       // so the brand-tinted left rail uses an inset box-shadow that paints reliably.
-                      isSelectable &&
-                        isSelected &&
+                      isSelected &&
                         'bg-brand-100 hover:bg-brand-100 shadow-[inset_4px_0_0_0_#0d9488]',
                     )}
                   >
@@ -274,7 +278,7 @@ export default function ProductDetailPage(): JSX.Element {
         </div>
       </section>
 
-      <section className="px-6 py-4">
+      <section className="px-6 md:px-8 py-4">
         <div className="flex items-center justify-between gap-2 mb-3">
           <h2 className="text-sm font-semibold text-foreground">
             {tDetail('stockTitle')}
@@ -296,7 +300,7 @@ export default function ProductDetailPage(): JSX.Element {
       </section>
 
       {product.batchTracking ? (
-        <section className="px-6 py-4">
+        <section className="px-6 md:px-8 py-4">
           <h2 className="text-sm font-semibold text-foreground mb-3">
             {tDetail('batchListTitle')}
           </h2>
@@ -304,7 +308,7 @@ export default function ProductDetailPage(): JSX.Element {
         </section>
       ) : null}
 
-      <section className="px-6 py-4">
+      <section className="px-6 md:px-8 py-4">
         <h2 className="text-sm font-semibold text-foreground mb-3">
           {tDetail('integrationsTitle')}
         </h2>

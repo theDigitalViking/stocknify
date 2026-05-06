@@ -368,7 +368,7 @@ export default function ProductsPage(): JSX.Element {
       <PageHeader title={t('title')} />
 
       {selectedIds.size > 0 ? (
-        <div className="px-6 py-2 border-b border-border bg-accent flex items-center justify-between">
+        <div className="px-6 md:px-8 py-2 border-b border-border bg-accent flex items-center justify-between">
           <span className="text-sm text-foreground font-medium">
             {tBulk('selectedCount', { count: selectedIds.size })}
           </span>
@@ -396,7 +396,7 @@ export default function ProductsPage(): JSX.Element {
         </div>
       ) : null}
 
-      <div className="px-6 py-3 border-b border-border flex items-center gap-3">
+      <div className="px-6 md:px-8 py-3 border-b border-border flex items-center gap-3">
         <Input
           placeholder={t('searchPlaceholder')}
           className="h-8 w-64"
@@ -440,18 +440,20 @@ export default function ProductsPage(): JSX.Element {
         </div>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={sortedProducts}
-        isLoading={isLoading}
-        emptyIcon={Package}
-        emptyTitle={t('empty.title')}
-        emptyDescription={t('empty.description')}
-        rowKey={(row) => row.id}
-        sortField={sortField}
-        sortDir={sortDir}
-        onSort={handleSort}
-      />
+      <div className="px-6 md:px-8 py-2">
+        <DataTable
+          columns={columns}
+          data={sortedProducts}
+          isLoading={isLoading}
+          emptyIcon={Package}
+          emptyTitle={t('empty.title')}
+          emptyDescription={t('empty.description')}
+          rowKey={(row) => row.id}
+          sortField={sortField}
+          sortDir={sortDir}
+          onSort={handleSort}
+        />
+      </div>
 
       <AddProductDialog open={addOpen} onOpenChange={setAddOpen} />
       <EditProductDialog

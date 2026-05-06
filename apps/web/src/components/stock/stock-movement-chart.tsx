@@ -26,9 +26,10 @@ type StockMovementChartProps =
       movements: StockMovementRow[]
       emptyTitle: string
       emptyDescription: string
-      // Total span of the user-selected date range in ms. Drives tick
-      // granularity so a 30d preset that happens to contain only same-day
-      // data still shows DD.MM. on the X-axis instead of collapsing to HH:mm.
+      // Retained for backwards-compatibility with prior callers; the chart
+      // now derives tick granularity from same-day duplicates in the data,
+      // so this value is no longer consulted. Will be removed in a future
+      // cleanup once no caller passes it.
       selectedRangeMs?: number
       series?: never
     }
@@ -39,9 +40,6 @@ type StockMovementChartProps =
       selectedRangeMs?: number
       movements?: never
     }
-
-const ONE_DAY_MS = 24 * 60 * 60 * 1000
-const SEVEN_DAYS_MS = 7 * ONE_DAY_MS
 
 // 8 distinct hues from Tailwind's 500 ramp. Cycle if we get more series than
 // colors — pairing each with its own dasharray below keeps the legend usable
@@ -141,14 +139,22 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
     )
   }
 
-  // Prefer the user-selected range when available — same-day data within a
-  // 30d preset still belongs in DD.MM. territory. Fall back to the data
-  // spread for callers that don't know their window upfront.
-  const dataRangeMs =
-    mergedPoints.length > 1
-      ? mergedPoints[mergedPoints.length - 1].timestamp - mergedPoints[0].timestamp
-      : 0
-  const rangeMs = props.selectedRangeMs ?? dataRangeMs
+  // X-axis always shows the date. We additionally show HH:mm only when the
+  // visible data has multiple entries on the same calendar day — otherwise
+  // the time component carries no useful signal and just crowds the axis.
+  // The decision is global to the chart, not per-tick, so the format pattern
+  // stays consistent whether we're looking at a 7d preset with one daily
+  // sync or a custom 24h window with hourly corrections.
+  const hasMultipleSameDay = (() => {
+    const seen = new Set<string>()
+    for (const p of mergedPoints) {
+      const d = new Date(p.timestamp)
+      const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+      if (seen.has(dayKey)) return true
+      seen.add(dayKey)
+    }
+    return false
+  })()
 
   const dayMonth = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' })
   const hourMinute = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
@@ -159,14 +165,15 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
 
   const formatTick = (value: number): string => {
     const date = new Date(value)
-    if (rangeMs <= ONE_DAY_MS) {
-      return hourMinute.format(date)
-    }
-    if (rangeMs <= SEVEN_DAYS_MS) {
+    if (hasMultipleSameDay) {
       return `${dayMonth.format(date)} ${hourMinute.format(date)}`
     }
     return dayMonth.format(date)
   }
+  // Wider gap when ticks carry both date and time so the longer labels don't
+  // overlap on dense ranges; tighter gap with date-only ticks keeps the axis
+  // readable on long preset windows.
+  const tickMinGap = hasMultipleSameDay ? 64 : 32
 
   const handleLegendClick = (data: { dataKey?: unknown }): void => {
     const key = typeof data.dataKey === 'string' ? data.dataKey : undefined
@@ -201,7 +208,7 @@ export function StockMovementChart(props: StockMovementChartProps): JSX.Element 
               tickFormatter={formatTick}
               tick={{ fontSize: 11, fill: '#6b7280' }}
               stroke="#e5e7eb"
-              minTickGap={32}
+              minTickGap={tickMinGap}
             />
             <YAxis
               tick={{ fontSize: 11, fill: '#6b7280' }}

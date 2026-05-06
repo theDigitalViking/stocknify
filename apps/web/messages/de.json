@@ -150,13 +150,13 @@
     "toLabel": "Bis",
     "chart": {
       "title": "Menge im Zeitverlauf",
-      "filtersRequired": {
-        "title": "Bitte Variante, Lager und Bestandstyp wählen",
-        "description": "Der Verlauf benötigt alle drei Filter, um eine einzelne Linie darzustellen."
+      "missingScope": {
+        "title": "Bitte über eine Produkt- oder Bestandsseite öffnen",
+        "description": "Öffne ein Produkt-Detail oder klicke das Chart-Icon einer Bestandszeile, um die Bewegungen hier zu sehen."
       },
       "empty": {
         "title": "Keine Bewegungen vorhanden",
-        "description": "Bewegungen erscheinen, sobald Bestandsdaten für diese Kombination synchronisiert wurden."
+        "description": "Bewegungen erscheinen, sobald Bestandsdaten synchronisiert wurden."
       },
       "emptyRange": {
         "title": "Keine Bewegungen in diesem Zeitraum",
@@ -164,10 +164,9 @@
       },
       "truncatedNotice": "Zeigt die neuesten {shown} von {total} Bewegungen in diesem Zeitraum. Bitte Zeitraum verkleinern für die vollständige Serie.",
       "multiLine": {
-        "title": "Alle Bewegungen für dieses Produkt",
-        "description": "Jede Linie ist eine Kombination aus Lager und Bestandstyp.",
         "legendToggleHint": "Klick auf eine Legende blendet die Linie ab; nutze die Filter oben, um Serien hinzuzufügen oder zu entfernen.",
-        "seriesLabel": "{location} · {stockType}"
+        "seriesLabel": "{location} · {stockType}",
+        "seriesLabelWithBin": "{location} · {storageLocation} · {stockType}"
       },
       "noFilterSelected": {
         "title": "Wähle mindestens ein Lager und einen Bestandstyp",
@@ -176,6 +175,7 @@
     },
     "filters": {
       "locationLabel": "Lager",
+      "storageLocationLabel": "Lagerplatz",
       "stockTypeLabel": "Bestandstyp",
       "all": "Alle",
       "selectedCount": "{count} ausgewählt",

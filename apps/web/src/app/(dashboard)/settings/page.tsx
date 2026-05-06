@@ -69,7 +69,7 @@ export default function SettingsPage(): JSX.Element {
     <div>
       <PageHeader title={t('title')} />
 
-      <div className="border-b border-border px-6">
+      <div className="border-b border-border px-6 md:px-8">
         <div className="flex items-center gap-1">
           {(['general', 'integrations'] as SettingsTab[]).map((key) => (
             <button
@@ -89,7 +89,7 @@ export default function SettingsPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="px-6 py-6">
+      <div className="px-6 md:px-8 py-6">
         {tab === 'general' ? (
           <div className="max-w-2xl space-y-8">
             <section>

@@ -272,6 +272,9 @@ export default function StockPage(): JSX.Element {
                 query: {
                   variantId: row.variantId,
                   locationId: row.locationId,
+                  ...(row.storageLocationId
+                    ? { storageLocationId: row.storageLocationId }
+                    : {}),
                   stockType: row.stockType,
                 },
               }}
@@ -316,7 +319,7 @@ export default function StockPage(): JSX.Element {
     <div>
       <PageHeader title={t('title')} />
 
-      <div className="px-6 py-3 border-b border-border flex items-center gap-3">
+      <div className="px-6 md:px-8 py-3 border-b border-border flex items-center gap-3">
         <Input
           placeholder={t('searchPlaceholder')}
           className="h-8 w-64"
@@ -435,21 +438,23 @@ export default function StockPage(): JSX.Element {
         </Button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={sortedRows}
-        isLoading={isLoading}
-        emptyIcon={Package}
-        emptyTitle={t('empty.title')}
-        emptyDescription={t('empty.description')}
-        rowKey={(row) => row.id}
-        sortField={sortField}
-        sortDir={sortDir}
-        onSort={(field, dir) => {
-          setSortField(field)
-          setSortDir(dir)
-        }}
-      />
+      <div className="px-6 md:px-8 py-2">
+        <DataTable
+          columns={columns}
+          data={sortedRows}
+          isLoading={isLoading}
+          emptyIcon={Package}
+          emptyTitle={t('empty.title')}
+          emptyDescription={t('empty.description')}
+          rowKey={(row) => row.id}
+          sortField={sortField}
+          sortDir={sortDir}
+          onSort={(field, dir) => {
+            setSortField(field)
+            setSortDir(dir)
+          }}
+        />
+      </div>
 
       <StockQuickViewSheet
         productId={quickViewProductId}

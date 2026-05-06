@@ -138,6 +138,32 @@ function selectionToParam(selection: FilterSelection): string | null {
   return Array.from(selection).join(',')
 }
 
+// Series key encodes warehouse + bin + stock-type so each filter dimension is
+// independently selectable. `-` sentinel marks a bin-agnostic movement (no
+// storage_location_id on the row).
+const SERIES_SEP = '|'
+const NO_BIN = '-'
+
+function encodeSeriesKey(locationId: string, storageLocationId: string | null, stockType: string): string {
+  return `${locationId}${SERIES_SEP}${storageLocationId ?? NO_BIN}${SERIES_SEP}${stockType}`
+}
+
+function decodeSeriesKey(key: string): {
+  locationId: string
+  storageLocationId: string | null
+  stockType: string
+} {
+  const parts = key.split(SERIES_SEP)
+  const locationId = parts[0] ?? ''
+  const rawBin = parts[1] ?? NO_BIN
+  const stockType = parts.slice(2).join(SERIES_SEP)
+  return {
+    locationId,
+    storageLocationId: rawBin === NO_BIN ? null : rawBin,
+    stockType,
+  }
+}
+
 export default function StockMovementsPage(): JSX.Element {
   const t = useTranslations('stockMovements')
   const tStock = useTranslations('stock')
@@ -147,11 +173,14 @@ export default function StockMovementsPage(): JSX.Element {
 
   const variantId = search.get('variantId') ?? undefined
   const productId = search.get('productId') ?? undefined
-  const locationId = search.get('locationId') ?? undefined
-  const stockType = search.get('stockType') ?? undefined
+  const legacyLocationId = search.get('locationId') ?? undefined
+  const legacyStorageLocationId = search.get('storageLocationId') ?? undefined
+  const legacyStockType = search.get('stockType') ?? undefined
 
-  const hasSingleLineFilters = Boolean(variantId && locationId && stockType)
-  const isProductMode = Boolean(productId) && !hasSingleLineFilters
+  // We always render the multi-line layout now. The only requirement is some
+  // scope (variant or product) to fetch movements for; without either, show a
+  // missing-scope hint instead of a blank chart.
+  const hasScope = Boolean(variantId || productId)
 
   const [page, setPage] = useState(1)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -170,22 +199,20 @@ export default function StockMovementsPage(): JSX.Element {
     return { ...defaultRangeRef.current, activePreset: '30d' }
   })
 
-  // Multi-line filter state. Seeded once at mount: explicit `locations`/`stockTypes`
-  // URL params win; absent → fall back to legacy single-value `locationId`/`stockType`
-  // from the URL (the "pre-selected" R4 case from the stock list / future deep links);
-  // absent again → 'all'. Single-line entries skip the legacy seed entirely since the
-  // filters aren't shown there.
+  // Multi-line filter state. Seeded once at mount: explicit `locations`/
+  // `storageLocations`/`stockTypes` URL params win; absent → fall back to the
+  // legacy single-value `locationId`/`storageLocationId`/`stockType` URL
+  // params (the "pre-selected" entry from the stock list); absent again →
+  // 'all'. The legacy fallback only fires at first render — subsequent URL
+  // syncs use the multi-select params alone.
   const [selectedLocations, setSelectedLocations] = useState<FilterSelection>(() =>
-    parseFilterParam(
-      search.get('locations'),
-      hasSingleLineFilters ? null : search.get('locationId'),
-    ),
+    parseFilterParam(search.get('locations'), legacyLocationId ?? null),
+  )
+  const [selectedStorageLocations, setSelectedStorageLocations] = useState<FilterSelection>(() =>
+    parseFilterParam(search.get('storageLocations'), legacyStorageLocationId ?? null),
   )
   const [selectedStockTypes, setSelectedStockTypes] = useState<FilterSelection>(() =>
-    parseFilterParam(
-      search.get('stockTypes'),
-      hasSingleLineFilters ? null : search.get('stockType'),
-    ),
+    parseFilterParam(search.get('stockTypes'), legacyStockType ?? null),
   )
 
   const writeRangeToUrl = useCallback(
@@ -250,42 +277,39 @@ export default function StockMovementsPage(): JSX.Element {
 
   // Sync external URL changes for the multi-select filters back into state.
   // After mount, the URL is the single source of truth for filter state —
-  // the legacy `locationId`/`stockType` fallback only fires at first render.
+  // the legacy single-value fallbacks only fire at first render.
   useEffect(() => {
     const nextLocations = parseFilterParam(search.get('locations'), null)
+    const nextStorageLocations = parseFilterParam(search.get('storageLocations'), null)
     const nextStockTypes = parseFilterParam(search.get('stockTypes'), null)
     setSelectedLocations((prev) => (selectionsEqual(prev, nextLocations) ? prev : nextLocations))
+    setSelectedStorageLocations((prev) =>
+      selectionsEqual(prev, nextStorageLocations) ? prev : nextStorageLocations,
+    )
     setSelectedStockTypes((prev) =>
       selectionsEqual(prev, nextStockTypes) ? prev : nextStockTypes,
     )
   }, [search])
 
-  const writeFilterToUrl = useCallback(
-    (paramKey: 'locations' | 'stockTypes', selection: FilterSelection) => {
+  const writeFiltersToUrl = useCallback(
+    (
+      updates: Partial<{
+        locations: FilterSelection
+        storageLocations: FilterSelection
+        stockTypes: FilterSelection
+      }>,
+    ) => {
       const params = new URLSearchParams(search.toString())
-      const value = selectionToParam(selection)
-      if (value === null) params.delete(paramKey)
-      else params.set(paramKey, value)
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === undefined) continue
+        const serialized = selectionToParam(value)
+        if (serialized === null) params.delete(key)
+        else params.set(key, serialized)
+      }
       const qs = params.toString()
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
     },
     [pathname, router, search],
-  )
-
-  const handleLocationsChange = useCallback(
-    (next: FilterSelection) => {
-      setSelectedLocations(next)
-      writeFilterToUrl('locations', next)
-    },
-    [writeFilterToUrl],
-  )
-
-  const handleStockTypesChange = useCallback(
-    (next: FilterSelection) => {
-      setSelectedStockTypes(next)
-      writeFilterToUrl('stockTypes', next)
-    },
-    [writeFilterToUrl],
   )
 
   const applyPreset = useCallback(
@@ -326,49 +350,46 @@ export default function StockMovementsPage(): JSX.Element {
 
   // Table behaviour is intentionally unchanged: it always reflects the URL
   // params (variantId / productId / locationId / stockType) and is unaffected
-  // by the multi-select chart filters (R6 non-goal).
+  // by the multi-select chart filters (Cycle 2-E non-goal).
   const tableFilters = useMemo(
     () => ({
       variantId,
       productId,
-      locationId,
-      stockType,
+      locationId: legacyLocationId,
+      stockType: legacyStockType,
       from: range.from,
       to: range.to,
       page,
       perPage: DEFAULT_PER_PAGE,
       sortDir,
     }),
-    [variantId, productId, locationId, stockType, range.from, range.to, page, sortDir],
+    [variantId, productId, legacyLocationId, legacyStockType, range.from, range.to, page, sortDir],
   )
 
-  // In multi-line mode the chart drops `locationId`/`stockType` from the API
-  // call so it can populate the filter dropdowns from the full product
-  // dataset; the URL's legacy single-value params only seed the dropdown
-  // selection at mount. Single-line mode keeps the trio in the fetch.
-  // Chart fetches the LATEST CHART_PER_PAGE rows in the range (sortDir desc).
-  // The chart component sorts asc internally for left-to-right rendering.
-  // When the range exceeds CHART_PER_PAGE, we drop the oldest tail rather
-  // than the most-recent head — and a partial-data notice is rendered.
+  // Chart fetch always runs the broad query (no per-warehouse / per-bin /
+  // per-stock-type filter at the API) so the multi-select dropdowns can be
+  // populated from the full dataset and the user can broaden their selection
+  // beyond the entry-point pre-selection without a refetch.
+  // Fetches the LATEST CHART_PER_PAGE rows in the range (sortDir desc); the
+  // chart component sorts asc internally for left-to-right rendering. When
+  // the range exceeds CHART_PER_PAGE, the oldest tail is dropped and a
+  // partial-data notice is rendered.
   const chartFilters = useMemo(
     () => ({
       variantId,
       productId,
-      locationId: hasSingleLineFilters ? locationId : undefined,
-      stockType: hasSingleLineFilters ? stockType : undefined,
       from: range.from,
       to: range.to,
       page: 1,
       perPage: CHART_PER_PAGE,
       sortDir: 'desc' as const,
     }),
-    [variantId, productId, locationId, stockType, hasSingleLineFilters, range.from, range.to],
+    [variantId, productId, range.from, range.to],
   )
 
   const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
   const { data: chartData } = useStockMovements(chartFilters)
 
-  const hasChart = hasSingleLineFilters || isProductMode
   const chartRows = chartData?.data ?? []
   const chartTotal = chartData?.meta.total ?? 0
   const isChartTruncated = chartTotal > chartRows.length
@@ -378,34 +399,37 @@ export default function StockMovementsPage(): JSX.Element {
     ? t('chart.emptyRange.description')
     : t('chart.empty.description')
 
-  // In product mode, fan the flat row payload out into one series per
-  // (location, stockType) combo. The composite key is locationId+stockType so
-  // two stock types in the same warehouse become two series; locationName +
-  // stockType form the human-readable label rendered in the legend.
-  const productSeries = useMemo<StockMovementSeries[]>(() => {
-    if (!isProductMode) return []
+  // Fan the flat row payload out into one series per (location, bin, stockType)
+  // combo. Each dimension is independently filterable via the dropdowns above.
+  // Series label includes bin only when the row carries one, so bin-agnostic
+  // warehouses don't read as "Lager · — · available".
+  const allSeries = useMemo<StockMovementSeries[]>(() => {
+    if (!hasScope) return []
     const groups = new Map<string, StockMovementSeries>()
     for (const row of chartRows) {
-      const key = `${row.locationId}|${row.stockType}`
+      const key = encodeSeriesKey(row.locationId, row.storageLocationId, row.stockType)
       let group = groups.get(key)
       if (!group) {
-        group = {
-          key,
-          name: t('chart.multiLine.seriesLabel', {
-            location: row.locationName,
-            stockType: row.stockType,
-          }),
-          rows: [],
-        }
+        const name = row.storageLocationName
+          ? t('chart.multiLine.seriesLabelWithBin', {
+              location: row.locationName,
+              storageLocation: row.storageLocationName,
+              stockType: row.stockType,
+            })
+          : t('chart.multiLine.seriesLabel', {
+              location: row.locationName,
+              stockType: row.stockType,
+            })
+        group = { key, name, rows: [] }
         groups.set(key, group)
       }
       group.rows.push(row)
     }
     return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
-  }, [isProductMode, chartRows, t])
+  }, [hasScope, chartRows, t])
 
   const locationOptions = useMemo<FilterOption[]>(() => {
-    if (!isProductMode) return []
+    if (!hasScope) return []
     const map = new Map<string, string>()
     for (const row of chartRows) {
       if (!map.has(row.locationId)) map.set(row.locationId, row.locationName)
@@ -413,32 +437,124 @@ export default function StockMovementsPage(): JSX.Element {
     return Array.from(map.entries())
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [isProductMode, chartRows])
+  }, [hasScope, chartRows])
+
+  // Storage-location options carry their parent locationId so the cascade
+  // helper can prune below. Bin-agnostic rows (storageLocationId === null)
+  // contribute no option — they cannot be picked individually and instead
+  // appear by default when the storage filter is 'all'.
+  interface StorageOption extends FilterOption {
+    parentLocationId: string
+  }
+
+  const allStorageOptions = useMemo<StorageOption[]>(() => {
+    if (!hasScope) return []
+    const map = new Map<string, StorageOption>()
+    for (const row of chartRows) {
+      if (!row.storageLocationId || !row.storageLocationName) continue
+      if (map.has(row.storageLocationId)) continue
+      map.set(row.storageLocationId, {
+        value: row.storageLocationId,
+        label: row.storageLocationName,
+        parentLocationId: row.locationId,
+      })
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label))
+  }, [hasScope, chartRows])
+
+  // Cascade: bin dropdown shows only bins under the currently-selected
+  // warehouses. With selectedLocations === 'all', every bin is visible.
+  const filteredStorageOptions = useMemo<FilterOption[]>(() => {
+    if (selectedLocations === 'all') {
+      return allStorageOptions.map(({ value, label }) => ({ value, label }))
+    }
+    return allStorageOptions
+      .filter((opt) => selectedLocations.has(opt.parentLocationId))
+      .map(({ value, label }) => ({ value, label }))
+  }, [allStorageOptions, selectedLocations])
 
   const stockTypeOptions = useMemo<FilterOption[]>(() => {
-    if (!isProductMode) return []
+    if (!hasScope) return []
     const set = new Set<string>()
     for (const row of chartRows) set.add(row.stockType)
     return Array.from(set)
       .map((v) => ({ value: v, label: v }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [isProductMode, chartRows])
+  }, [hasScope, chartRows])
+
+  // When the user changes warehouses, prune any bin selections whose parent
+  // is no longer selected. Doing this inside the change handler (vs an effect
+  // watching selectedLocations) avoids URL/state ping-pong from cascading
+  // writes.
+  const pruneStorageForLocations = useCallback(
+    (locations: FilterSelection, storage: FilterSelection): FilterSelection => {
+      if (locations === 'all') return storage
+      if (storage === 'all') return storage
+      let changed = false
+      const next = new Set<string>()
+      for (const id of storage) {
+        const parent = allStorageOptions.find((o) => o.value === id)?.parentLocationId
+        if (parent && locations.has(parent)) next.add(id)
+        else changed = true
+      }
+      if (!changed) return storage
+      return next
+    },
+    [allStorageOptions],
+  )
+
+  const handleLocationsChange = useCallback(
+    (next: FilterSelection) => {
+      setSelectedLocations(next)
+      const prunedStorage = pruneStorageForLocations(next, selectedStorageLocations)
+      const updates: Parameters<typeof writeFiltersToUrl>[0] = { locations: next }
+      if (!selectionsEqual(prunedStorage, selectedStorageLocations)) {
+        setSelectedStorageLocations(prunedStorage)
+        updates.storageLocations = prunedStorage
+      }
+      writeFiltersToUrl(updates)
+    },
+    [pruneStorageForLocations, selectedStorageLocations, writeFiltersToUrl],
+  )
+
+  const handleStorageLocationsChange = useCallback(
+    (next: FilterSelection) => {
+      setSelectedStorageLocations(next)
+      writeFiltersToUrl({ storageLocations: next })
+    },
+    [writeFiltersToUrl],
+  )
+
+  const handleStockTypesChange = useCallback(
+    (next: FilterSelection) => {
+      setSelectedStockTypes(next)
+      writeFiltersToUrl({ stockTypes: next })
+    },
+    [writeFiltersToUrl],
+  )
 
   const filteredSeries = useMemo<StockMovementSeries[]>(() => {
-    if (!isProductMode) return productSeries
-    return productSeries.filter((s) => {
-      const sepIdx = s.key.indexOf('|')
-      const locId = sepIdx >= 0 ? s.key.slice(0, sepIdx) : s.key
-      const sType = sepIdx >= 0 ? s.key.slice(sepIdx + 1) : ''
+    return allSeries.filter((s) => {
+      const { locationId: locId, storageLocationId: stoId, stockType: stkType } = decodeSeriesKey(
+        s.key,
+      )
       const locOk = selectedLocations === 'all' || selectedLocations.has(locId)
-      const typeOk = selectedStockTypes === 'all' || selectedStockTypes.has(sType)
-      return locOk && typeOk
+      // Bin filter is opt-in — when 'all', bin-agnostic series pass through.
+      // When set to a Set, bin-agnostic series (stoId === null) are hidden
+      // because they can't satisfy a specific bin constraint. Mirrors the
+      // stock page filter logic.
+      const stoOk =
+        selectedStorageLocations === 'all' ||
+        (stoId !== null && selectedStorageLocations.has(stoId))
+      const typeOk = selectedStockTypes === 'all' || selectedStockTypes.has(stkType)
+      return locOk && stoOk && typeOk
     })
-  }, [isProductMode, productSeries, selectedLocations, selectedStockTypes])
+  }, [allSeries, selectedLocations, selectedStorageLocations, selectedStockTypes])
 
   const noFilterSelected =
-    isProductMode &&
+    hasScope &&
     ((selectedLocations !== 'all' && selectedLocations.size === 0) ||
+      (selectedStorageLocations !== 'all' && selectedStorageLocations.size === 0) ||
       (selectedStockTypes !== 'all' && selectedStockTypes.size === 0))
 
   const fromInputValue = isoToDateInput(range.from)
@@ -456,7 +572,7 @@ export default function StockMovementsPage(): JSX.Element {
   return (
     <div>
       <div className="sticky top-0 z-20 bg-background">
-        <div className="h-12 border-b border-border px-6 flex items-center gap-2 text-sm">
+        <div className="h-12 border-b border-border px-6 md:px-8 flex items-center gap-2 text-sm">
           <Link
             href="/stock"
             className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -471,7 +587,7 @@ export default function StockMovementsPage(): JSX.Element {
         <PageHeader title={t('title')} noSticky />
       </div>
 
-      <div className="px-6 py-6 space-y-6">
+      <div className="px-6 md:px-8 py-6 space-y-6">
         <section>
           <h2 className="text-sm font-semibold text-foreground mb-3">{t('chart.title')}</h2>
 
@@ -523,31 +639,27 @@ export default function StockMovementsPage(): JSX.Element {
             </div>
           </div>
 
-          {isProductMode && (
+          {hasScope && (
             <div className="mb-3">
               <MovementFilters
                 locationOptions={locationOptions}
+                storageLocationOptions={filteredStorageOptions}
                 stockTypeOptions={stockTypeOptions}
                 selectedLocations={selectedLocations}
+                selectedStorageLocations={selectedStorageLocations}
                 selectedStockTypes={selectedStockTypes}
                 onLocationsChange={handleLocationsChange}
+                onStorageLocationsChange={handleStorageLocationsChange}
                 onStockTypesChange={handleStockTypesChange}
               />
             </div>
           )}
 
-          {hasChart ? (
+          {hasScope ? (
             <>
-              {isProductMode && (
-                <div className="mb-2">
-                  <p className="text-sm font-medium text-foreground">
-                    {t('chart.multiLine.title')}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('chart.multiLine.description')} {t('chart.multiLine.legendToggleHint')}
-                  </p>
-                </div>
-              )}
+              <p className="text-xs text-muted-foreground mb-2">
+                {t('chart.multiLine.legendToggleHint')}
+              </p>
               {isChartTruncated && (
                 <p
                   role="status"
@@ -568,16 +680,9 @@ export default function StockMovementsPage(): JSX.Element {
                     {t('chart.noFilterSelected.description')}
                   </p>
                 </div>
-              ) : isProductMode ? (
-                <StockMovementChart
-                  series={filteredSeries}
-                  emptyTitle={chartEmptyTitle}
-                  emptyDescription={chartEmptyDescription}
-                  selectedRangeMs={selectedRangeMs}
-                />
               ) : (
                 <StockMovementChart
-                  movements={chartRows}
+                  series={filteredSeries}
                   emptyTitle={chartEmptyTitle}
                   emptyDescription={chartEmptyDescription}
                   selectedRangeMs={selectedRangeMs}
@@ -587,10 +692,10 @@ export default function StockMovementsPage(): JSX.Element {
           ) : (
             <div className="rounded-md border border-border h-64 flex flex-col items-center justify-center text-center px-6">
               <p className="text-sm font-medium text-foreground">
-                {t('chart.filtersRequired.title')}
+                {t('chart.missingScope.title')}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {t('chart.filtersRequired.description')}
+                {t('chart.missingScope.description')}
               </p>
             </div>
           )}
