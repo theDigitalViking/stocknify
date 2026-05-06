@@ -363,16 +363,17 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // -------------------------------------------------------------------------
-  // DELETE /credentials/:id — soft-delete
+  // DELETE /credentials/:id — hard-delete (DECISIONS 2026-05-07)
   //
-  // The active-schedule check + soft-delete update run inside a single
-  // SERIALIZABLE transaction (Codex review fix — the original count + update
-  // pair was a check-then-act race: a concurrent INSERT into
-  // integration_schedules could land between the two statements, leaving a
-  // soft-deleted credential referenced by an active schedule). With
-  // SERIALIZABLE, Postgres detects the conflicting read+write set and aborts
-  // one transaction with `serialization_failure` (Prisma error code P2034);
-  // we retry once, then surface 503.
+  // The active-schedule check + delete run inside a single SERIALIZABLE
+  // transaction so a concurrent INSERT into integration_schedules cannot
+  // bypass the in-use guard. Postgres surfaces the conflict as P2034
+  // (serialization failure); we retry once, then surface 503.
+  //
+  // Hard delete (not soft) — credentials carry sensitive auth material; when
+  // the operator removes them they're gone from the DB, no `deletedAt`
+  // tombstone. The `deletedAt` column remains on the schema for now but is
+  // no longer written to by this route.
   // -------------------------------------------------------------------------
   app.delete('/credentials/:id', async (request, reply) => {
     const params = idParamSchema.safeParse(request.params)
@@ -409,9 +410,8 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
           if (activeSchedules > 0) {
             return { kind: 'inUse', count: activeSchedules }
           }
-          await tx.integrationCredential.update({
+          await tx.integrationCredential.delete({
             where: { id: credentialId },
-            data: { deletedAt: new Date(), isActive: false },
           })
           return { kind: 'deleted' }
         },

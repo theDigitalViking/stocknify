@@ -146,7 +146,7 @@ describe('credentials routes (Cycle 3-B)', () => {
       if (encryptedToken === null) throw new Error('expected encrypted token')
       expect(decryptCredential(encryptedToken)).toBe('api-token-123')
 
-      // Delete (no schedules → succeeds)
+      // Delete (no schedules → succeeds, hard delete per DECISIONS 2026-05-07)
       const deleted = await app.inject({
         method: 'DELETE',
         url: `/v1/credentials/${credentialId}`,
@@ -156,7 +156,13 @@ describe('credentials routes (Cycle 3-B)', () => {
       const deletedBody = deleted.json() as DeleteBody
       expect(deletedBody.data).toEqual({ id: credentialId, deleted: true })
 
-      // List now empty (soft-delete excludes the row).
+      // Hard delete: the row is gone from the DB, not just soft-deleted.
+      const dbAfterDelete = await testDb.integrationCredential.findUnique({
+        where: { id: credentialId },
+      })
+      expect(dbAfterDelete).toBeNull()
+
+      // List now empty.
       const listAfter = await app.inject({
         method: 'GET',
         url: '/v1/credentials',
@@ -539,11 +545,11 @@ describe('credentials DELETE — atomic in-use check (Codex review fix)', () => 
       // Two $transaction calls: one that threw P2034, one that succeeded.
       expect(txSpy).toHaveBeenCalledTimes(2)
 
-      // Soft-delete actually committed.
-      const dbRow = await testDb.integrationCredential.findUniqueOrThrow({
+      // Hard delete actually committed (DECISIONS 2026-05-07).
+      const dbRow = await testDb.integrationCredential.findUnique({
         where: { id: credentialId },
       })
-      expect(dbRow.deletedAt).not.toBeNull()
+      expect(dbRow).toBeNull()
     } finally {
       await app.close()
     }

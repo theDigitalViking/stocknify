@@ -21,6 +21,7 @@ const TENANT_TABLES = [
   'integration_schedules',
   'integration_attribute_definitions',
   'integration_attribute_values',
+  'import_runs',
   'external_references',
   'csv_mapping_templates',
   'rules',

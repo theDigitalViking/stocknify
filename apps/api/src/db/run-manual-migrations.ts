@@ -48,6 +48,8 @@ const MANUAL_SQL_FILES = [
   'unique-active-marketplace-integration.sql',
   // v7 — deleted_by on products
   'add-product-deleted-by.sql',
+  // v8 — import_runs (Cycle 3-C SFTP/FTP import pipeline)
+  'rls-policies-v5.sql',
 ];
 
 // Idempotent seed files — safe to re-run via ON CONFLICT DO NOTHING

@@ -1,8 +1,7 @@
 /**
- * Thin wrapper around `ssh2-sftp-client` for credential connection tests.
- * Cycle 3-C will extend this module with `listDirectory` / `streamFile` for
- * the actual SFTP import pipeline; this file only ships the connect-and-
- * disconnect shape the credential vault needs.
+ * Thin wrapper around `ssh2-sftp-client` for credential connection tests
+ * plus the directory-listing / file-streaming primitives the SFTP import
+ * pipeline (Cycle 3-C) calls.
  */
 
 import SftpClient from 'ssh2-sftp-client'
@@ -21,7 +20,23 @@ export interface ConnectionTestResult {
   error?: string
 }
 
+// Shared file-info shape returned by both SFTP and FTP listings (R1+R2).
+// `modifiedAt` is ISO-8601 UTC; `type` collapses to file/directory (symlinks
+// surface as their resolved kind on most servers — we don't follow them).
+export interface SftpFileInfo {
+  name: string
+  size: number
+  modifiedAt: string
+  type: 'file' | 'directory'
+}
+
+export interface SftpStreamHandle {
+  stream: NodeJS.ReadableStream
+  cleanup: () => Promise<void>
+}
+
 const CONNECT_TIMEOUT_MS = 10_000
+const LIST_TIMEOUT_MS = 30_000
 
 export async function testSftpConnection(
   config: SftpTestConfig,
@@ -48,5 +63,83 @@ export async function testSftpConnection(
     } catch {
       // ignore — disconnect failures shouldn't override the connect outcome.
     }
+  }
+}
+
+async function connectSftp(config: SftpTestConfig): Promise<SftpClient> {
+  const client = new SftpClient()
+  await withTimeout(
+    client.connect({
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      ...(config.password !== undefined ? { password: config.password } : {}),
+      readyTimeout: CONNECT_TIMEOUT_MS,
+    }),
+    CONNECT_TIMEOUT_MS,
+  )
+  return client
+}
+
+export async function listSftpDirectory(
+  config: SftpTestConfig,
+  remotePath: string,
+  filter?: { extension?: string },
+): Promise<SftpFileInfo[]> {
+  const client = await connectSftp(config)
+  try {
+    const entries = await withTimeout(client.list(remotePath), LIST_TIMEOUT_MS)
+    const ext = filter?.extension?.toLowerCase()
+    const mapped: SftpFileInfo[] = []
+    for (const entry of entries) {
+      const isFile = entry.type === '-'
+      const isDir = entry.type === 'd'
+      if (!isFile && !isDir) continue
+      if (ext && isFile && !entry.name.toLowerCase().endsWith(ext)) continue
+      mapped.push({
+        name: entry.name,
+        size: entry.size,
+        // `modifyTime` is epoch milliseconds on ssh2-sftp-client.
+        modifiedAt: new Date(entry.modifyTime).toISOString(),
+        type: isDir ? 'directory' : 'file',
+      })
+    }
+    mapped.sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : -1))
+    return mapped
+  } finally {
+    try {
+      await client.end()
+    } catch {
+      // ignore disconnect failures
+    }
+  }
+}
+
+export async function streamSftpFile(
+  config: SftpTestConfig,
+  remotePath: string,
+): Promise<SftpStreamHandle> {
+  const client = await connectSftp(config)
+  try {
+    const stream = client.createReadStream(remotePath)
+    return {
+      stream,
+      cleanup: async () => {
+        try {
+          await client.end()
+        } catch {
+          // ignore — caller already consumed (or aborted) the stream.
+        }
+      },
+    }
+  } catch (err) {
+    // Connect succeeded but stream creation failed — release the connection
+    // and rethrow so the caller can still surface the error.
+    try {
+      await client.end()
+    } catch {
+      // ignore
+    }
+    throw err
   }
 }

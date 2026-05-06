@@ -77,6 +77,7 @@ model Tenant {
   integrationSchedules            IntegrationSchedule[]
   notificationTemplates           NotificationTemplate[]
   incidents                       Incident[]
+  importRuns                      ImportRun[]
 
   @@map("tenants")
 }
@@ -409,6 +410,7 @@ model Integration {
   externalReferences   ExternalReference[]
   attributeDefinitions IntegrationAttributeDefinition[]
   incidents            Incident[]
+  importRuns           ImportRun[]
 
   @@index([tenantId])
   @@map("integrations")
@@ -932,4 +934,39 @@ model NotificationTemplate {
   // and PostgreSQL treats NULLs as distinct in standard UNIQUE constraints.
   @@index([tenantId])
   @@map("notification_templates")
+}
+
+// ---------------------------------------------------------------------------
+// ImportRun — one row per scheduled or manual import attempt for an
+// integration. Captures the final stats, status, and timing so operators can
+// see history and debug failed runs (Cycle 3-C). Plan-tiered retention
+// (DECISIONS 2026-05-07) trims older rows in a future background job.
+// ---------------------------------------------------------------------------
+model ImportRun {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  integrationId   String    @map("integration_id") @db.Uuid
+  scheduleId      String?   @map("schedule_id") @db.Uuid
+  credentialId    String?   @map("credential_id") @db.Uuid
+  trigger         String    @db.Text // 'manual' | 'scheduled'
+  status          String    @default("running") @db.Text // 'running' | 'success' | 'partial' | 'failed'
+  fileName        String?   @map("file_name") @db.Text
+  fileSizeBytes   Int?      @map("file_size_bytes")
+  rowsTotal       Int       @default(0) @map("rows_total")
+  rowsCreated     Int       @default(0) @map("rows_created")
+  rowsUpdated     Int       @default(0) @map("rows_updated")
+  rowsSkipped     Int       @default(0) @map("rows_skipped")
+  rowsErrored    Int        @default(0) @map("rows_errored")
+  errorSummary    String?   @map("error_summary") @db.Text
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  integration Integration @relation(fields: [integrationId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, integrationId])
+  @@map("import_runs")
 }

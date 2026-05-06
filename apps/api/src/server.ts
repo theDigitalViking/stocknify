@@ -8,6 +8,7 @@ import { credentialsRoutes } from './routes/credentials/index.js'
 import { csvRoutes } from './routes/csv/index.js'
 import { healthRoutes } from './routes/health.js'
 import { integrationsRoutes } from './routes/integrations/index.js'
+import { sftpImportRoutes } from './routes/integrations/sftp-import.js'
 import { locationsRoutes } from './routes/locations/index.js'
 import { notificationsRoutes } from './routes/notifications/index.js'
 import { productsRoutes } from './routes/products/index.js'
@@ -42,6 +43,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       await v1.register(stockRoutes)
       await v1.register(stockTypesRoutes)
       await v1.register(integrationsRoutes)
+      await v1.register(sftpImportRoutes)
       await v1.register(credentialsRoutes)
       await v1.register(csvRoutes)
       await v1.register(rulesRoutes)
