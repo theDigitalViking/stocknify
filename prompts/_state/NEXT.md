@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-07 (Batch 3 überarbeitet — Schema für Credentials + Schedules existiert bereits, Cycles reduziert von 6 auf 5)
+**Last updated:** 2026-05-08 (Cycle 3-C abgeschlossen — SFTP/FTP connector + import_runs + manual import live; nächster Cycle ist 3-D BullMQ schedule engine)
 
 ---
 
@@ -12,7 +12,7 @@
 
 **Batch 2** abgeschlossen. Cycles 2-A bis 2-F + alle Codex-Review-Fixes. Auf `main` (merged 2026-05-07). 13 Backend-Tests grün.
 
-**Batch 3** geplant — SFTP/FTP Automated Import. 5 Cycles (3-A bis 3-E). Schema für `integration_credentials` und `integration_schedules` existiert bereits (Prisma v3), ebenso Check-Constraints und RLS-Policies. Hauptarbeit ist Endpoint-Bau, BullMQ-Infra und Frontend.
+**Batch 3** in Arbeit — SFTP/FTP Automated Import. 5 Cycles (3-A bis 3-E). Schema für `integration_credentials` und `integration_schedules` existiert bereits (Prisma v3); Cycle 3-C hat zusätzlich `import_runs` angelegt. **3-A** (UX Polish), **3-B** (Credential Vault) und **3-C** (SFTP/FTP Connector + Import Pipeline) sind abgeschlossen. Verbleibend: **3-D** (BullMQ Schedule Engine), **3-E** (Frontend Config + Wizard).
 
 **Naming convention:** Batches nummeriert (1, 2, 3…). Cycles pro Batch alphabetisch. Sonder-Cycles: Kürzel-Prefix.
 
