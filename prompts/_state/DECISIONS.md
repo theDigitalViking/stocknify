@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-05-07 — SFTP/FTP file handling: direct streaming, not temp files
+
+**Decision:** The SFTP/FTP connector pipes the remote file's read stream directly into the existing CSV streaming pipeline (`iconv.decodeStream` → `parseCsvStreaming`). No download to a temp directory.
+
+**Rationale:** Multi-tenant SaaS with potentially hundreds of concurrent scheduled imports. Temp-file management (write, process, cleanup, error-state cleanup) adds operational surface for no benefit when the CSV pipeline is already stream-based. Connectivity issues are handled via BullMQ retry logic (3 retries with exponential backoff), not by persisting partial downloads.
+
+**Alternatives considered:** Download to temp dir first — simpler error handling but creates file-management burden at scale (cleanup on crash, disk-space monitoring, concurrent-access isolation).
+
+## 2026-05-07 — Import run history: plan-tiered retention
+
+**Decision:** All import runs are stored in an `import_runs` table. API response is filtered by the tenant's plan tier: cheaper plans see the last N runs (e.g. 10–20), higher plans see extended history. Retention cleanup runs as a background job.
+
+**Rationale:** Every operator needs recent run visibility for debugging. Full history is a premium feature that justifies the storage cost at scale.
+
+## 2026-05-07 — Scheduled import retry: 3 retries with backoff, then pause + notify
+
+**Decision:** When a scheduled SFTP/FTP import fails (connection error, auth failure, file not found), BullMQ retries 3 times with exponential backoff. After 3 failures, the job pauses until the next scheduled run. A notification is triggered (incident system — details TBD) so the operator knows it failed.
+
+**Rationale:** Transient network issues resolve themselves within minutes; 3 retries with backoff covers that. Persistent failures (wrong credentials, server down) shouldn't hammer the remote server — pausing until the next cron window is the right behavior. Notification ensures the operator isn't blind to failures.
+
+## 2026-05-07 — Schedule model: cron expressions with builder UI
+
+**Decision:** Schedules are stored as cron expressions (string) in the database. The frontend provides a builder UI that generates the cron expression from structured inputs (interval / weekday+time / etc.). The raw cron string is never shown to the user — the UI displays a human-readable sentence ("Every Monday and Wednesday at 17:00"). Backend validates with `cron-parser`.
+
+**Rationale:** Cron is the industry standard for job scheduling, natively supported by BullMQ's repeatable jobs. A structured-only model would need translation to cron anyway for BullMQ, and would limit future power-user scenarios. The builder UI abstracts the complexity completely.
+
+## 2026-05-07 — Credential vault: reusable, separate entity
+
+**Decision:** SFTP/FTP credentials are stored in a dedicated `integration_credentials` table (tenant-scoped, AES-256-GCM encrypted, RLS-enforced), referenced by integrations via `credential_id` FK. Multiple integrations can share the same credential set. Credentials support password auth and SSH key auth (SFTP).
+
+**Rationale:** Operators pulling different stock types from different directories on the same server shouldn't have to enter credentials multiple times. Separating credentials from integrations also simplifies credential rotation (update once, all linked integrations inherit).
+
 ## 2026-05-05 — Review classification policy for Codex reviews
 
 **Decision:** Every prompt gets a `Review:` header field with one of three classifications: `review:mandatory` (backend logic, schema, auth, API contracts, data-flow), `review:recommended` (mixed frontend+backend without schema change, complex state), or `review:skip` (purely visual, i18n-only, docs-only, renames). Claude (Chat) assigns the classification when writing the prompt. If missing, default to `review:mandatory`. Sebastian uses the classification to decide whether to run a separate Codex review session after Claude Code pushes.
