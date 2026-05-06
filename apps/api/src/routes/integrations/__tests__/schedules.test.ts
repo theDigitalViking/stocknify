@@ -370,6 +370,218 @@ describe('POST /v1/integrations/:id/schedules', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Codex review fixes — 2026-05-08
+// PATCH must re-validate any swapped credentialId or csvMappingTemplateId
+// against the same gates POST enforces; otherwise an admin can bind a
+// credential from a different integration (or a deleted/inactive one), or
+// attach a template with the wrong direction/resourceType, in a single
+// PATCH call.
+// ---------------------------------------------------------------------------
+
+describe('PATCH /schedules/:scheduleId — credential/template re-validation (Codex review fix)', () => {
+  async function createSchedule(
+    app: Awaited<ReturnType<typeof buildTestApp>>,
+    seed: SeedResult,
+  ): Promise<ScheduleBody> {
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/integrations/${seed.integration.id}/schedules`,
+      headers: seed.headers,
+      payload: {
+        name: 'baseline',
+        resourceType: 'stock',
+        direction: 'import',
+        scheduleType: 'daily',
+        timeOfDay: '06:00',
+        credentialId: seed.credential.id,
+      },
+    })
+    expect(created.statusCode).toBe(201)
+    return created.json() as ScheduleBody
+  }
+
+  it('rejects a credential bound to a different integration with 409 CREDENTIAL_INTEGRATION_MISMATCH', async () => {
+    const seed = await seedScenario()
+    // Second integration in the same tenant + a credential bound to it.
+    const otherIntegration = await testDb.integration.create({
+      data: {
+        tenantId: seed.tenant.id,
+        type: 'sftp',
+        name: 'Other SFTP',
+        status: 'active',
+      },
+    })
+    const otherBoundCredential = await testDb.integrationCredential.create({
+      data: {
+        tenantId: seed.tenant.id,
+        integrationId: otherIntegration.id,
+        credentialType: 'sftp',
+        name: 'Other Bound',
+        host: 'sftp.other.example.com',
+        port: 22,
+        username: 'sebastian',
+        password: 'enc-blob:irrelevant',
+        remotePath: '/exports',
+        isActive: true,
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      const schedule = await createSchedule(app, seed)
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${schedule.data.id}`,
+        headers: seed.headers,
+        payload: { credentialId: otherBoundCredential.id },
+      })
+      expect(res.statusCode).toBe(409)
+      expect((res.json() as ErrorBody).error.code).toBe(
+        'CREDENTIAL_INTEGRATION_MISMATCH',
+      )
+      // DB row not touched.
+      const dbRow = await testDb.integrationSchedule.findUnique({
+        where: { id: schedule.data.id },
+      })
+      expect(dbRow?.credentialId).toBe(seed.credential.id)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects an inactive credential on PATCH with 409 CREDENTIAL_INACTIVE', async () => {
+    const seed = await seedScenario()
+    const inactiveCredential = await testDb.integrationCredential.create({
+      data: {
+        tenantId: seed.tenant.id,
+        integrationId: seed.integration.id,
+        credentialType: 'sftp',
+        name: 'Stood-down',
+        host: 'sftp.hive.example.com',
+        port: 22,
+        username: 'sebastian',
+        password: 'enc-blob:irrelevant',
+        remotePath: '/exports',
+        isActive: false,
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      const schedule = await createSchedule(app, seed)
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${schedule.data.id}`,
+        headers: seed.headers,
+        payload: { credentialId: inactiveCredential.id },
+      })
+      expect(res.statusCode).toBe(409)
+      expect((res.json() as ErrorBody).error.code).toBe('CREDENTIAL_INACTIVE')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects a credential from another tenant on PATCH with 404 CREDENTIAL_NOT_FOUND', async () => {
+    const seed = await seedScenario()
+    const otherTenant = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      const schedule = await createSchedule(app, seed)
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${schedule.data.id}`,
+        headers: seed.headers,
+        payload: { credentialId: otherTenant.credential.id },
+      })
+      expect(res.statusCode).toBe(404)
+      expect((res.json() as ErrorBody).error.code).toBe('CREDENTIAL_NOT_FOUND')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects a mapping template with wrong direction on PATCH with 400 INVALID_TEMPLATE', async () => {
+    const seed = await seedScenario()
+    const exportTemplate = await testDb.csvMappingTemplate.create({
+      data: {
+        tenantId: seed.tenant.id,
+        name: 'Stock export',
+        resourceType: 'stock',
+        direction: 'export',
+        delimiter: ',',
+        encoding: 'utf-8',
+        hasHeaderRow: true,
+        columnMappings: [],
+        defaultValues: {},
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      const schedule = await createSchedule(app, seed)
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${schedule.data.id}`,
+        headers: seed.headers,
+        payload: { csvMappingTemplateId: exportTemplate.id },
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as ErrorBody).error.code).toBe('INVALID_TEMPLATE')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('clears the mapping template via PATCH null without re-validating', async () => {
+    const seed = await seedScenario()
+    const importTemplate = await testDb.csvMappingTemplate.create({
+      data: {
+        tenantId: seed.tenant.id,
+        name: 'Stock import',
+        resourceType: 'stock',
+        direction: 'import',
+        delimiter: ',',
+        encoding: 'utf-8',
+        hasHeaderRow: true,
+        columnMappings: [],
+        defaultValues: {},
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      // Create with the template attached, then clear it.
+      const created = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'with template',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+          credentialId: seed.credential.id,
+          csvMappingTemplateId: importTemplate.id,
+        },
+      })
+      expect(created.statusCode).toBe(201)
+      const id = (created.json() as ScheduleBody).data.id
+      const cleared = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integration.id}/schedules/${id}`,
+        headers: seed.headers,
+        payload: { csvMappingTemplateId: null },
+      })
+      expect(cleared.statusCode).toBe(200)
+      const dbRow = await testDb.integrationSchedule.findUnique({
+        where: { id },
+      })
+      expect(dbRow?.csvMappingTemplateId).toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 
 describe('schedule lifecycle', () => {
   it('list → update intervalValue → toggle inactive/active → delete', async () => {

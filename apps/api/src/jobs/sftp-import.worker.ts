@@ -175,6 +175,15 @@ export interface SftpImportJobData {
 export interface ProcessJobOptions {
   prisma?: PrismaClient
   logger?: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void; error: (...a: unknown[]) => void }
+  // BullMQ retries an import 3 times on transient failures (queue.ts
+  // attempts: 3 + exp backoff). Without this gate, every retry attempt
+  // would create another Incident row and bump consecutiveFailures by
+  // another 1 — three rows of Incident-spam per actual failure, and the
+  // health state escalating to `'failing'` on the very first cron tick.
+  // Callers (queue.ts handler) set this to true only on the BullMQ attempt
+  // that — if it fails — exhausts the retry budget. Defaults to true so
+  // direct callers (tests, scripts) get the full bookkeeping.
+  isFinalAttempt?: boolean
 }
 
 const noopLogger = {
@@ -189,6 +198,7 @@ export async function processSftpImportJob(
 ): Promise<{ status: string; importRunId?: string; reason?: string }> {
   const db = opts.prisma ?? defaultPrisma
   const log = opts.logger ?? noopLogger
+  const isFinalAttempt = opts.isFinalAttempt ?? true
 
   const schedule = await db.integrationSchedule.findFirst({
     where: { id: data.scheduleId },
@@ -263,7 +273,14 @@ export async function processSftpImportJob(
         importRun.id,
         'No CSV files found in remote directory',
       )
-      await markScheduleAndHealth(db, schedule.id, integration.id, 'failed', failed.errorSummary)
+      await markScheduleAndHealth(
+        db,
+        schedule.id,
+        integration.id,
+        'failed',
+        failed.errorSummary,
+        isFinalAttempt,
+      )
       return { status: 'failed', importRunId: importRun.id, reason: 'no_files' }
     }
     const filePath = joinRemotePath(dir, newest.name)
@@ -281,7 +298,14 @@ export async function processSftpImportJob(
           importRun.id,
           'Mapping template must have direction=import and resourceType=stock',
         )
-        await markScheduleAndHealth(db, schedule.id, integration.id, 'failed', failed.errorSummary)
+        await markScheduleAndHealth(
+          db,
+          schedule.id,
+          integration.id,
+          'failed',
+          failed.errorSummary,
+          isFinalAttempt,
+        )
         return { status: 'failed', importRunId: importRun.id, reason: 'invalid_template' }
       }
       mappings = t.columnMappings as unknown as ColumnMapping[]
@@ -355,6 +379,7 @@ export async function processSftpImportJob(
       integration.id,
       status,
       status === 'success' ? null : `${String(result.errors.length)} row(s) failed`,
+      isFinalAttempt,
     )
 
     return { status, importRunId: importRun.id }
@@ -371,11 +396,20 @@ export async function processSftpImportJob(
 
     log.error('worker import failed', err)
     await finalizeFailedRun(db, importRun.id, reason)
-    await markScheduleAndHealth(db, schedule.id, integration.id, 'failed', reason)
+    await markScheduleAndHealth(
+      db,
+      schedule.id,
+      integration.id,
+      'failed',
+      reason,
+      isFinalAttempt,
+    )
     // Re-throw so BullMQ counts this as a failed attempt and applies retry
-    // backoff. After `attempts` exhausts, an Incident row is created via
-    // BullMQ's failed handler — the worker registration in queue.ts wires
-    // that. For unit purposes the important contract is: thrown = retry.
+    // backoff. The Incident + consecutiveFailures bump only fires on the
+    // final attempt (gated inside markScheduleAndHealth via isFinalAttempt)
+    // — non-final attempts still finalize the ImportRun and the
+    // schedule.lastRun* fields so the audit trail is complete, but the
+    // operator-visible signals only fire once retries are exhausted.
     throw err
   }
 }
@@ -402,7 +436,10 @@ async function markScheduleAndHealth(
   integrationId: string,
   status: 'success' | 'partial' | 'failed',
   errorMessage: string | null,
+  isFinalAttempt: boolean,
 ): Promise<void> {
+  // Schedule's lastRun fields update on every attempt — they're an audit
+  // trail of what the worker last did, not a per-cron-tick signal.
   await db.integrationSchedule.update({
     where: { id: scheduleId },
     data: {
@@ -422,37 +459,57 @@ async function markScheduleAndHealth(
         lastError: errorMessage,
       },
     })
-  } else {
-    const after = await db.integration.update({
-      where: { id: integrationId },
-      data: {
-        consecutiveFailures: { increment: 1 },
-        lastErrorAt: new Date(),
-        lastError: errorMessage,
-      },
-      select: { tenantId: true, consecutiveFailures: true },
-    })
+    return
+  }
+
+  // status === 'failed'. On non-final BullMQ retry attempts, we record the
+  // last-error metadata on the integration row but DO NOT bump
+  // consecutiveFailures, escalate healthStatus, or create an Incident —
+  // those signals belong to the cron tick (which spans up to 3 retries),
+  // not to each retry attempt. Without this gate, a single transient
+  // failure produced 3 Incident rows and snapped consecutiveFailures from
+  // 0 to 3 in a single tick, instantly flipping healthStatus to
+  // 'failing'.
+  if (!isFinalAttempt) {
     await db.integration.update({
       where: { id: integrationId },
       data: {
-        healthStatus: escalateHealth(after.consecutiveFailures),
+        lastErrorAt: new Date(),
+        lastError: errorMessage,
       },
     })
-    // Create an incident so the operator sees the failure in the merchant
-    // dashboard. `isUserVisible: true` mirrors PROJECT.md §11.
-    await db.incident.create({
-      data: {
-        tenantId: after.tenantId,
-        sourceType: 'job',
-        sourceId: scheduleId,
-        integrationId,
-        severity: 'error',
-        code: 'SFTP_IMPORT_FAILED',
-        title: 'Scheduled SFTP/FTP import failed',
-        userMessage: errorMessage ?? 'The scheduled import did not complete.',
-        technicalMessage: errorMessage,
-        isUserVisible: true,
-      },
-    })
+    return
   }
+
+  const after = await db.integration.update({
+    where: { id: integrationId },
+    data: {
+      consecutiveFailures: { increment: 1 },
+      lastErrorAt: new Date(),
+      lastError: errorMessage,
+    },
+    select: { tenantId: true, consecutiveFailures: true },
+  })
+  await db.integration.update({
+    where: { id: integrationId },
+    data: {
+      healthStatus: escalateHealth(after.consecutiveFailures),
+    },
+  })
+  // Create an incident so the operator sees the failure in the merchant
+  // dashboard. `isUserVisible: true` mirrors PROJECT.md §11.
+  await db.incident.create({
+    data: {
+      tenantId: after.tenantId,
+      sourceType: 'job',
+      sourceId: scheduleId,
+      integrationId,
+      severity: 'error',
+      code: 'SFTP_IMPORT_FAILED',
+      title: 'Scheduled SFTP/FTP import failed',
+      userMessage: errorMessage ?? 'The scheduled import did not complete.',
+      technicalMessage: errorMessage,
+      isUserVisible: true,
+    },
+  })
 }

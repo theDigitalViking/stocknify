@@ -12,7 +12,7 @@
  * scheduler if Redis is reset.
  */
 
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import {
@@ -202,6 +202,85 @@ async function removeScheduler(scheduleId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Validation helpers — shared by POST and PATCH so a credential or template
+// swap on PATCH goes through the same gates as a fresh create. Returns null
+// on success; on failure returns a {status, code, message} payload that the
+// caller forwards to reply.
+// ---------------------------------------------------------------------------
+
+interface ValidationFailure {
+  status: number
+  code: string
+  message: string
+}
+
+async function validateCredentialForSchedule(
+  request: FastifyRequest,
+  credentialId: string,
+  integrationId: string,
+): Promise<ValidationFailure | null> {
+  const credential = await request.db.integrationCredential.findFirst({
+    where: {
+      id: credentialId,
+      tenantId: request.tenantId,
+      deletedAt: null,
+    },
+    select: { id: true, integrationId: true, isActive: true },
+  })
+  if (!credential) {
+    return {
+      status: 404,
+      code: 'CREDENTIAL_NOT_FOUND',
+      message: 'Credential not found',
+    }
+  }
+  if (
+    credential.integrationId !== null &&
+    credential.integrationId !== integrationId
+  ) {
+    return {
+      status: 409,
+      code: 'CREDENTIAL_INTEGRATION_MISMATCH',
+      message: 'Credential is bound to a different integration',
+    }
+  }
+  if (!credential.isActive) {
+    return {
+      status: 409,
+      code: 'CREDENTIAL_INACTIVE',
+      message:
+        'Credential is marked inactive — re-activate it before scheduling imports',
+    }
+  }
+  return null
+}
+
+async function validateMappingTemplateForSchedule(
+  request: FastifyRequest,
+  templateId: string,
+): Promise<ValidationFailure | null> {
+  const template = await request.db.csvMappingTemplate.findFirst({
+    where: {
+      id: templateId,
+      tenantId: request.tenantId,
+      deletedAt: null,
+    },
+    select: { id: true, direction: true, resourceType: true },
+  })
+  if (!template) {
+    return { status: 404, code: 'NOT_FOUND', message: 'Mapping template not found' }
+  }
+  if (template.direction !== 'import' || template.resourceType !== 'stock') {
+    return {
+      status: 400,
+      code: 'INVALID_TEMPLATE',
+      message: 'Template must have direction=import and resourceType=stock',
+    }
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
@@ -272,65 +351,26 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    // Validate the credential exists, belongs to the tenant, is active, and
-    // (when bound) belongs to this integration. Mirrors the binding/active
-    // gates from sftp-import.ts; same trust-boundary reasoning.
-    const credential = await request.db.integrationCredential.findFirst({
-      where: {
-        id: body.data.credentialId,
-        tenantId: request.tenantId,
-        deletedAt: null,
-      },
-      select: { id: true, integrationId: true, isActive: true },
-    })
-    if (!credential) {
-      return reply.code(404).send({
-        error: { code: 'CREDENTIAL_NOT_FOUND', message: 'Credential not found' },
-      })
-    }
-    if (
-      credential.integrationId !== null &&
-      credential.integrationId !== integration.id
-    ) {
-      return reply.code(409).send({
-        error: {
-          code: 'CREDENTIAL_INTEGRATION_MISMATCH',
-          message: 'Credential is bound to a different integration',
-        },
-      })
-    }
-    if (!credential.isActive) {
-      return reply.code(409).send({
-        error: {
-          code: 'CREDENTIAL_INACTIVE',
-          message: 'Credential is marked inactive — re-activate it before scheduling imports',
-        },
-      })
+    const credErr = await validateCredentialForSchedule(
+      request,
+      body.data.credentialId,
+      integration.id,
+    )
+    if (credErr) {
+      return reply
+        .code(credErr.status)
+        .send({ error: { code: credErr.code, message: credErr.message } })
     }
 
-    // Validate mapping template (when provided): tenant-scoped, import +
-    // stock direction. Same shape as the manual import-now check.
     if (body.data.csvMappingTemplateId) {
-      const template = await request.db.csvMappingTemplate.findFirst({
-        where: {
-          id: body.data.csvMappingTemplateId,
-          tenantId: request.tenantId,
-          deletedAt: null,
-        },
-        select: { id: true, direction: true, resourceType: true },
-      })
-      if (!template) {
-        return reply.code(404).send({
-          error: { code: 'NOT_FOUND', message: 'Mapping template not found' },
-        })
-      }
-      if (template.direction !== 'import' || template.resourceType !== 'stock') {
-        return reply.code(400).send({
-          error: {
-            code: 'INVALID_TEMPLATE',
-            message: 'Template must have direction=import and resourceType=stock',
-          },
-        })
+      const tplErr = await validateMappingTemplateForSchedule(
+        request,
+        body.data.csvMappingTemplateId,
+      )
+      if (tplErr) {
+        return reply
+          .code(tplErr.status)
+          .send({ error: { code: tplErr.code, message: tplErr.message } })
       }
     }
 
@@ -415,6 +455,38 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({
         error: { code: 'SCHEDULE_NOT_FOUND', message: 'Schedule not found' },
       })
+    }
+
+    // Re-validate any swapped credential or template against the same gates
+    // POST enforces. Without this, a body that includes credentialId could
+    // bind a credential from a different integration (or an inactive /
+    // soft-deleted one), and a swapped csvMappingTemplateId could attach a
+    // template with the wrong direction or resourceType.
+    if (body.data.credentialId !== undefined) {
+      const credErr = await validateCredentialForSchedule(
+        request,
+        body.data.credentialId,
+        params.data.id,
+      )
+      if (credErr) {
+        return reply
+          .code(credErr.status)
+          .send({ error: { code: credErr.code, message: credErr.message } })
+      }
+    }
+    if (
+      body.data.csvMappingTemplateId !== undefined &&
+      body.data.csvMappingTemplateId !== null
+    ) {
+      const tplErr = await validateMappingTemplateForSchedule(
+        request,
+        body.data.csvMappingTemplateId,
+      )
+      if (tplErr) {
+        return reply
+          .code(tplErr.status)
+          .send({ error: { code: tplErr.code, message: tplErr.message } })
+      }
     }
 
     // Resolve the post-update field set. Any change to scheduleType /

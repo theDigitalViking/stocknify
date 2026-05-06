@@ -79,7 +79,16 @@ export async function startSftpImportWorker(): Promise<Worker | null> {
   if (_sftpImportWorker) return _sftpImportWorker
   try {
     const { processSftpImportJob } = await import('./sftp-import.worker.js')
-    const handler: Processor = async (job) => processSftpImportJob(job.data)
+    const handler: Processor = async (job) => {
+      // BullMQ semantics: `attemptsMade` is the count of attempts that have
+      // already failed when the handler is invoked. On the first attempt
+      // it's 0; if the handler throws, BullMQ increments it and retries
+      // until `attemptsMade >= attempts`. `isFinalAttempt` therefore is
+      // true when the next failure will exhaust retries.
+      const attempts = job.opts.attempts ?? 1
+      const isFinalAttempt = job.attemptsMade + 1 >= attempts
+      return processSftpImportJob(job.data, { isFinalAttempt })
+    }
     _sftpImportWorker = new Worker(SFTP_IMPORT_QUEUE_NAME, handler, {
       connection: redis,
       concurrency: 4,
