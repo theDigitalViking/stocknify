@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-05-07 — Credentials: hard delete, not soft delete
+
+**Decision:** `DELETE /v1/credentials/:id` performs a hard delete (row removal) instead of a soft delete (`deletedAt` + `isActive = false`). The 409 `CREDENTIAL_IN_USE` guard stays — credentials referenced by active schedules cannot be deleted.
+
+**Rationale:** Credentials contain sensitive authentication data (passwords, tokens, keys). When a customer explicitly deletes credentials, the data should be gone from the database, not lingering in a soft-deleted state. This eliminates the entire class of "soft-deleted credential" edge cases (e.g. schedule-create racing against soft-delete, queries needing `WHERE deleted_at IS NULL` filters, potential data-retention compliance issues). The `deletedAt` column remains on the schema for now but is no longer written to by the credential routes.
+
 ## 2026-05-07 — SFTP/FTP file handling: direct streaming, not temp files
 
 **Decision:** The SFTP/FTP connector pipes the remote file's read stream directly into the existing CSV streaming pipeline (`iconv.decodeStream` → `parseCsvStreaming`). No download to a temp directory.
