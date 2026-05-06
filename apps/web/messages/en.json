@@ -195,6 +195,7 @@
       "product": "Product",
       "variant": "Variant",
       "location": "Warehouse",
+      "storageLocation": "Storage location",
       "stockType": "Type",
       "quantity": "Quantity",
       "delta": "Change",

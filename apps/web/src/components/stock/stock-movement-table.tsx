@@ -69,6 +69,12 @@ export function StockMovementTable({
       accessor: (row) => <span className="text-sm">{row.locationName}</span>,
     },
     {
+      header: t('columns.storageLocation'),
+      accessor: (row) => (
+        <span className="text-sm">{row.storageLocationName ?? '—'}</span>
+      ),
+    },
+    {
       header: t('columns.stockType'),
       accessor: (row) => (
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">

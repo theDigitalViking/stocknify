@@ -231,9 +231,9 @@ export default function ProductDetailPage(): JSX.Element {
                       isClickable &&
                         'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                       // Borders on <tr> are dropped under border-collapse: collapse (Tailwind preflight),
-                      // so the brand-tinted left rail uses an inset box-shadow that paints reliably.
+                      // so the selected-row left rail uses an inset box-shadow that paints reliably.
                       isSelected &&
-                        'bg-brand-100 hover:bg-brand-100 shadow-[inset_4px_0_0_0_#0d9488]',
+                        'bg-blue-50 hover:bg-blue-50 shadow-[inset_4px_0_0_0_theme(colors.blue.500)]',
                     )}
                   >
                     <td className="px-4 py-2">

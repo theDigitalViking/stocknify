@@ -33,10 +33,22 @@ interface SingleFilterProps {
 function SingleFilter({ label, options, selection, onChange }: SingleFilterProps): JSX.Element {
   const t = useTranslations('stockMovements.filters')
   const isAll = selection === 'all'
-  const selectedCount = isAll ? options.length : selection.size
-  const summary = `${label}: ${
-    isAll ? t('all') : t('selectedCount', { count: selectedCount })
-  }`
+  // Label rules (Cycle 3-A R2): only the explicit `'all'` sentinel renders as
+  // "Alle". A concrete `Set` — even one whose size happens to equal the option
+  // count — renders the names so deep-linked operators see what's filtered.
+  let summary: string
+  if (isAll) {
+    summary = `${label}: ${t('all')}`
+  } else {
+    const labels = options
+      .filter((o) => selection.has(o.value))
+      .map((o) => o.label)
+    if (labels.length >= 1 && labels.length <= 3) {
+      summary = `${label}: ${labels.join(', ')}`
+    } else {
+      summary = `${label}: ${t('selectedCount', { count: selection.size })}`
+    }
+  }
 
   const isOptionChecked = (value: string): boolean =>
     selection === 'all' || selection.has(value)

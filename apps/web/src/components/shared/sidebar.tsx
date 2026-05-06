@@ -166,22 +166,24 @@ export function Sidebar(): JSX.Element {
       {tenant && !isCollapsed ? (
         <div className="px-3 pb-2 min-w-0">
           <div className="flex items-center justify-between gap-2 min-w-0">
-            <span
-              className="text-xs font-medium text-foreground truncate"
-              title={tenant.name}
-            >
-              {tenant.name}
-            </span>
+            <div className="flex flex-col min-w-0">
+              <span
+                className="text-xs font-medium text-foreground truncate"
+                title={tenant.name}
+              >
+                {tenant.name}
+              </span>
+              {userLabel ? (
+                <span
+                  className="text-[11px] text-muted-foreground truncate"
+                  title={userLabel}
+                >
+                  {userLabel}
+                </span>
+              ) : null}
+            </div>
             <PlanBadge plan={tenant.plan} className="flex-shrink-0" />
           </div>
-          {userLabel ? (
-            <div
-              className="text-[11px] text-muted-foreground truncate mt-0.5"
-              title={userLabel}
-            >
-              {userLabel}
-            </div>
-          ) : null}
         </div>
       ) : null}
 
