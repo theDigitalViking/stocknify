@@ -499,8 +499,15 @@
     },
     "sftp": {
       "list": {
+        "activeTitle": "Active integrations",
         "addIntegration": "Add integration",
         "addFirst": "Add your first integration",
+        "addMethodTitle": "How would you like to set up?",
+        "addMethodWizard": "Setup Wizard",
+        "addMethodWizardDescription": "Step-by-step guided setup",
+        "addMethodDirect": "Direct Configuration",
+        "addMethodDirectDescription": "Open empty configuration page",
+        "addDirectFailed": "Could not create integration.",
         "emptyTitle": "No automated integrations yet.",
         "emptyBody": "Connect any SFTP, FTP, or FTPS server to import stock on a schedule.",
         "lastSync": "Last sync: {date}",

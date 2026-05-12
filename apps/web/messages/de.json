@@ -499,8 +499,15 @@
     },
     "sftp": {
       "list": {
+        "activeTitle": "Aktive Integrationen",
         "addIntegration": "Integration hinzuf\u00fcgen",
         "addFirst": "Erste Integration anlegen",
+        "addMethodTitle": "Wie m\u00f6chtest du einrichten?",
+        "addMethodWizard": "Assistent",
+        "addMethodWizardDescription": "Schritt f\u00fcr Schritt durch die Einrichtung",
+        "addMethodDirect": "Direkte Konfiguration",
+        "addMethodDirectDescription": "Leere Konfigurationsseite \u00f6ffnen",
+        "addDirectFailed": "Integration konnte nicht angelegt werden.",
         "emptyTitle": "Noch keine automatischen Integrationen.",
         "emptyBody": "Verbinde einen beliebigen SFTP-, FTP- oder FTPS-Server, um Best\u00e4nde zeitgesteuert zu importieren.",
         "lastSync": "Letzter Sync: {date}",

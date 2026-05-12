@@ -1,7 +1,8 @@
 'use client'
 
-import { ChevronRight, Plus } from 'lucide-react'
+import { ChevronRight, Loader2, Plus, SlidersHorizontal, Wand2 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
@@ -9,9 +10,17 @@ import { SetupWizard } from '@/components/integrations/setup-wizard'
 import { PageHeader } from '@/components/shared/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import {
+  useInstallIntegration,
   useIntegrationsList,
   useToggleIntegration,
 } from '@/lib/api/use-integrations'
@@ -35,39 +44,42 @@ export default function AutomaticPage(): JSX.Element {
   const t = useTranslations('integrations.automatic')
   const tSftp = useTranslations('integrations.sftp.list')
   const integrations = useIntegrationsList('marketplace')
+  const [chooserOpen, setChooserOpen] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
 
   const automatic = (integrations.data ?? []).filter(
     (row) => row.marketplaceKey !== null && AUTOMATIC_KEYS.has(row.marketplaceKey),
   )
 
+  function openChooser(): void {
+    setChooserOpen(true)
+  }
+
+  function handlePickWizard(): void {
+    setChooserOpen(false)
+    setWizardOpen(true)
+  }
+
   return (
     <div>
-      <PageHeader title={t('title')}>
-        <Button
-          size="sm"
-          onClick={() => {
-            setWizardOpen(true)
-          }}
-          className="gap-1.5"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {tSftp('addIntegration')}
-        </Button>
-      </PageHeader>
+      <PageHeader title={t('title')} />
 
       <div className="px-6 md:px-8 py-6 space-y-3">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-foreground">
+            {tSftp('activeTitle')}
+          </h2>
+          <Button size="sm" onClick={openChooser} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            {tSftp('addIntegration')}
+          </Button>
+        </div>
+
         {automatic.length === 0 ? (
           <div className="rounded-md border border-border border-dashed px-6 py-12 text-center">
             <p className="text-sm text-muted-foreground">{tSftp('emptyTitle')}</p>
             <p className="text-xs text-muted-foreground mt-1">{tSftp('emptyBody')}</p>
-            <Button
-              size="sm"
-              onClick={() => {
-                setWizardOpen(true)
-              }}
-              className="gap-1.5 mt-4"
-            >
+            <Button size="sm" onClick={openChooser} className="gap-1.5 mt-4">
               <Plus className="h-3.5 w-3.5" />
               {tSftp('addFirst')}
             </Button>
@@ -81,8 +93,95 @@ export default function AutomaticPage(): JSX.Element {
         )}
       </div>
 
+      <AddMethodDialog
+        open={chooserOpen}
+        onOpenChange={setChooserOpen}
+        onPickWizard={handlePickWizard}
+      />
       <SetupWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </div>
+  )
+}
+
+interface AddMethodDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onPickWizard: () => void
+}
+
+function AddMethodDialog({
+  open,
+  onOpenChange,
+  onPickWizard,
+}: AddMethodDialogProps): JSX.Element {
+  const tSftp = useTranslations('integrations.sftp.list')
+  const router = useRouter()
+  const install = useInstallIntegration()
+
+  function handlePickDirect(): void {
+    install.mutate(
+      { key: 'sftp', name: 'SFTP Import' },
+      {
+        onSuccess: (result) => {
+          onOpenChange(false)
+          router.push(`/integrations/automatic/${result.integration.id}`)
+        },
+        onError: () => {
+          toast({ title: tSftp('addDirectFailed'), variant: 'destructive' })
+        },
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{tSftp('addMethodTitle')}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {tSftp('addMethodTitle')}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <button
+            type="button"
+            onClick={onPickWizard}
+            disabled={install.isPending}
+            className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left hover:bg-accent transition disabled:opacity-50"
+          >
+            <Wand2 className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {tSftp('addMethodWizard')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {tSftp('addMethodWizardDescription')}
+              </p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={handlePickDirect}
+            disabled={install.isPending}
+            className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left hover:bg-accent transition disabled:opacity-50"
+          >
+            {install.isPending ? (
+              <Loader2 className="h-5 w-5 text-brand-600 mt-0.5 shrink-0 animate-spin" />
+            ) : (
+              <SlidersHorizontal className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {tSftp('addMethodDirect')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {tSftp('addMethodDirectDescription')}
+              </p>
+            </div>
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
