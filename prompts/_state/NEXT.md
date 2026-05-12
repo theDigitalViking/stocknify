@@ -2,114 +2,54 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-08 (Cycle 3-C abgeschlossen — SFTP/FTP connector + import_runs + manual import live; nächster Cycle ist 3-D BullMQ schedule engine)
+**Last updated:** 2026-05-12 (Batch 3 auf `main` deployed. Production-Review-Findings dokumentiert. Batch 4 Planung steht an.)
 
 ---
 
 ## Context
 
-**Batch 1** abgeschlossen. Cycles 1-A through 1-E + 1-TH + 1-FIX. Auf `main`. 12 Backend-Tests grün.
+**Batch 1** abgeschlossen. Auf `main`.
 
-**Batch 2** abgeschlossen. Cycles 2-A bis 2-F + alle Codex-Review-Fixes. Auf `main` (merged 2026-05-07). 13 Backend-Tests grün.
+**Batch 2** abgeschlossen. Auf `main`.
 
-**Batch 3** in Arbeit — SFTP/FTP Automated Import. 5 Cycles (3-A bis 3-E). Schema für `integration_credentials` und `integration_schedules` existiert bereits (Prisma v3); Cycle 3-C hat zusätzlich `import_runs` angelegt. **3-A** (UX Polish), **3-B** (Credential Vault) und **3-C** (SFTP/FTP Connector + Import Pipeline) sind abgeschlossen. Verbleibend: **3-D** (BullMQ Schedule Engine), **3-E** (Frontend Config + Wizard).
+**Batch 3** abgeschlossen + deployed. Cycles 3-A bis 3-E. 61 Backend-Tests grün. Deployment-Fix: `prisma migrate deploy` in CI/CD eingebaut + Prisma-Baselining auf Production. Redis (Upstash) Secret in GitHub Actions hinterlegt.
 
-**Naming convention:** Batches nummeriert (1, 2, 3…). Cycles pro Batch alphabetisch. Sonder-Cycles: Kürzel-Prefix.
-
-**Testing-Strategie:** Jeder Cycle mit Backend-Touch bringt mind. 1 Test. 13 Backend-Tests grün. Batch-3-Cycles 3-B, 3-C, 3-D haben Backend-Touch → Tests mandatory.
-
----
-
-## 🟢 Batch 3 — SFTP/FTP Automated Import
-
-### Bereits im Schema vorhanden (kein neuer Tabellen-Bau nötig):
-- **`integration_credentials`** — `credentialType` (sftp/ftp/api_key/oauth…), `host`, `port`, `username`, `password`, `token`, `secret`, `remotePath`, `additionalAttributes`, `isActive`, `lastVerifiedAt`. Encryption-Pattern mit `CREDENTIALS_ENCRYPTION_KEY` established.
-- **`integration_schedules`** — `scheduleType` (interval_minutes/interval_hours/daily/weekly), `intervalValue`, `timeOfDay`, `weekdays[]`, berechnete `cronExpression`. FK zu `csvMappingTemplateId` + `credentialId`. Check-Constraints in `schedule-check-constraints.sql`.
-- **`incidents`** — für Fehler-Logging bei fehlgeschlagenen Imports.
-
-### Noch nötig:
-- Schema-Tweak: `integrationId` auf `integration_credentials` nullable machen (Credential-Reusability).
-- Neue `import_runs`-Tabelle (Import-Historie pro Integration).
-- Alle CRUD-Endpoints (Credentials, Schedules, Files, Import-Trigger).
-- BullMQ + Redis (Upstash) Infrastruktur auf Hetzner.
-- SFTP/FTP-Client-Libraries + Pipeline-Wiring.
-- Frontend: Config-Seite + Wizard.
+**Infra-Fixes während Batch-3-Deploy:**
+- `deploy.yml`: `prisma migrate deploy --schema src/db/schema.prisma` läuft jetzt vor manuellen SQL-Migrations.
+- Prisma-Baselining: 5 bestehende Migrations als `applied` markiert. Zukünftige Migrations laufen automatisch.
 
 ---
 
-### Cycle 3-A — UX Polish (XS, Frontend-only)
-**Review:** `review:skip`
-**Effort:** `high`
+## 🟢 Nächster Schritt: Batch 4 — SFTP/FTP UI Polish + Marketplace-Fix
 
-Items 15–18 aus Sebastians Production-Review:
-1. Varianten-Highlight Farbe — grün-auf-grün ersetzen (stärkerer Kontrast / anderer Farbkanal)
-2. Movements-Filter Labels — bei Einzelauswahl konkreten Wert anzeigen statt "Alle"
-3. Lagerplatz-Spalte in Movements-Tabelle ergänzen
-4. Plan-Badge in Sidebar vertikal zentriert als zusammengehöriger Block
+Aus Sebastians Production-Review von Batch 3. Priorisiert nach Schwere:
 
-### Cycle 3-B — Credential Vault Backend (S–M, Backend)
-**Review:** `review:mandatory`
-**Effort:** `xhigh`
+### Kritisch (Bugs)
 
-Schema existiert (`integration_credentials`). Dieser Cycle baut die Endpoints + Encryption-Layer:
-- **Migration:** `integrationId` nullable machen auf `integration_credentials` (ermöglicht tenant-scoped Credentials ohne Integration-Bindung → Wiederverwendung).
-- **Encryption-Utils:** `encrypt`/`decrypt`-Helpers für `password`, `token`, `secret`, `additionalAttributes` mit bestehendem `CREDENTIALS_ENCRYPTION_KEY` (AES-256-GCM). Felder werden vor dem Speichern verschlüsselt, beim Lesen entschlüsselt. API gibt sensible Felder nie im Klartext zurück (Masking: `"pass****"`).
-- **CRUD-Endpoints:** `GET /v1/credentials` (Liste mit Nutzungszähler — wie viele Schedules referenzieren), `POST /v1/credentials`, `PATCH /v1/credentials/:id`, `DELETE /v1/credentials/:id` (Soft-Delete; Reject wenn aktive Schedules referenzieren).
-- **Connection-Test:** `POST /v1/credentials/:id/test` — baut echte SFTP/FTP-Verbindung auf, gibt `{ success: true, serverBanner?: string }` oder `{ success: false, error: string }` zurück. Nutzt `ssh2-sftp-client` (SFTP) / `basic-ftp` (FTP/FTPS) — Libraries werden hier installiert, Connector-Code in 3-C.
-- **Tests:** CRUD happy path, credential masking assertion, connection test mock, cross-tenant RLS isolation.
+**F1 — Marketplace-Kontamination (HIGH)**
+Installierte Integrations-Instanzen (z.B. "Shopify Test", "Privat Available") überschreiben die statischen Marketplace-Katalog-Einträge. Marketplace soll NUR den statischen Katalog zeigen. Installierte Instanzen zeigen einen Installations-Zähler ("2x installiert"), nicht den Instanz-Namen. SFTP-Integrationen dürfen NICHT im Marketplace unter "ERP-Systeme" erscheinen — SFTP hat seinen eigenen Bereich unter `/integrations/automatic`.
 
-### Cycle 3-C — SFTP/FTP Connector + Import Pipeline (M, Backend)
-**Review:** `review:mandatory`
-**Effort:** `xhigh`
+**F2 — Marketplace Multi-Install blockiert (HIGH)**
+Alle Marketplace-Integrationen (Shopify, WooCommerce, Xentral, Hive, etc.) müssen mehrfach installierbar sein — ein Merchant kann mehrere Shops/Systeme desselben Typs anbinden. "Install"-Button soll immer sichtbar bleiben, mit Zähler der bestehenden Installationen.
 
-- **Connector-Implementierung:** `apps/api/src/integrations/sftp/` + `apps/api/src/integrations/ftp/`. Shared Interface: `connect(credential)`, `listDirectory(path, filter?)`, `streamFile(path)`, `disconnect()`. SFTP via `ssh2-sftp-client`, FTP/FTPS via `basic-ftp`.
-- **Directory-Listing-Endpoint:** `GET /v1/integrations/:id/files?credentialId=...&path=...` — listet Dateien im Verzeichnis (Name, Größe, letztes Änderungsdatum), gefiltert auf `.csv`.
-- **Manueller Import-Trigger:** `POST /v1/integrations/:id/import-now` mit Body `{ credentialId, filePath?, mappingTemplateId? }`. Streamt Remote-CSV direkt in bestehende Pipeline (`iconv.decodeStream` → `parseCsvStreaming` → Mapping → `upsertStockLevel`). Kein Temp-File (DECISIONS 2026-05-07). Ergebnis wird als `import_run` geloggt.
-- **Neue `import_runs`-Tabelle:** `id`, `tenant_id`, `integration_id`, `schedule_id?`, `credential_id`, `trigger` (manual/scheduled), `status` (running/success/partial/failed), `file_name`, `file_size_bytes`, `rows_total`, `rows_created`, `rows_updated`, `rows_skipped`, `rows_errored`, `error_summary`, `started_at`, `completed_at`. Plan-tiered Retention (DECISIONS 2026-05-07).
-- **Import-History-Endpoint:** `GET /v1/integrations/:id/runs` (paginiert, plan-tiered).
-- **Source-Differenzierung:** `source: 'sftp'` oder `source: 'ftp'` auf `stock_movements` statt generischem `'sync'` (greift Item 7 aus den Review-Findings teilweise auf).
-- **Tests:** Directory listing mock, import-run creation + status transitions, stream-pipeline unit test mit mock SFTP, cross-tenant isolation.
+**F3 — Movements-Filter zeigen immer noch "Alle" + unvollständige Optionen (MEDIUM)**
+Cycle 3-A sollte das fixen, aber das Verhalten ist auf Production weiterhin falsch:
+- Dropdowns zeigen nur die Optionen des angeklickten Bestandseintrags, nicht ALLE verfügbaren Lager/Lagerplätze/Typen.
+- Alle Optionen müssen sichtbar sein; die relevanten vorausgewählt.
+- Labels zeigen "Alle" statt konkreter Auswahl.
 
-### Cycle 3-D — Schedule Engine (M, Backend)
-**Review:** `review:mandatory`
-**Effort:** `xhigh`
+### UX-Verbesserungen
 
-Schema existiert (`integration_schedules` mit User-Feldern + Cron). Dieser Cycle baut die Job-Infrastruktur:
-- **BullMQ + Upstash Redis:** Connection-Setup, Queue-Definition (`sftp-import-queue`), Worker-Bootstrap beim API-Start. Redis-URL aus `REDIS_URL` env (Upstash, bereits in PROJECT.md vorgesehen).
-- **Schedule-CRUD:** `GET/POST/PATCH/DELETE /v1/integrations/:id/schedules`. Server berechnet `cronExpression` aus den User-Feldern (`scheduleType`, `intervalValue`, `timeOfDay`, `weekdays`) — Client sendet nie eine Cron-Expression direkt. Validation mit `cron-parser`. `nextRunAt` wird bei Create/Update berechnet.
-- **Repeatable-Job-Management:** Bei Schedule-Create → BullMQ `add(name, data, { repeat: { cron, tz } })`. Bei Update → altes Repeatable entfernen, neues registrieren. Bei Delete/Deactivate → Repeatable entfernen.
-- **Worker:** `apps/api/src/jobs/sftp-import.worker.ts` — lädt Schedule + Credential + Integration-Config, verbindet via Connector (3-C), streamt neueste CSV (oder konfigurierte Datei), schreibt `import_runs`-Eintrag, aktualisiert `lastRunAt/Status/Error` auf Schedule + `healthStatus`/`consecutiveFailures` auf Integration.
-- **Retry:** 3 Retries mit exponentiellem Backoff bei Connection-Fehlern. Nach 3 Failures → `import_run` mit `status: 'failed'`, Incident erstellen (nutzt bestehende `incidents`-Tabelle), nächster Cron-Run läuft normal.
-- **Tests:** Schedule CRUD + cron computation, worker job creation mock, retry-after-failure assertion.
+**F4 — "Integration hinzufügen"-Button Position (SMALL)**
+Button sitzt im Header statt unterhalb der Header-Leiste. Inkonsistent mit anderen Seiten (z.B. Marketplace).
 
-### Cycle 3-E — Integration UI: Config-Seite + Wizard (L, Frontend)
-**Review:** `review:recommended`
-**Effort:** `xhigh`
+**F5 — Wizard vs. Direktkonfiguration Auswahl (MEDIUM)**
+Beim Klick auf "Integration hinzufügen" soll der User wählen können: Wizard (geführt) ODER leere Config-Seite (direkt). Config-Seite = gleiche Felder wie Edit-Seite, nur leer + Pflichtfelder markiert.
 
-Beide UI-Modi in einem Cycle, weil sie dieselben Komponenten nutzen:
+### Deferred (nicht in Batch 4)
 
-**Shared Components:**
-- `CredentialSelector` — Dropdown bestehender Credentials + "Neu anlegen" Inline-Form. Connection-Test-Button mit Echtzeit-Feedback (Spinner → Haken/Fehler).
-- `DirectoryBrowser` — ruft Backend-Listing auf, zeigt CSV-Dateien als Liste (Name, Größe, Datum). Pfad editierbar.
-- `MappingTemplateSelector` — Dropdown bestehender Templates + Hinweis "Kein Mapping = Default-Spalten".
-- `ScheduleBuilder` — Mehrstufig: (1) Typ wählen (Intervall / Täglich / Wöchentlich), (2) Details je nach Typ. Zeigt lesbaren Satz ("Jeden Montag und Mittwoch um 17:00 Uhr"). Timezone-Auswahl.
-- `ImportRunsTable` — letzte Runs (Datum, Datei, Status-Badge, Zeilen-Stats, Dauer). "Jetzt importieren"-Button.
-
-**Config-Seite** (Route `/integrations/:id/configure`):
-- Alle Shared Components auf einer Seite. Für erfahrene User die alles auf einen Blick sehen wollen.
-- Health-Indikator (letzter erfolgreicher Sync, consecutive failures).
-- Direkt erreichbar über Marketplace-Karte → "Konfigurieren".
-
-**Wizard** (Modal oder eigene Route):
-- Schritt 1: Protokoll + Credentials + Verbindungstest
-- Schritt 2: Verzeichnis + CSV-Dateien Vorschau
-- Schritt 3: Mapping-Template
-- Schritt 4: Zeitplan
-- Schritt 5: Zusammenfassung + "Integration anlegen"
-- Erreichbar über "Integration hinzufügen" auf der Marketplace-Seite (SFTP/FTP-Karte).
-- Erklärtext pro Schritt für Erstbenutzer.
-
-i18n en + de für den gesamten Bereich.
+- SFTP-Funktionalitätstest mit echtem Server (Credentials, Directory, Import, Schedule) — nach UI-Fixes
+- Stock-Types i18n (Available/Reserved) — erst nach erstem Kundenfeedback
 
 ---
 
