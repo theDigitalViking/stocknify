@@ -50,3 +50,12 @@ proxy:
     path: /v1/health
     interval: 3
     timeout: 10
+
+accessories:
+  redis:
+    image: redis:7-alpine
+    host: 178.104.175.191
+    port: "127.0.0.1:6379:6379"
+    cmd: "redis-server --maxmemory 128mb --maxmemory-policy noeviction --appendonly yes"
+    directories:
+      - redis-data:/data

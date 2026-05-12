@@ -141,6 +141,12 @@ jobs:
           SENTRY_DSN=
           EOF
 
+      - name: Boot Redis accessory
+        run: kamal accessory boot redis
+        env:
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true  # ignore if already running
+
       - name: Deploy via Kamal
         run: kamal deploy
         working-directory: .
