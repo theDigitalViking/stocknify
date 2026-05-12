@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import {
-  useMarketplaceCatalog,
+  useIntegrationsList,
   useToggleIntegration,
 } from '@/lib/api/use-integrations'
 import { useSchedules } from '@/lib/api/use-schedules'
@@ -34,11 +34,11 @@ const HEALTH_DOT: Record<string, string> = {
 export default function AutomaticPage(): JSX.Element {
   const t = useTranslations('integrations.automatic')
   const tSftp = useTranslations('integrations.sftp.list')
-  const catalog = useMarketplaceCatalog()
+  const integrations = useIntegrationsList('marketplace')
   const [wizardOpen, setWizardOpen] = useState(false)
 
-  const automatic = (catalog.data ?? []).filter(
-    (entry) => entry.installed && AUTOMATIC_KEYS.has(entry.key),
+  const automatic = (integrations.data ?? []).filter(
+    (row) => row.marketplaceKey !== null && AUTOMATIC_KEYS.has(row.marketplaceKey),
   )
 
   return (
@@ -74,8 +74,8 @@ export default function AutomaticPage(): JSX.Element {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {automatic.map((entry) => (
-              <AutomaticCard key={entry.key} integration={entry} />
+            {automatic.map((row) => (
+              <AutomaticCard key={row.id} integration={row} />
             ))}
           </div>
         )}
@@ -88,31 +88,26 @@ export default function AutomaticPage(): JSX.Element {
 
 interface AutomaticCardProps {
   integration: {
-    key: string
+    id: string
     name: string
-    integrationId?: string | null
-    isEnabled?: boolean | null
+    marketplaceKey: string | null
+    isEnabled: boolean
+    healthStatus: string
+    lastSuccessfulSyncAt: string | null
   }
 }
 
 function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
   const tSftp = useTranslations('integrations.sftp.list')
   const toggle = useToggleIntegration()
-  const id = integration.integrationId ?? undefined
-  const schedulesQuery = useSchedules(id)
-  const enabled = integration.isEnabled === true
+  const schedulesQuery = useSchedules(integration.id)
+  const enabled = integration.isEnabled
 
-  // We don't have a dedicated "integration health on the catalog" endpoint —
-  // the catalog payload doesn't carry healthStatus. Surfacing it here would
-  // require either a per-card useIntegration() fetch or extending the
-  // catalog response. For MVP we render an "unknown" dot until the operator
-  // opens the config page.
-  const healthClass = HEALTH_DOT.unknown
+  const healthClass = HEALTH_DOT[integration.healthStatus] ?? HEALTH_DOT.unknown
 
   function handleToggle(next: boolean): void {
-    if (!id) return
     toggle.mutate(
-      { id, isEnabled: next },
+      { id: integration.id, isEnabled: next },
       {
         onError: () => {
           toast({ title: tSftp('toggleFailed'), variant: 'destructive' })
@@ -122,7 +117,7 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
   }
 
   const firstActiveSchedule = schedulesQuery.data?.find((s) => s.isActive)
-  const lastSuccess = firstActiveSchedule?.lastRunAt
+  const lastSuccess = integration.lastSuccessfulSyncAt ?? firstActiveSchedule?.lastRunAt
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
@@ -130,14 +125,16 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Link
-              href={id ? `/integrations/automatic/${id}` : '#'}
+              href={`/integrations/automatic/${integration.id}`}
               className="text-sm font-medium text-foreground hover:underline truncate"
             >
               {integration.name}
             </Link>
-            <Badge variant="outline" className="text-[10px] uppercase">
-              {integration.key}
-            </Badge>
+            {integration.marketplaceKey ? (
+              <Badge variant="outline" className="text-[10px] uppercase">
+                {integration.marketplaceKey}
+              </Badge>
+            ) : null}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
             <span className={cn('h-2 w-2 rounded-full', healthClass)} />
@@ -149,7 +146,7 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
         <Switch
           checked={enabled}
           onCheckedChange={handleToggle}
-          disabled={toggle.isPending || !id}
+          disabled={toggle.isPending}
         />
       </div>
 
@@ -160,7 +157,7 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
             : tSftp('noSchedule')}
         </span>
         <Link
-          href={id ? `/integrations/automatic/${id}` : '#'}
+          href={`/integrations/automatic/${integration.id}`}
           className="inline-flex items-center gap-1 text-brand-600 hover:underline"
         >
           {tSftp('configure')}

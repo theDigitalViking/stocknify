@@ -10,19 +10,26 @@ import { apiFetch } from './client'
 
 export type MarketplaceCategory = 'shop' | 'erp' | 'warehouse' | 'fulfiller'
 
-// Shape returned by GET /integrations/marketplace/catalog. `installed` is the
-// per-tenant flag — `integrationId`, `isEnabled`, `installedAt` are only
-// populated when the tenant actually has the integration installed.
+export interface MarketplaceInstallation {
+  integrationId: string
+  // The user-chosen name (e.g. "Shopify Test"). The catalog-level `name`
+  // field stays static; instance names only ever live in this array.
+  instanceName: string
+  isEnabled: boolean
+  installedAt: string
+}
+
+// Shape returned by GET /integrations/marketplace/catalog. `name`/`description`
+// are always the static catalog values — never the instance name. Multiple
+// installations per key are surfaced via `installations[]`.
 export interface MarketplaceCatalogEntry {
   key: string
   name: string
   description: string
   category: MarketplaceCategory
   logoUrl: string
-  installed: boolean
-  integrationId?: string | null
-  isEnabled?: boolean | null
-  installedAt?: string | null
+  installCount: number
+  installations: MarketplaceInstallation[]
 }
 
 export function useMarketplaceCatalog(): UseQueryResult<MarketplaceCatalogEntry[]> {
@@ -32,16 +39,52 @@ export function useMarketplaceCatalog(): UseQueryResult<MarketplaceCatalogEntry[
   })
 }
 
+// Lightweight Integration shape for list views — backend returns the full
+// row but the list-side surfaces only need a handful of fields. Keep the
+// type narrow so consumers don't reach into properties that may be removed
+// from the response in a future cycle.
+export interface IntegrationListRow {
+  id: string
+  name: string
+  marketplaceKey: string | null
+  type: string
+  isEnabled: boolean
+  healthStatus: string
+  lastSuccessfulSyncAt: string | null
+  createdAt: string
+}
+
+export function useIntegrationsList(
+  type?: 'marketplace' | 'csv',
+): UseQueryResult<IntegrationListRow[]> {
+  return useQuery<IntegrationListRow[]>({
+    queryKey: ['integrations-list', type ?? 'all'],
+    queryFn: () =>
+      apiFetch<IntegrationListRow[]>(
+        type ? `/integrations?type=${type}` : '/integrations',
+      ),
+  })
+}
+
 export interface InstallIntegrationInput {
   key: string
   name?: string
 }
 
-export function useInstallIntegration(): UseMutationResult<unknown, Error, InstallIntegrationInput> {
+export interface InstallIntegrationResult {
+  integration: { id: string; name: string; marketplaceKey: string | null }
+  lockedTemplates: unknown[]
+}
+
+export function useInstallIntegration(): UseMutationResult<
+  InstallIntegrationResult,
+  Error,
+  InstallIntegrationInput
+> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ key, name }: InstallIntegrationInput) =>
-      apiFetch<unknown>(`/integrations/marketplace/${key}/install`, {
+      apiFetch<InstallIntegrationResult>(`/integrations/marketplace/${key}/install`, {
         method: 'POST',
         body: name ? JSON.stringify({ name }) : undefined,
       }),
@@ -53,11 +96,14 @@ export function useInstallIntegration(): UseMutationResult<unknown, Error, Insta
   })
 }
 
+// Per-instance uninstall — targets DELETE /integrations/:id. Multi-install
+// makes the old key-scoped DELETE /marketplace/:key/uninstall ambiguous; the
+// new mutation takes an integrationId so each card uninstalls only itself.
 export function useUninstallIntegration(): UseMutationResult<unknown, Error, string> {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (key: string) =>
-      apiFetch<unknown>(`/integrations/marketplace/${key}/uninstall`, { method: 'DELETE' }),
+    mutationFn: (integrationId: string) =>
+      apiFetch<unknown>(`/integrations/${integrationId}`, { method: 'DELETE' }),
     // Invalidate on settle (success + error) so the UI converges with the
     // server even when a transport error masks a successful commit.
     onSettled: () => {

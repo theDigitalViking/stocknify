@@ -666,6 +666,7 @@
         "step2": {
           "description": "Pick a directory to monitor. You can change it later.",
           "noIntegrationYetNote": "The remote directory will become browsable after the integration is created. The importer auto-picks the newest CSV unless a specific file is chosen.",
+          "linkedRemotePath": "Default path from credentials: {path}",
           "selectedFile": "Selected: {path}"
         },
         "step3": {
@@ -700,6 +701,7 @@
       "searchPlaceholder": "Search integrations\u2026",
       "noResults": "No integrations found.",
       "install": "Install",
+      "installCount": "{count}× installed",
       "alreadyInstalled": "Installed",
       "installSuccess": "{name} has been installed.",
       "installFailed": "Installation failed. Please try again.",

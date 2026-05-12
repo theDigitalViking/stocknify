@@ -25,19 +25,11 @@ export interface MarketplaceIntegration {
   fixedTemplates?: MarketplaceFixedTemplate[]
 }
 
+// Public catalog — surfaces in GET /integrations/marketplace/catalog and the
+// marketplace UI. SFTP/FTP/FTPS are intentionally NOT here: they have their
+// own dedicated surface under /integrations/automatic and are installed via
+// the setup wizard, not the marketplace.
 export const MARKETPLACE_CATALOG: MarketplaceIntegration[] = [
-  {
-    // SFTP/FTP/FTPS automated stock import. Single catalog entry covering all
-    // three transports — the wizard collects the protocol choice + credentials
-    // at install time, since most operators don't think of SFTP and FTPS as
-    // separate "products" to install. The Cycle 3-E setup wizard takes over
-    // from MarketplaceInstallDialog when this entry is installed.
-    key: 'sftp',
-    name: 'SFTP / FTP',
-    description: 'Automated stock import from any SFTP, FTP, or FTPS server.',
-    category: 'erp',
-    logoUrl: '/integrations/logos/placeholder.svg',
-  },
   {
     key: 'shopify',
     name: 'Shopify',
@@ -82,6 +74,23 @@ export const MARKETPLACE_CATALOG: MarketplaceIntegration[] = [
   },
 ]
 
+// Internal integrations — installable via the marketplace install endpoint
+// (the existing wizard wires through it) but excluded from the public catalog.
+// SFTP covers SFTP/FTP/FTPS; the wizard collects the protocol choice at
+// install time.
+const INTERNAL_INTEGRATIONS: MarketplaceIntegration[] = [
+  {
+    key: 'sftp',
+    name: 'SFTP / FTP',
+    description: 'Automated stock import from any SFTP, FTP, or FTPS server.',
+    category: 'erp',
+    logoUrl: '/integrations/logos/placeholder.svg',
+  },
+]
+
 export function getCatalogEntry(key: string): MarketplaceIntegration | undefined {
-  return MARKETPLACE_CATALOG.find((i) => i.key === key)
+  return (
+    MARKETPLACE_CATALOG.find((i) => i.key === key) ??
+    INTERNAL_INTEGRATIONS.find((i) => i.key === key)
+  )
 }

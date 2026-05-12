@@ -6,7 +6,7 @@ import { useState } from 'react'
 
 import { IntegrationLogoPlaceholder } from '@/components/integrations/integration-logo-placeholder'
 import { MarketplaceInstallDialog } from '@/components/integrations/marketplace-install-dialog'
-import { SetupWizard } from '@/components/integrations/setup-wizard'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -43,14 +43,12 @@ interface MarketplaceAppStoreModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   catalog: MarketplaceCatalogEntry[]
-  installedKeys: string[]
 }
 
 export function MarketplaceAppStoreModal({
   open,
   onOpenChange,
   catalog,
-  installedKeys,
 }: MarketplaceAppStoreModalProps): JSX.Element {
   const t = useTranslations('integrations.marketplace')
   const [category, setCategory] = useState<Category>('all')
@@ -59,16 +57,7 @@ export function MarketplaceAppStoreModal({
     null,
   )
   const [installDialogOpen, setInstallDialogOpen] = useState(false)
-  const [wizardOpen, setWizardOpen] = useState(false)
 
-  // SFTP/FTP catalog entries open the dedicated setup wizard instead of the
-  // generic install dialog. Other entries (Shopify, etc.) keep the existing
-  // shell until per-integration UX cycles land for each.
-  const WIZARD_KEYS = new Set(['sftp', 'ftp', 'ftps'])
-
-  // Show all catalog entries; already-installed ones are present but their
-  // Install button is disabled and labelled accordingly so users see what they
-  // already have without having to close the modal.
   const filtered = catalog.filter((i) => {
     const matchesCategory = category === 'all' || i.category === category
     const needle = search.trim().toLowerCase()
@@ -80,11 +69,6 @@ export function MarketplaceAppStoreModal({
   })
 
   function openInstallDialog(integration: MarketplaceCatalogEntry): void {
-    if (WIZARD_KEYS.has(integration.key)) {
-      setWizardOpen(true)
-      onOpenChange(false)
-      return
-    }
     setSelectedIntegration(integration)
     setInstallDialogOpen(true)
   }
@@ -136,36 +120,39 @@ export function MarketplaceAppStoreModal({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {filtered.map((integration) => {
-                    const isInstalled = installedKeys.includes(integration.key)
-                    return (
-                      <div
-                        key={integration.key}
-                        className="rounded-lg border border-border p-4 flex gap-3"
-                      >
-                        <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-                          <CatalogLogo name={integration.name} logoUrl={integration.logoUrl} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">{integration.name}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                            {integration.description}
-                          </p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="mt-2 h-7 text-xs"
-                            disabled={isInstalled}
-                            onClick={() => {
-                              openInstallDialog(integration)
-                            }}
-                          >
-                            {isInstalled ? t('alreadyInstalled') : t('install')}
-                          </Button>
-                        </div>
+                  {filtered.map((integration) => (
+                    <div
+                      key={integration.key}
+                      className="rounded-lg border border-border p-4 flex gap-3"
+                    >
+                      <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        <CatalogLogo name={integration.name} logoUrl={integration.logoUrl} />
                       </div>
-                    )
-                  })}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">{integration.name}</p>
+                          {integration.installCount > 0 ? (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {t('installCount', { count: integration.installCount })}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          {integration.description}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-7 text-xs"
+                          onClick={() => {
+                            openInstallDialog(integration)
+                          }}
+                        >
+                          {t('install')}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -178,8 +165,6 @@ export function MarketplaceAppStoreModal({
         open={installDialogOpen}
         onOpenChange={setInstallDialogOpen}
       />
-
-      <SetupWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </>
   )
 }

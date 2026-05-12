@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { CredentialSelector } from '@/components/integrations/credential-selector'
-import { DirectoryBrowser } from '@/components/integrations/directory-browser'
 import { MappingTemplateSelector } from '@/components/integrations/mapping-template-selector'
 import {
   ScheduleBuilder,
@@ -26,10 +25,7 @@ import {
   useCredentials,
   type CredentialType,
 } from '@/lib/api/use-credentials'
-import {
-  useInstallIntegration,
-  useMarketplaceCatalog,
-} from '@/lib/api/use-integrations'
+import { useInstallIntegration } from '@/lib/api/use-integrations'
 import { cn } from '@/lib/utils'
 
 interface SetupWizardProps {
@@ -75,7 +71,6 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const credentialsQuery = useCredentials()
-  const catalogQuery = useMarketplaceCatalog()
   const install = useInstallIntegration()
 
   const linkedCredential =
@@ -102,35 +97,17 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
     setStep((s) => (Math.max(1, s - 1) as Step))
   }
 
-  // Existing install? Fetch the marketplace entry so we know if 'sftp' is
-  // already installed; install endpoint enforces ALREADY_INSTALLED, but we
-  // surface a clearer message before the operator commits.
-  const existingInstall = catalogQuery.data?.find((e) => e.key === SFTP_KEY)
-  const alreadyInstalled = existingInstall?.installed ?? false
-
   async function handleSubmit(): Promise<void> {
     setIsSubmitting(true)
     try {
-      let integrationId = existingInstall?.integrationId ?? null
-      if (!integrationId) {
-        const installed = (await install.mutateAsync({
-          key: SFTP_KEY,
-          ...(state.integrationName.trim() ? { name: state.integrationName.trim() } : {}),
-        })) as { integration?: { id: string } } | { id: string } | undefined
-        // Install endpoint returns { data: { integration, lockedTemplates } };
-        // apiFetch unwraps `data` so we receive the inner shape directly.
-        integrationId =
-          (installed && 'integration' in installed && installed.integration?.id) ||
-          (installed && 'id' in installed ? installed.id : null) ||
-          null
-        // Defensive fallback — refetch the catalog to recover the integrationId
-        // if the response shape changes in a future cycle.
-        if (!integrationId) {
-          const refreshed = await catalogQuery.refetch()
-          integrationId =
-            refreshed.data?.find((e) => e.key === SFTP_KEY)?.integrationId ?? null
-        }
-      }
+      // Multi-install: every wizard run creates a fresh SFTP integration row.
+      // No reuse of an existing install — operators with two SFTP servers
+      // want two distinguishable installations.
+      const installed = await install.mutateAsync({
+        key: SFTP_KEY,
+        ...(state.integrationName.trim() ? { name: state.integrationName.trim() } : {}),
+      })
+      const integrationId = installed.integration?.id ?? null
 
       if (!integrationId) {
         throw new Error('Install succeeded but integration id is missing')
@@ -223,18 +200,10 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
         </DialogHeader>
 
         <div className="py-2 min-h-[280px]">
-          {step === 1 && (
-            <Step1Connection
-              state={state}
-              setState={setState}
-              alreadyInstalled={alreadyInstalled}
-            />
-          )}
+          {step === 1 && <Step1Connection state={state} setState={setState} />}
           {step === 2 && state.credentialId && (
             <Step2Directory
               state={state}
-              setState={setState}
-              integrationKey={existingInstall?.integrationId ?? null}
               linkedRemotePath={linkedCredential?.remotePath ?? null}
             />
           )}
@@ -353,36 +322,28 @@ function StepIndicator({ current }: { current: Step }): JSX.Element {
 function Step1Connection({
   state,
   setState,
-  alreadyInstalled,
 }: {
   state: WizardState
   setState: React.Dispatch<React.SetStateAction<WizardState>>
-  alreadyInstalled: boolean
 }): JSX.Element {
   const t = useTranslations('integrations.sftp.wizard.step1')
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{t('description')}</p>
 
-      {alreadyInstalled ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {t('alreadyInstalledNote')}
-        </div>
-      ) : (
-        <div>
-          <Label htmlFor="wizard-name" className="mb-1 block">
-            {t('nameLabel')}
-          </Label>
-          <Input
-            id="wizard-name"
-            value={state.integrationName}
-            onChange={(e) => {
-              setState((s) => ({ ...s, integrationName: e.target.value }))
-            }}
-            placeholder={t('namePlaceholder')}
-          />
-        </div>
-      )}
+      <div>
+        <Label htmlFor="wizard-name" className="mb-1 block">
+          {t('nameLabel')}
+        </Label>
+        <Input
+          id="wizard-name"
+          value={state.integrationName}
+          onChange={(e) => {
+            setState((s) => ({ ...s, integrationName: e.target.value }))
+          }}
+          placeholder={t('namePlaceholder')}
+        />
+      </div>
 
       <div>
         <Label className="mb-2 block">{t('credentialLabel')}</Label>
@@ -400,41 +361,25 @@ function Step1Connection({
 
 function Step2Directory({
   state,
-  setState,
-  integrationKey,
   linkedRemotePath,
 }: {
   state: WizardState
-  setState: React.Dispatch<React.SetStateAction<WizardState>>
-  integrationKey: string | null
   linkedRemotePath: string | null
 }): JSX.Element {
   const t = useTranslations('integrations.sftp.wizard.step2')
-  // The directory-browser endpoint requires an installed integration id. If
-  // SFTP isn't installed yet, the operator skips file-pick and the importer
-  // auto-picks the newest CSV at first run.
-  if (!integrationKey) {
-    return (
-      <div className="space-y-3">
-        <p className="text-xs text-muted-foreground">{t('description')}</p>
-        <div className="rounded-md border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-          {t('noIntegrationYetNote')}
-        </div>
-      </div>
-    )
-  }
+  // The directory-browser endpoint requires an installed integration id.
+  // Multi-install means the integration is created at submit time, so during
+  // the wizard we never have one — the operator skips file-pick and the
+  // importer auto-picks the newest CSV at first run.
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">{t('description')}</p>
-      <DirectoryBrowser
-        integrationId={integrationKey}
-        credentialId={state.credentialId ?? undefined}
-        initialPath={linkedRemotePath ?? ''}
-        selectedFile={state.filePath}
-        onFileSelect={(path) => {
-          setState((s) => ({ ...s, filePath: path }))
-        }}
-      />
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+        {t('noIntegrationYetNote')}
+      </div>
+      {linkedRemotePath ? (
+        <p className="text-xs text-muted-foreground">{t('linkedRemotePath', { path: linkedRemotePath })}</p>
+      ) : null}
       {state.filePath ? (
         <p className="text-xs text-muted-foreground">{t('selectedFile', { path: state.filePath })}</p>
       ) : null}

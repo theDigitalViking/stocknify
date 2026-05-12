@@ -1,46 +1,11 @@
--- v6b — One active marketplace install per tenant+key.
--- Partial unique index: only active (deleted_at IS NULL, marketplace_key IS NOT NULL)
--- rows are unique. Soft-deleted installs do not conflict with a re-install.
--- Non-marketplace integrations (marketplace_key IS NULL) are excluded.
--- Idempotent: safe to re-run.
-
--- Step 1 — Deduplicate any pre-existing active duplicates before the index
--- goes in. Without this step CREATE UNIQUE INDEX would fail on databases
--- that raced past the application-level check. Survivor selection is
--- recency-first so the migration never overrides the tenant's most recent
--- intent (e.g. a disable performed after an earlier install must stick):
---   1. most recently updated (latest state the tenant touched)
---   2. highest id            (stable, deterministic tiebreaker)
--- `is_enabled` is intentionally NOT part of the ordering — preferring
--- enabled rows would let an older enabled duplicate win against a newer
--- disabled one, silently re-enabling an integration the tenant just turned
--- off. On a clean DB this UPDATE matches zero rows.
-UPDATE integrations
-SET deleted_at = NOW()
-WHERE marketplace_key IS NOT NULL
-  AND deleted_at IS NULL
-  AND id NOT IN (
-    SELECT DISTINCT ON (tenant_id, marketplace_key) id
-    FROM integrations
-    WHERE marketplace_key IS NOT NULL
-      AND deleted_at IS NULL
-    ORDER BY
-      tenant_id,
-      marketplace_key,
-      updated_at DESC,
-      id DESC
-  );
-
--- Step 2 — Create the partial unique index.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_indexes
-    WHERE indexname = 'integrations_tenant_marketplace_key_active_unique'
-  ) THEN
-    CREATE UNIQUE INDEX integrations_tenant_marketplace_key_active_unique
-      ON integrations (tenant_id, marketplace_key)
-      WHERE deleted_at IS NULL AND marketplace_key IS NOT NULL;
-  END IF;
-END
-$$;
+-- Cycle 4-A — Drop the single-install partial unique index.
+--
+-- Originally (v6b) this file CREATEd the partial unique index
+-- `integrations_tenant_marketplace_key_active_unique` that enforced
+-- one active install per (tenant_id, marketplace_key). Cycle 4-A makes
+-- marketplace integrations multi-install (a tenant can connect two
+-- Shopify stores, two Hive warehouses, etc.), so the constraint goes.
+--
+-- Idempotent: safe to re-run. On databases that never had the index
+-- (fresh test DBs) the DROP is a no-op.
+DROP INDEX IF EXISTS integrations_tenant_marketplace_key_active_unique;

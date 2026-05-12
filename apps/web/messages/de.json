@@ -666,6 +666,7 @@
         "step2": {
           "description": "W\u00e4hle ein Verzeichnis. Du kannst es sp\u00e4ter \u00e4ndern.",
           "noIntegrationYetNote": "Das Verzeichnis l\u00e4sst sich erst nach dem Anlegen der Integration durchsuchen. Der Importer w\u00e4hlt automatisch die neueste CSV, wenn keine Datei festgelegt ist.",
+          "linkedRemotePath": "Standardpfad aus den Zugangsdaten: {path}",
           "selectedFile": "Ausgew\u00e4hlt: {path}"
         },
         "step3": {
@@ -700,6 +701,7 @@
       "searchPlaceholder": "Integrationen suchen\u2026",
       "noResults": "Keine Integrationen gefunden.",
       "install": "Installieren",
+      "installCount": "{count}× installiert",
       "alreadyInstalled": "Installiert",
       "installSuccess": "{name} wurde installiert.",
       "installFailed": "Installation fehlgeschlagen. Bitte erneut versuchen.",
