@@ -29,9 +29,15 @@ const stockQuerySchema = z.object({
 const movementsQuerySchema = z.object({
   productId: uuidSchema.optional(),
   variantId: uuidSchema.optional(),
+  // Singular params kept for backwards-compatibility with deep-links from the
+  // stock list (Cycle E entry-point) — plural CSV variants below win when both
+  // are present (Cycle 4-E).
   locationId: uuidSchema.optional(),
   storageLocationId: uuidSchema.optional(),
   stockType: z.string().min(1).optional(),
+  locationIds: z.string().optional(),
+  storageLocationIds: z.string().optional(),
+  stockTypes: z.string().optional(),
   movementType: movementTypeSchema.optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
@@ -39,6 +45,14 @@ const movementsQuerySchema = z.object({
   perPage: z.coerce.number().int().positive().max(200).default(50),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 })
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function parseCsvParam(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  return parts.length > 0 ? parts : undefined
+}
 
 export async function stockRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware)
@@ -165,6 +179,9 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         locationId,
         storageLocationId,
         stockType,
+        locationIds: rawLocationIds,
+        storageLocationIds: rawStorageLocationIds,
+        stockTypes: rawStockTypes,
         movementType,
         from,
         to,
@@ -172,12 +189,30 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
       } = query.data
       const skip = (page - 1) * perPage
 
+      // Plural CSV params win over the legacy singular form (Cycle 4-E).
+      // Falsy singular falls through so an empty plural string degrades to "no filter".
+      const locationIds =
+        parseCsvParam(rawLocationIds) ?? (locationId ? [locationId] : undefined)
+      const storageLocationIds =
+        parseCsvParam(rawStorageLocationIds) ??
+        (storageLocationId ? [storageLocationId] : undefined)
+      const stockTypes = parseCsvParam(rawStockTypes) ?? (stockType ? [stockType] : undefined)
+
+      if (
+        (locationIds && !locationIds.every((id) => UUID_REGEX.test(id))) ||
+        (storageLocationIds && !storageLocationIds.every((id) => UUID_REGEX.test(id)))
+      ) {
+        return reply
+          .code(400)
+          .send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid UUID in filter list' } })
+      }
+
       const where: Prisma.StockMovementWhereInput = { tenantId: request.tenantId }
       if (variantId) where.variantId = variantId
       if (productId) where.variant = { productId }
-      if (locationId) where.locationId = locationId
-      if (storageLocationId) where.storageLocationId = storageLocationId
-      if (stockType) where.stockType = stockType
+      if (locationIds) where.locationId = { in: locationIds }
+      if (storageLocationIds) where.storageLocationId = { in: storageLocationIds }
+      if (stockTypes) where.stockType = { in: stockTypes }
       if (movementType) where.movementType = movementType
       if (from ?? to) {
         where.createdAt = {}

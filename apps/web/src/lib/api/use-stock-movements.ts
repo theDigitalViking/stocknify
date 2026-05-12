@@ -29,6 +29,11 @@ export interface StockMovementsFilters {
   locationId?: string
   storageLocationId?: string
   stockType?: string
+  // Comma-separated plural variants (Cycle 4-E). Plural wins server-side when
+  // both singular and plural are present.
+  locationIds?: string
+  storageLocationIds?: string
+  stockTypes?: string
   movementType?: string
   from?: string
   to?: string

@@ -321,6 +321,152 @@ describe('GET /stock/movements (Cycle E)', () => {
     }
   })
 
+  it('filters by comma-separated locationIds (Cycle 4-E)', async () => {
+    const { tenantId, userId, variantAId } = await createMovementsFixture()
+
+    // Two distinct warehouses; we want the comma-separated filter to scope
+    // results to multiple specific locations at once.
+    const locationA = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse A', type: 'own_warehouse' },
+    })
+    const locationB = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse B', type: 'own_warehouse' },
+    })
+    const locationC = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse C', type: 'own_warehouse' },
+    })
+
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationA.id })
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationB.id })
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationC.id })
+
+    const app = await buildTestApp()
+    try {
+      // Both A and B → two rows back.
+      const both = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?locationIds=${locationA.id},${locationB.id}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(both.statusCode).toBe(200)
+      const bothBody = both.json() as MovementResponseBody
+      expect(bothBody.meta.total).toBe(2)
+      const returnedIds = new Set(bothBody.data.map((m) => m.locationId))
+      expect(returnedIds.has(locationA.id)).toBe(true)
+      expect(returnedIds.has(locationB.id)).toBe(true)
+      expect(returnedIds.has(locationC.id)).toBe(false)
+
+      // Single value in the plural form behaves like the singular.
+      const justA = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?locationIds=${locationA.id}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(justA.statusCode).toBe(200)
+      const justABody = justA.json() as MovementResponseBody
+      expect(justABody.meta.total).toBe(1)
+      expect(justABody.data[0]?.locationId).toBe(locationA.id)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('filters by comma-separated stockTypes (Cycle 4-E)', async () => {
+    const { tenantId, userId, variantAId, locationId } = await createMovementsFixture()
+
+    await seedMovement({ tenantId, variantId: variantAId, locationId, stockType: 'available' })
+    await seedMovement({ tenantId, variantId: variantAId, locationId, stockType: 'reserved' })
+    await seedMovement({ tenantId, variantId: variantAId, locationId, stockType: 'damaged' })
+
+    const app = await buildTestApp()
+    try {
+      const multi = await app.inject({
+        method: 'GET',
+        url: '/v1/stock/movements?stockTypes=available,reserved',
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(multi.statusCode).toBe(200)
+      const multiBody = multi.json() as MovementResponseBody
+      expect(multiBody.meta.total).toBe(2)
+      const types = new Set(multiBody.data.map((m) => m.stockType))
+      expect(types).toEqual(new Set(['available', 'reserved']))
+
+      const onlyAvailable = await app.inject({
+        method: 'GET',
+        url: '/v1/stock/movements?stockTypes=available',
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(onlyAvailable.statusCode).toBe(200)
+      const onlyAvailableBody = onlyAvailable.json() as MovementResponseBody
+      expect(onlyAvailableBody.meta.total).toBe(1)
+      expect(onlyAvailableBody.data[0]?.stockType).toBe('available')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('keeps the singular locationId param working (Cycle 4-E back-compat)', async () => {
+    const { tenantId, userId, variantAId } = await createMovementsFixture()
+
+    const locationA = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse A', type: 'own_warehouse' },
+    })
+    const locationB = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse B', type: 'own_warehouse' },
+    })
+
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationA.id })
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationB.id })
+
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?locationId=${locationA.id}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as MovementResponseBody
+      expect(body.meta.total).toBe(1)
+      expect(body.data[0]?.locationId).toBe(locationA.id)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('plural locationIds wins over singular locationId (Cycle 4-E)', async () => {
+    const { tenantId, userId, variantAId } = await createMovementsFixture()
+
+    const locationA = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse A', type: 'own_warehouse' },
+    })
+    const locationB = await testDb.location.create({
+      data: { tenantId, name: 'Warehouse B', type: 'own_warehouse' },
+    })
+
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationA.id })
+    await seedMovement({ tenantId, variantId: variantAId, locationId: locationB.id })
+
+    const app = await buildTestApp()
+    try {
+      // Caller passes both: singular says A only, plural says A+B. Plural must
+      // win so callers carrying legacy deep-link params still get the broader
+      // filter when they ALSO send the multi-select form.
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?locationId=${locationA.id}&locationIds=${locationA.id},${locationB.id}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as MovementResponseBody
+      expect(body.meta.total).toBe(2)
+      const ids = new Set(body.data.map((m) => m.locationId))
+      expect(ids).toEqual(new Set([locationA.id, locationB.id]))
+    } finally {
+      await app.close()
+    }
+  })
+
   it('isolates movements across tenants (RLS)', async () => {
     const { tenantId: tenantAId, variantAId, locationId } = await createMovementsFixture()
     await seedMovement({

@@ -392,37 +392,44 @@ export default function StockMovementsPage(): JSX.Element {
     [range.from, writeRangeToUrl],
   )
 
-  // Table reflects all legacy single-value URL params from the entry-point
-  // row click (variantId / productId / locationId / storageLocationId /
-  // stockType) and is unaffected by the multi-select chart filters
-  // (Cycle 2-E non-goal). storageLocationId added in 2-F review-fix so a
-  // bin-scoped deep-link narrows the table to the bin too (Codex 2026-05-06
-  // [medium]).
-  const tableFilters = useMemo(
-    () => ({
+  // Table reflects the same multi-select filter state as the chart dropdowns
+  // (Cycle 4-E). Each selection is serialized as a comma-separated string and
+  // sent to the backend's plural query params (`locationIds` etc.). 'all'
+  // sentinel collapses to undefined → no filter. Empty Set (explicit Clear-all)
+  // collapses to undefined too — the page-level noFilterSelected guard above
+  // already short-circuits the chart render for that state; the table follows
+  // suit by simply showing every movement in range (operator can still narrow
+  // via the dropdowns). Legend clicks live only inside the chart and never
+  // hit this filter object.
+  const tableFilters = useMemo(() => {
+    const toCsv = (selection: FilterSelection): string | undefined => {
+      if (selection === 'all') return undefined
+      if (selection.size === 0) return undefined
+      return Array.from(selection).join(',')
+    }
+    return {
       variantId,
       productId,
-      locationId: legacyLocationId,
-      storageLocationId: legacyStorageLocationId,
-      stockType: legacyStockType,
+      locationIds: toCsv(selectedLocations),
+      storageLocationIds: toCsv(selectedStorageLocations),
+      stockTypes: toCsv(selectedStockTypes),
       from: range.from,
       to: range.to,
       page,
       perPage: DEFAULT_PER_PAGE,
       sortDir,
-    }),
-    [
-      variantId,
-      productId,
-      legacyLocationId,
-      legacyStorageLocationId,
-      legacyStockType,
-      range.from,
-      range.to,
-      page,
-      sortDir,
-    ],
-  )
+    }
+  }, [
+    variantId,
+    productId,
+    selectedLocations,
+    selectedStorageLocations,
+    selectedStockTypes,
+    range.from,
+    range.to,
+    page,
+    sortDir,
+  ])
 
   // Chart fetch — two modes:
   //  - **Pristine entry** (user came in via stock-list deep-link, no filter
@@ -586,6 +593,7 @@ export default function StockMovementsPage(): JSX.Element {
   const handleLocationsChange = useCallback(
     (next: FilterSelection) => {
       setPristineEntry(false)
+      setPage(1)
       setSelectedLocations(next)
       const prunedStorage = pruneStorageForLocations(next, selectedStorageLocations)
       const updates: Parameters<typeof writeFiltersToUrl>[0] = { locations: next }
@@ -601,6 +609,7 @@ export default function StockMovementsPage(): JSX.Element {
   const handleStorageLocationsChange = useCallback(
     (next: FilterSelection) => {
       setPristineEntry(false)
+      setPage(1)
       setSelectedStorageLocations(next)
       writeFiltersToUrl({ storageLocations: next })
     },
@@ -610,6 +619,7 @@ export default function StockMovementsPage(): JSX.Element {
   const handleStockTypesChange = useCallback(
     (next: FilterSelection) => {
       setPristineEntry(false)
+      setPage(1)
       setSelectedStockTypes(next)
       writeFiltersToUrl({ stockTypes: next })
     },
