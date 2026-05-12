@@ -45,7 +45,14 @@ const MANUAL_SQL_FILES = [
   // v6 — marketplace fields on integrations + csv_mapping_templates
   'add-integration-marketplace-fields.sql',
   // v6b — unique active marketplace integration per tenant
+  // (Cycle 4-A rewrote this to DROP the constraint — multi-install is now
+  // the default. File is kept so existing deploys idempotently drop the
+  // legacy index.)
   'unique-active-marketplace-integration.sql',
+  // v6c — locked mapping templates unique per (tenant, marketplace_key, name)
+  // (Cycle 4-A Codex review fix — race protection alongside SERIALIZABLE
+  // isolation in the install handler.)
+  'unique-locked-mapping-templates.sql',
   // v7 — deleted_by on products
   'add-product-deleted-by.sql',
   // v8 — import_runs (Cycle 3-C SFTP/FTP import pipeline)

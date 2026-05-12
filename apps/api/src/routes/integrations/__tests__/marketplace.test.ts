@@ -154,6 +154,158 @@ describe('GET /v1/integrations/marketplace/catalog (Cycle 4-A)', () => {
   })
 })
 
+describe('DELETE /v1/integrations/marketplace/:key/uninstall (Cycle 4-A — retired)', () => {
+  it('returns 410 ENDPOINT_REMOVED — bulk key-scoped uninstall is gone (Codex review fix F3)', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const headers = authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' })
+      // Even with an active install, the legacy endpoint must NOT touch it.
+      const seed = (
+        await app.inject({
+          method: 'POST',
+          url: '/v1/integrations/marketplace/shopify/install',
+          headers,
+          payload: { name: 'Seed' },
+        })
+      ).json() as InstallBody
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/v1/integrations/marketplace/shopify/uninstall',
+        headers,
+      })
+      expect(res.statusCode).toBe(410)
+      expect((res.json() as { error: { code: string } }).error.code).toBe('ENDPOINT_REMOVED')
+
+      // The original install is still active — the retired endpoint never
+      // touched the DB. This is the entire point of the 410: removing the
+      // multi-install footgun.
+      const stillActive = await testDb.integration.findFirst({
+        where: { id: seed.data.integration.id, deletedAt: null },
+      })
+      expect(stillActive).not.toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+describe('csv_mapping_templates_locked_unique partial index (Cycle 4-A Codex review fix F1)', () => {
+  it('rejects a second locked template with the same (tenant_id, marketplace_key, name)', async () => {
+    const { tenant } = await createTestTenant(testDb)
+    // The catalog ships no fixedTemplates today, so the install path doesn't
+    // exercise the constraint live. The DB-level safety net is still the
+    // load-bearing protection against duplicate locked templates if a future
+    // catalog entry adds fixedTemplates. Insert two rows with the same
+    // (tenant, marketplace_key, name) and expect the second to fail.
+    await testDb.csvMappingTemplate.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Locked stock template',
+        direction: 'import',
+        resourceType: 'stock',
+        delimiter: ',',
+        encoding: 'utf-8',
+        hasHeaderRow: true,
+        columnMappings: [] as unknown as object,
+        defaultValues: {} as object,
+        isLocked: true,
+        marketplaceKey: 'shopify',
+      },
+    })
+    await expect(
+      testDb.csvMappingTemplate.create({
+        data: {
+          tenantId: tenant.id,
+          name: 'Locked stock template',
+          direction: 'import',
+          resourceType: 'stock',
+          delimiter: ',',
+          encoding: 'utf-8',
+          hasHeaderRow: true,
+          columnMappings: [] as unknown as object,
+          defaultValues: {} as object,
+          isLocked: true,
+          marketplaceKey: 'shopify',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' })
+  })
+
+  it('allows two locked templates with different names under the same marketplace key', async () => {
+    const { tenant } = await createTestTenant(testDb)
+    await testDb.csvMappingTemplate.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Stock import',
+        direction: 'import',
+        resourceType: 'stock',
+        delimiter: ',',
+        encoding: 'utf-8',
+        hasHeaderRow: true,
+        columnMappings: [] as unknown as object,
+        defaultValues: {} as object,
+        isLocked: true,
+        marketplaceKey: 'shopify',
+      },
+    })
+    await expect(
+      testDb.csvMappingTemplate.create({
+        data: {
+          tenantId: tenant.id,
+          name: 'Product import',
+          direction: 'import',
+          resourceType: 'products',
+          delimiter: ',',
+          encoding: 'utf-8',
+          hasHeaderRow: true,
+          columnMappings: [] as unknown as object,
+          defaultValues: {} as object,
+          isLocked: true,
+          marketplaceKey: 'shopify',
+        },
+      }),
+    ).resolves.toBeTruthy()
+  })
+
+  it('does not block a non-locked template with the same name (partial index)', async () => {
+    const { tenant } = await createTestTenant(testDb)
+    await testDb.csvMappingTemplate.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Stock import',
+        direction: 'import',
+        resourceType: 'stock',
+        delimiter: ',',
+        encoding: 'utf-8',
+        hasHeaderRow: true,
+        columnMappings: [] as unknown as object,
+        defaultValues: {} as object,
+        isLocked: true,
+        marketplaceKey: 'shopify',
+      },
+    })
+    await expect(
+      testDb.csvMappingTemplate.create({
+        data: {
+          tenantId: tenant.id,
+          name: 'Stock import',
+          direction: 'import',
+          resourceType: 'stock',
+          delimiter: ',',
+          encoding: 'utf-8',
+          hasHeaderRow: true,
+          columnMappings: [] as unknown as object,
+          defaultValues: {} as object,
+          isLocked: false,
+          marketplaceKey: 'shopify',
+        },
+      }),
+    ).resolves.toBeTruthy()
+  })
+})
+
 describe('DELETE /v1/integrations/:id (Cycle 4-A — per-instance uninstall)', () => {
   it('uninstalls a single installation by ID and leaves siblings intact', async () => {
     const { tenant, user } = await createTestTenant(testDb)
@@ -195,6 +347,62 @@ describe('DELETE /v1/integrations/:id (Cycle 4-A — per-instance uninstall)', (
       // The surviving installation is the OTHER one (B), not the uninstalled A.
       expect(shopify?.installations[0]?.integrationId).toBe(b.data.integration.id)
       expect(shopify?.installations[0]?.instanceName).toBe('B')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('serializes a concurrent delete + install on the same marketplace key (Codex review fix F2)', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const headers = authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' })
+      const seed = (
+        await app.inject({
+          method: 'POST',
+          url: '/v1/integrations/marketplace/shopify/install',
+          headers,
+          payload: { name: 'Seed' },
+        })
+      ).json() as InstallBody
+
+      // Fire delete + install in parallel against the same (tenant, key).
+      // Either request can land first; the SERIALIZABLE+retry pipeline must
+      // resolve to a consistent end state — either:
+      //   - both succeed (delete first, install creates a new sibling)
+      //   - both succeed (install first, delete removes the original)
+      // Failure mode pre-fix: the new install could end up with no locked
+      // templates because the delete (with stale sibling count) tore them
+      // down while the install was running.
+      const [delRes, installRes] = await Promise.all([
+        app.inject({
+          method: 'DELETE',
+          url: `/v1/integrations/${seed.data.integration.id}`,
+          headers,
+        }),
+        app.inject({
+          method: 'POST',
+          url: '/v1/integrations/marketplace/shopify/install',
+          headers,
+          payload: { name: 'Race' },
+        }),
+      ])
+      // Either both 2xx or one side returned 503 SERIALIZATION_FAILED after
+      // exhausting retries — both are acceptable outcomes for this contract.
+      // What must NOT happen: a 500 or a torn end state.
+      expect([204, 503]).toContain(delRes.statusCode)
+      expect([201, 503]).toContain(installRes.statusCode)
+
+      const surviving = await testDb.integration.findMany({
+        where: { tenantId: tenant.id, deletedAt: null, marketplaceKey: 'shopify' },
+        select: { id: true, name: true },
+      })
+      // Whatever the ordering, the surviving rows are the ones whose
+      // operations succeeded. Use the response codes to drive the assertion.
+      const expectedNames = new Set<string>()
+      if (delRes.statusCode !== 204) expectedNames.add('Seed')
+      if (installRes.statusCode === 201) expectedNames.add('Race')
+      expect(new Set(surviving.map((r) => r.name))).toEqual(expectedNames)
     } finally {
       await app.close()
     }

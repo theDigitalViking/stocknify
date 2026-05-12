@@ -139,6 +139,13 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
   //   any locked mapping templates defined on the catalog entry. Multiple
   //   installations of the same key are allowed — each call creates a fresh
   //   integration row.
+  //
+  //   Concurrency model (Cycle 4-A Codex review fix): the read+write must be
+  //   atomic against concurrent installs and deletes on the same
+  //   (tenant, marketplace_key) bucket. Runs inside a SERIALIZABLE
+  //   transaction with bounded retry on P2034 (matches the credential-delete
+  //   pattern). Locked-template uniqueness is also enforced at the DB level
+  //   via `csv_mapping_templates_locked_unique` as a defense-in-depth net.
   // -------------------------------------------------------------------------
   app.post('/integrations/marketplace/:key/install', async (request, reply) => {
     const params = keyParamSchema.safeParse(request.params)
@@ -165,131 +172,159 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: { code: 'VALIDATION_ERROR', message: parsedBody.error.message } })
     }
     const resolvedName = parsedBody.data.name?.trim() || entry.name
-    try {
-      const createIntegration = request.db.integration.create({
-        data: {
-          tenantId: request.tenantId,
-          type: entry.key,
-          name: resolvedName,
-          marketplaceKey: entry.key,
-          logoUrl: entry.logoUrl,
-          category: entry.category,
-          status: 'pending',
-          isEnabled: true,
-          credentials: {} as Prisma.InputJsonObject,
-          config: {} as Prisma.InputJsonObject,
-        },
-      })
+    const fixedTemplates = entry.fixedTemplates ?? []
+    const MAX_RETRIES = 1
 
-      // Locked templates are tenant+marketplaceKey-scoped, not per-install.
-      // Re-installing the same key when locked templates already exist must
-      // not duplicate them — skip template creation when at least one is
-      // already present for this (tenant, marketplaceKey).
-      const fixedTemplates = entry.fixedTemplates ?? []
-      const existingLocked =
-        fixedTemplates.length > 0
-          ? await request.db.csvMappingTemplate.findFirst({
+    type InstallResult = {
+      integration: Prisma.IntegrationGetPayload<Record<string, never>>
+      lockedTemplates: Prisma.CsvMappingTemplateGetPayload<Record<string, never>>[]
+    }
+
+    const runInstall = async (): Promise<InstallResult> =>
+      request.db.$transaction(
+        async (tx) => {
+          const integration = await tx.integration.create({
+            data: {
+              tenantId: request.tenantId,
+              type: entry.key,
+              name: resolvedName,
+              marketplaceKey: entry.key,
+              logoUrl: entry.logoUrl,
+              category: entry.category,
+              status: 'pending',
+              isEnabled: true,
+              credentials: {} as Prisma.InputJsonObject,
+              config: {} as Prisma.InputJsonObject,
+            },
+          })
+
+          // Locked templates are tenant+marketplace_key-scoped, not
+          // per-install. Re-installing the same key after a sibling already
+          // provisioned the catalog's fixed templates must not duplicate
+          // them. The check-and-create is safe inside the SERIALIZABLE
+          // transaction; the `csv_mapping_templates_locked_unique` partial
+          // unique index is the DB-level backstop.
+          let lockedTemplates: Prisma.CsvMappingTemplateGetPayload<Record<string, never>>[] = []
+          if (fixedTemplates.length > 0) {
+            const existing = await tx.csvMappingTemplate.findMany({
               where: {
                 tenantId: request.tenantId,
                 deletedAt: null,
                 isLocked: true,
                 marketplaceKey: entry.key,
               },
-              select: { id: true },
+              orderBy: { createdAt: 'asc' },
             })
-          : null
+            if (existing.length > 0) {
+              lockedTemplates = existing
+            } else {
+              const created: Prisma.CsvMappingTemplateGetPayload<Record<string, never>>[] = []
+              for (const t of fixedTemplates) {
+                created.push(
+                  await tx.csvMappingTemplate.create({
+                    data: {
+                      tenantId: request.tenantId,
+                      name: t.name,
+                      direction: t.direction,
+                      resourceType: t.resourceType,
+                      delimiter: t.delimiter,
+                      encoding: t.encoding,
+                      hasHeaderRow: t.hasHeaderRow,
+                      columnMappings: t.columnMappings as unknown as Prisma.InputJsonValue,
+                      defaultValues: t.defaultValues as unknown as Prisma.InputJsonObject,
+                      isLocked: true,
+                      marketplaceKey: entry.key,
+                    },
+                  }),
+                )
+              }
+              lockedTemplates = created
+            }
+          }
 
-      const createTemplateOps = existingLocked
-        ? []
-        : fixedTemplates.map((t) =>
-            request.db.csvMappingTemplate.create({
-              data: {
-                tenantId: request.tenantId,
-                name: t.name,
-                direction: t.direction,
-                resourceType: t.resourceType,
-                delimiter: t.delimiter,
-                encoding: t.encoding,
-                hasHeaderRow: t.hasHeaderRow,
-                columnMappings: t.columnMappings as unknown as Prisma.InputJsonValue,
-                defaultValues: t.defaultValues as unknown as Prisma.InputJsonObject,
-                isLocked: true,
-                marketplaceKey: entry.key,
-              },
-            }),
+          return { integration, lockedTemplates }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+
+    let result: InstallResult | undefined
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        result = await runInstall()
+        break
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034' &&
+          attempt < MAX_RETRIES
+        ) {
+          request.log.warn(
+            { marketplaceKey: entry.key, attempt: attempt + 1 },
+            'Serialization conflict on marketplace install; retrying',
           )
-
-      // Atomic: either the integration + any newly-needed locked templates
-      // land together, or none of them do.
-      const [integration, ...lockedTemplates] = await request.db.$transaction([
-        createIntegration,
-        ...createTemplateOps,
-      ])
-
-      return reply.code(201).send({ data: { integration, lockedTemplates } })
-    } catch (err) {
-      request.log.error({ err }, 'marketplace install failed')
-      return reply
-        .code(500)
-        .send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to install integration' } })
+          continue
+        }
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034'
+        ) {
+          request.log.warn(
+            { marketplaceKey: entry.key },
+            'Serialization conflict on marketplace install; retries exhausted',
+          )
+          return reply.code(503).send({
+            error: {
+              code: 'SERIALIZATION_FAILED',
+              message: 'Concurrent change detected — please retry',
+            },
+          })
+        }
+        // Belt-and-suspenders: the partial unique index can still reject a
+        // duplicate locked-template insert if the SERIALIZABLE protection
+        // is bypassed (e.g. downgraded isolation in a future change). Map
+        // that surface to the same retry-friendly 503.
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002' &&
+          attempt < MAX_RETRIES
+        ) {
+          request.log.warn(
+            { marketplaceKey: entry.key, attempt: attempt + 1 },
+            'Locked-template unique conflict on install; retrying',
+          )
+          continue
+        }
+        request.log.error({ err }, 'marketplace install failed')
+        return reply
+          .code(500)
+          .send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to install integration' } })
+      }
     }
+    if (!result) {
+      // Defensive — the loop above always assigns or returns.
+      throw new Error('marketplace install: result unset after retry loop')
+    }
+    return reply.code(201).send({
+      data: { integration: result.integration, lockedTemplates: result.lockedTemplates },
+    })
   })
 
   // -------------------------------------------------------------------------
   // DELETE /integrations/marketplace/:key/uninstall
-  //   Deprecated bulk uninstall — soft-deletes ALL active rows for the key
-  //   and tears down locked mapping templates. Kept for backwards compat;
-  //   the marketplace UI now uses DELETE /integrations/:id for per-instance
-  //   uninstall. New callers should target a specific integrationId.
+  //   Retired in Cycle 4-A. Under multi-install this would silently
+  //   soft-delete EVERY active installation of the key in a single call,
+  //   which is data-loss-shaped behaviour for any caller that hasn't been
+  //   updated. Callers must use DELETE /v1/integrations/:id to uninstall a
+  //   specific installation by ID.
   // -------------------------------------------------------------------------
-  app.delete('/integrations/marketplace/:key/uninstall', async (request, reply) => {
-    const params = keyParamSchema.safeParse(request.params)
-    if (!params.success) {
-      return reply
-        .code(400)
-        .send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid marketplace key' } })
-    }
-    try {
-      const existing = await request.db.integration.findMany({
-        where: {
-          tenantId: request.tenantId,
-          deletedAt: null,
-          marketplaceKey: params.data.key,
-        },
-        select: { id: true },
-      })
-      if (existing.length === 0) {
-        return reply
-          .code(404)
-          .send({ error: { code: 'NOT_FOUND', message: 'Integration is not installed' } })
-      }
-      const now = new Date()
-      await request.db.$transaction([
-        request.db.integration.updateMany({
-          where: {
-            tenantId: request.tenantId,
-            deletedAt: null,
-            marketplaceKey: params.data.key,
-          },
-          data: { deletedAt: now },
-        }),
-        request.db.csvMappingTemplate.updateMany({
-          where: {
-            tenantId: request.tenantId,
-            deletedAt: null,
-            isLocked: true,
-            marketplaceKey: params.data.key,
-          },
-          data: { deletedAt: now },
-        }),
-      ])
-      return reply.code(204).send()
-    } catch (err) {
-      request.log.error({ err }, 'marketplace uninstall failed')
-      return reply
-        .code(500)
-        .send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to uninstall integration' } })
-    }
+  app.delete('/integrations/marketplace/:key/uninstall', async (_request, reply) => {
+    return reply.code(410).send({
+      error: {
+        code: 'ENDPOINT_REMOVED',
+        message:
+          'Bulk key-scoped uninstall has been retired. Use DELETE /v1/integrations/:id to uninstall a specific installation by ID.',
+      },
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -297,6 +332,12 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
   //   Per-instance soft-delete. Tears down locked mapping templates for the
   //   marketplace key only when this was the LAST active installation of
   //   that key — otherwise other installs would lose their templates.
+  //
+  //   Concurrency model (Cycle 4-A Codex review fix): the sibling-count
+  //   read and the integration/template writes run inside one SERIALIZABLE
+  //   transaction with bounded retry on P2034. Without this, a concurrent
+  //   install racing with a delete could leave the surviving installs
+  //   without the locked templates they expect.
   // -------------------------------------------------------------------------
   app.delete('/integrations/:id', async (request, reply) => {
     const params = idParamSchema.safeParse(request.params)
@@ -305,60 +346,101 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
         .code(400)
         .send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid integration ID' } })
     }
-    try {
-      const existing = await request.db.integration.findFirst({
-        where: { id: params.data.id, tenantId: request.tenantId, deletedAt: null },
-        select: { id: true, marketplaceKey: true },
-      })
-      if (!existing) {
-        return reply
-          .code(404)
-          .send({ error: { code: 'NOT_FOUND', message: 'Integration not found' } })
-      }
 
-      const now = new Date()
-      const ops: Prisma.PrismaPromise<unknown>[] = [
-        request.db.integration.update({
-          where: { id: existing.id },
-          data: { deletedAt: now },
-        }),
-      ]
+    type DeleteOutcome = { kind: 'deleted' } | { kind: 'notFound' }
 
-      // Marketplace integrations: tear down locked templates only when this
-      // was the last surviving install of the key. Other installs of the
-      // same key keep the shared templates alive.
-      if (existing.marketplaceKey) {
-        const siblings = await request.db.integration.count({
-          where: {
-            tenantId: request.tenantId,
-            deletedAt: null,
-            marketplaceKey: existing.marketplaceKey,
-            id: { not: existing.id },
-          },
-        })
-        if (siblings === 0) {
-          ops.push(
-            request.db.csvMappingTemplate.updateMany({
+    const integrationId = params.data.id
+    const tenantId = request.tenantId
+    const MAX_RETRIES = 1
+
+    const runDelete = async (): Promise<DeleteOutcome> =>
+      request.db.$transaction(
+        async (tx) => {
+          const existing = await tx.integration.findFirst({
+            where: { id: integrationId, tenantId, deletedAt: null },
+            select: { id: true, marketplaceKey: true },
+          })
+          if (!existing) {
+            return { kind: 'notFound' }
+          }
+          const now = new Date()
+          await tx.integration.update({
+            where: { id: existing.id },
+            data: { deletedAt: now },
+          })
+          if (existing.marketplaceKey) {
+            const siblings = await tx.integration.count({
               where: {
-                tenantId: request.tenantId,
+                tenantId,
                 deletedAt: null,
-                isLocked: true,
                 marketplaceKey: existing.marketplaceKey,
+                id: { not: existing.id },
               },
-              data: { deletedAt: now },
-            }),
-          )
-        }
-      }
+            })
+            if (siblings === 0) {
+              await tx.csvMappingTemplate.updateMany({
+                where: {
+                  tenantId,
+                  deletedAt: null,
+                  isLocked: true,
+                  marketplaceKey: existing.marketplaceKey,
+                },
+                data: { deletedAt: now },
+              })
+            }
+          }
+          return { kind: 'deleted' }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
 
-      await request.db.$transaction(ops)
-      return reply.code(204).send()
-    } catch (err) {
-      request.log.error({ err }, 'integration delete failed')
-      return reply
-        .code(500)
-        .send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to delete integration' } })
+    let outcome: DeleteOutcome | undefined
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        outcome = await runDelete()
+        break
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034' &&
+          attempt < MAX_RETRIES
+        ) {
+          request.log.warn(
+            { integrationId, attempt: attempt + 1 },
+            'Serialization conflict on integration delete; retrying',
+          )
+          continue
+        }
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034'
+        ) {
+          request.log.warn(
+            { integrationId },
+            'Serialization conflict on integration delete; retries exhausted',
+          )
+          return reply.code(503).send({
+            error: {
+              code: 'SERIALIZATION_FAILED',
+              message: 'Concurrent change detected — please retry',
+            },
+          })
+        }
+        request.log.error({ err }, 'integration delete failed')
+        return reply
+          .code(500)
+          .send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to delete integration' } })
+      }
     }
+    if (!outcome) {
+      throw new Error('integration delete: outcome unset after retry loop')
+    }
+    if (outcome.kind === 'notFound') {
+      return reply
+        .code(404)
+        .send({ error: { code: 'NOT_FOUND', message: 'Integration not found' } })
+    }
+    return reply.code(204).send()
   })
 
   // -------------------------------------------------------------------------
