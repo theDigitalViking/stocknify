@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-12 (Batch 4 fast abgeschlossen — 4-A bis 4-C done, 4-D Filter-Fix läuft, danach Merge + Deploy)
+**Last updated:** 2026-05-12 (Batch 4 deployed. 10 neue Findings für Batch 5 dokumentiert: S1–S10.)
 
 ---
 
@@ -12,18 +12,13 @@
 
 **Batch 3** abgeschlossen + deployed. Cycles 3-A bis 3-E. 83 Backend-Tests grün. Redis (Upstash) live. Prisma-Migrations in CI/CD.
 
-**Batch 4** in Arbeit — Fixes aus Batch-3-Review. Cycles 4-A (Marketplace ✅), 4-B (Filter-Versuch ✅), 4-C (SFTP Button/Wizard-Auswahl ✅), 4-D (Filter-Fix final, läuft). Auf `develop`, Merge nach 4-D.
+**Batch 4** abgeschlossen + deployed. Cycles 4-A (Marketplace-Fix), 4-B (Filter-Versuch), 4-C (SFTP Button/Wizard-Auswahl), 4-D (Filter-Fix final). Auf `main`.
 
 ---
 
-## 🟢 Nächster Schritt: Merge Batch 4 + Deploy
+## 🟢 Nächster Schritt: Batch 5 — SFTP Deep-Dive + Movements-Tabelle + Marketplace Polish
 
-Nach Cycle 4-D:
-```
-git checkout main && git merge develop --ff-only && git push
-```
-
-Dann Production-Review für 4-A + 4-D (Marketplace + Filter).
+Neuer Chat. NEXT.md enthält 10 priorisierte Findings (S1–S10) als Ausgangspunkt.
 
 ---
 
@@ -58,6 +53,16 @@ Nach erfolgreicher Installation soll das App-Store-Modal schließen und der User
 
 **S8 — Wizard Step 2: Directory-Browser entfernt**
 Cycle 4-A hat den Directory-Browser aus dem Wizard entfernt (weil kein `integrationId` vor Submit). Muss im SFTP-Deep-Dive wieder rein — eventuell mit temporärer Credential-basierter Browse-Fähigkeit.
+
+### Filter / Movements
+
+**S9 — Movements-Filter wirken nur auf Chart, nicht auf Tabelle (MEDIUM)**
+Die Filter-Dropdowns (Lager, Lagerplatz, Bestandstyp) filtern nur den Chart oben. Die Bewegungshistorie-Tabelle unten zeigt weiterhin alle Bewegungen ungefiltert. Fix: Selbe Filter-Werte müssen auch auf die Tabelle angewendet werden (Chart und Tabelle konsistent). Ausnahme: Legend-Klick (Ein-/Ausfaden einzelner Linien) muss sich NICHT in der Tabelle widerspiegeln.
+
+### Marketplace
+
+**S10 — Marketplace: Installierte Integrationen brauchen Edit-Möglichkeit (MEDIUM)**
+Aktuell kann man installierte Marketplace-Integrationen nur deinstallieren oder den Namen ändern. Man muss auch das Konfigurations-Fenster (das beim Installieren erscheint) wieder öffnen können, um Einstellungen zu bearbeiten. Je nach Integrationstyp kommen später weitere Konfigurationsfelder hinzu.
 
 ---
 
