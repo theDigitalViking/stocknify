@@ -60,10 +60,10 @@ function SingleFilter({ label, options, selection, onChange }: SingleFilterProps
         : new Set(selection)
     if (checked) current.add(value)
     else current.delete(value)
-    if (current.size === options.length) {
-      onChange('all')
-      return
-    }
+    // Auto-collapse to 'all' when size === options.length was removed in
+    // Cycle 4-B: it caused deep-linked entries with a single matching option
+    // to be silently rewritten back to 'all' (and "Alle" label). The Select-
+    // all button still sets 'all' explicitly when the user actually wants it.
     onChange(current)
   }
 

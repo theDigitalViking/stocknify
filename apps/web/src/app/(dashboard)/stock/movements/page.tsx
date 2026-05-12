@@ -24,6 +24,7 @@ import { useStockMovements } from '@/lib/api/use-stock-movements'
 
 const DEFAULT_PER_PAGE = 50
 const CHART_PER_PAGE = 200 // wider window so the area chart shows real history
+const OPTIONS_PER_PAGE = 200 // backend caps movements at perPage <= 200
 const DEFAULT_RANGE_DAYS = 30
 
 const PRESETS = [
@@ -430,10 +431,31 @@ export default function StockMovementsPage(): JSX.Element {
     ],
   )
 
+  // Filter-options fetch — same scope as the chart (product/variant + range)
+  // but without the per-row narrowing the chart applies in pristine entry.
+  // This guarantees dropdowns surface every location/bin/stock-type that has
+  // movements for the current product in range, so a deep-link from the stock
+  // list (which narrows the chart to a single combo) no longer collapses each
+  // dropdown to a one-option list (Cycle 4-B fix).
+  const optionsFilters = useMemo(
+    () => ({
+      variantId,
+      productId,
+      from: range.from,
+      to: range.to,
+      page: 1,
+      perPage: OPTIONS_PER_PAGE,
+      sortDir: 'desc' as const,
+    }),
+    [variantId, productId, range.from, range.to],
+  )
+
   const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
   const { data: chartData } = useStockMovements(chartFilters)
+  const { data: optionsData } = useStockMovements(optionsFilters)
 
   const chartRows = chartData?.data ?? []
+  const optionsRows = optionsData?.data ?? []
   const chartTotal = chartData?.meta.total ?? 0
   const isChartTruncated = chartTotal > chartRows.length
   const hasRange = Boolean(range.from || range.to)
@@ -474,13 +496,13 @@ export default function StockMovementsPage(): JSX.Element {
   const locationOptions = useMemo<FilterOption[]>(() => {
     if (!hasScope) return []
     const map = new Map<string, string>()
-    for (const row of chartRows) {
+    for (const row of optionsRows) {
       if (!map.has(row.locationId)) map.set(row.locationId, row.locationName)
     }
     return Array.from(map.entries())
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [hasScope, chartRows])
+  }, [hasScope, optionsRows])
 
   // Storage-location options carry their parent locationId so the cascade
   // helper can prune below. Bin-agnostic rows (storageLocationId === null)
@@ -493,7 +515,7 @@ export default function StockMovementsPage(): JSX.Element {
   const allStorageOptions = useMemo<StorageOption[]>(() => {
     if (!hasScope) return []
     const map = new Map<string, StorageOption>()
-    for (const row of chartRows) {
+    for (const row of optionsRows) {
       if (!row.storageLocationId || !row.storageLocationName) continue
       if (map.has(row.storageLocationId)) continue
       map.set(row.storageLocationId, {
@@ -503,7 +525,7 @@ export default function StockMovementsPage(): JSX.Element {
       })
     }
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label))
-  }, [hasScope, chartRows])
+  }, [hasScope, optionsRows])
 
   // Cascade: bin dropdown shows only bins under the currently-selected
   // warehouses. With selectedLocations === 'all', every bin is visible.
@@ -519,11 +541,11 @@ export default function StockMovementsPage(): JSX.Element {
   const stockTypeOptions = useMemo<FilterOption[]>(() => {
     if (!hasScope) return []
     const set = new Set<string>()
-    for (const row of chartRows) set.add(row.stockType)
+    for (const row of optionsRows) set.add(row.stockType)
     return Array.from(set)
       .map((v) => ({ value: v, label: v }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [hasScope, chartRows])
+  }, [hasScope, optionsRows])
 
   // When the user changes warehouses, prune any bin selections whose parent
   // is no longer selected. Doing this inside the change handler (vs an effect
