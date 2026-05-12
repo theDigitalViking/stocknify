@@ -42,12 +42,22 @@ export interface StockMovementsFilters {
   sortDir?: 'asc' | 'desc'
 }
 
+export interface UseStockMovementsOptions {
+  // Gate the fetch — callers pass `enabled: false` when the page-level filter
+  // state means "no rows should be shown" (Cycle 4-E review fix). The default
+  // is `true` so existing call sites keep their previous fetch-on-mount
+  // behavior.
+  enabled?: boolean
+}
+
 export function useStockMovements(
   filters: StockMovementsFilters = {},
+  options: UseStockMovementsOptions = {},
 ): UseQueryResult<ApiPage<StockMovementRow[]>> {
   const query = toQueryString({ ...filters })
   return useQuery<ApiPage<StockMovementRow[]>>({
     queryKey: ['stock', 'movements', filters],
     queryFn: () => apiFetchWithMeta<StockMovementRow[]>(`/stock/movements${query}`),
+    enabled: options.enabled ?? true,
   })
 }

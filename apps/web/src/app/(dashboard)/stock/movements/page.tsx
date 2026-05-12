@@ -481,7 +481,20 @@ export default function StockMovementsPage(): JSX.Element {
   const { data: allStorageLocations = [] } = useStorageLocations()
   const { data: allStockTypeDefs = [] } = useStockTypes()
 
-  const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
+  // True when at least one filter is an explicit empty Set (the operator
+  // cleared the dropdown). Codex 2026-05-12 review fix: under that state, the
+  // table fetch is gated so the request doesn't widen back to "no filter" and
+  // expose every movement in range against operator intent. Same condition the
+  // chart's empty-state already gates on (see render block below).
+  const noFilterSelected =
+    hasScope &&
+    ((selectedLocations !== 'all' && selectedLocations.size === 0) ||
+      (selectedStorageLocations !== 'all' && selectedStorageLocations.size === 0) ||
+      (selectedStockTypes !== 'all' && selectedStockTypes.size === 0))
+
+  const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters, {
+    enabled: !noFilterSelected,
+  })
   const { data: chartData } = useStockMovements(chartFilters)
 
   const chartRows = chartData?.data ?? []
@@ -644,12 +657,6 @@ export default function StockMovementsPage(): JSX.Element {
     })
   }, [allSeries, selectedLocations, selectedStorageLocations, selectedStockTypes])
 
-  const noFilterSelected =
-    hasScope &&
-    ((selectedLocations !== 'all' && selectedLocations.size === 0) ||
-      (selectedStorageLocations !== 'all' && selectedStorageLocations.size === 0) ||
-      (selectedStockTypes !== 'all' && selectedStockTypes.size === 0))
-
   const fromInputValue = isoToDateInput(range.from)
   const toInputValue = isoToDateInput(range.to)
 
@@ -796,6 +803,16 @@ export default function StockMovementsPage(): JSX.Element {
 
         <section>
           <h2 className="text-sm font-semibold text-foreground mb-3">{t('table.title')}</h2>
+          {noFilterSelected ? (
+            <div className="rounded-md border border-border h-64 flex flex-col items-center justify-center text-center px-6">
+              <p className="text-sm font-medium text-foreground">
+                {t('chart.noFilterSelected.title')}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('chart.noFilterSelected.description')}
+              </p>
+            </div>
+          ) : (
           <StockMovementTable
             rows={tableData?.data ?? []}
             total={tableData?.meta.total ?? 0}
@@ -811,6 +828,7 @@ export default function StockMovementsPage(): JSX.Element {
               setPage(1)
             }}
           />
+          )}
         </section>
       </div>
     </div>

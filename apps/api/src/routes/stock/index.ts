@@ -35,9 +35,14 @@ const movementsQuerySchema = z.object({
   locationId: uuidSchema.optional(),
   storageLocationId: uuidSchema.optional(),
   stockType: z.string().min(1).optional(),
-  locationIds: z.string().optional(),
-  storageLocationIds: z.string().optional(),
-  stockTypes: z.string().optional(),
+  // CSV-encoded plural variants. Hard cap on string length so a malicious
+  // caller can't bypass the post-parse element-count cap by sending a
+  // megabyte of commas (Codex 2026-05-12 review fix). 8 kB covers any
+  // realistic operator selection (~200 UUID-or-stocktype entries) while
+  // keeping a tight ceiling on planner cost.
+  locationIds: z.string().max(8192).optional(),
+  storageLocationIds: z.string().max(8192).optional(),
+  stockTypes: z.string().max(8192).optional(),
   movementType: movementTypeSchema.optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
@@ -47,11 +52,20 @@ const movementsQuerySchema = z.object({
 })
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Max items per CSV filter. Operators picking individual rows out of dozens
+// of warehouses is realistic; thousands is not, and large `IN (...)` lists
+// blow up planner cost / prepared-statement parameter counts (Codex
+// 2026-05-12 review fix).
+const MAX_CSV_FILTER_ITEMS = 100
 
 function parseCsvParam(raw: string | undefined): string[] | undefined {
   if (!raw) return undefined
   const parts = raw.split(',').map((s) => s.trim()).filter(Boolean)
-  return parts.length > 0 ? parts : undefined
+  if (parts.length === 0) return undefined
+  // Dedupe so a caller submitting `?locationIds=A,A,A,B` still costs the
+  // planner the same as `A,B`.
+  const unique = Array.from(new Set(parts))
+  return unique
 }
 
 export async function stockRoutes(app: FastifyInstance): Promise<void> {
@@ -197,6 +211,19 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
         parseCsvParam(rawStorageLocationIds) ??
         (storageLocationId ? [storageLocationId] : undefined)
       const stockTypes = parseCsvParam(rawStockTypes) ?? (stockType ? [stockType] : undefined)
+
+      if (
+        (locationIds && locationIds.length > MAX_CSV_FILTER_ITEMS) ||
+        (storageLocationIds && storageLocationIds.length > MAX_CSV_FILTER_ITEMS) ||
+        (stockTypes && stockTypes.length > MAX_CSV_FILTER_ITEMS)
+      ) {
+        return reply.code(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Filter list exceeds maximum of ${MAX_CSV_FILTER_ITEMS} items`,
+          },
+        })
+      }
 
       if (
         (locationIds && !locationIds.every((id) => UUID_REGEX.test(id))) ||

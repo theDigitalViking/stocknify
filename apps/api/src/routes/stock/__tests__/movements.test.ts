@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { describe, expect, it } from 'vitest'
 
 import { authedHeaders } from '../../../test/auth.js'
@@ -462,6 +464,72 @@ describe('GET /stock/movements (Cycle E)', () => {
       expect(body.meta.total).toBe(2)
       const ids = new Set(body.data.map((m) => m.locationId))
       expect(ids).toEqual(new Set([locationA.id, locationB.id]))
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects oversized CSV filter lists (Cycle 4-E Codex review fix)', async () => {
+    const { tenantId, userId } = await createMovementsFixture()
+
+    const app = await buildTestApp()
+    try {
+      // 101 valid UUIDs in the locationIds list — over the 100-item cap.
+      const tooMany = Array.from({ length: 101 }, () => randomUUID()).join(',')
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?locationIds=${tooMany}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(400)
+      const body = res.json() as { error: { code: string; message: string } }
+      expect(body.error.code).toBe('VALIDATION_ERROR')
+      expect(body.error.message).toMatch(/maximum of 100 items/)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects overlong CSV filter strings (Cycle 4-E Codex review fix)', async () => {
+    const { tenantId, userId } = await createMovementsFixture()
+
+    const app = await buildTestApp()
+    try {
+      // 8193 bytes of dummy data — over the 8192-char schema cap. The schema
+      // rejects before the post-parse element-count check fires.
+      const massive = 'a'.repeat(8193)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?stockTypes=${massive}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(400)
+      const body = res.json() as { error: { code: string } }
+      expect(body.error.code).toBe('VALIDATION_ERROR')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('deduplicates repeated values in CSV filter lists (Cycle 4-E Codex review fix)', async () => {
+    const { tenantId, userId, variantAId, locationId } = await createMovementsFixture()
+    // One row at this location — duplicates in the filter list must not
+    // double-count it on the way out.
+    await seedMovement({ tenantId, variantId: variantAId, locationId })
+
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/stock/movements?locationIds=${locationId},${locationId},${locationId}`,
+        headers: authedHeaders({ tenantId, userId, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as MovementResponseBody
+      // One row returned — dedup happens before the Prisma `in` clause, so
+      // result count is consistent and SQL parameter count is bounded.
+      expect(body.meta.total).toBe(1)
+      expect(body.data).toHaveLength(1)
     } finally {
       await app.close()
     }
