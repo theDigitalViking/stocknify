@@ -105,9 +105,12 @@ export function useUninstallIntegration(): UseMutationResult<unknown, Error, str
     mutationFn: (integrationId: string) =>
       apiFetch<unknown>(`/integrations/${integrationId}`, { method: 'DELETE' }),
     // Invalidate on settle (success + error) so the UI converges with the
-    // server even when a transport error masks a successful commit.
+    // server even when a transport error masks a successful commit. Both keys
+    // are touched because Marketplace cards and the SFTP/FTP list page read
+    // from different query keys but the same underlying integration rows.
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
+      void qc.invalidateQueries({ queryKey: ['integrations-list'] })
     },
   })
 }

@@ -1,7 +1,8 @@
 'use client'
 
-import { ArrowLeft, Loader2, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, MoreVertical, Save, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -16,12 +17,27 @@ import {
 import { PageHeader } from '@/components/shared/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import { useCredentials } from '@/lib/api/use-credentials'
 import {
   useIntegration,
   useToggleIntegration,
+  useUninstallIntegration,
 } from '@/lib/api/use-integrations'
 import {
   useCreateSchedule,
@@ -47,15 +63,20 @@ const HEALTH_COLOR: Record<string, string> = {
 
 export default function AutomaticIntegrationConfigPage({ params }: PageProps): JSX.Element {
   const t = useTranslations('integrations.sftp.config')
+  const tSftpList = useTranslations('integrations.sftp.list')
+  const tCommon = useTranslations('common')
   const tHealth = useTranslations('integrations.sftp.health')
+  const router = useRouter()
   const integrationQuery = useIntegration(params.id)
   const credentialsQuery = useCredentials()
   const schedulesQuery = useSchedules(params.id)
   const toggle = useToggleIntegration()
+  const uninstall = useUninstallIntegration()
   const createSchedule = useCreateSchedule(params.id)
   const updateSchedule = useUpdateSchedule(params.id)
   const deleteSchedule = useDeleteSchedule(params.id)
   const toggleSchedule = useToggleSchedule(params.id)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const integration = integrationQuery.data?.integration
   const schedules = schedulesQuery.data ?? []
@@ -174,6 +195,18 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
     })
   }
 
+  async function handleConfirmDelete(): Promise<void> {
+    if (!integration) return
+    try {
+      await uninstall.mutateAsync(integration.id)
+      toast({ title: tSftpList('deleteSuccess', { name: integration.name }) })
+      setConfirmDeleteOpen(false)
+      router.push('/integrations/automatic')
+    } catch {
+      toast({ title: tSftpList('deleteFailed'), variant: 'destructive' })
+    }
+  }
+
   if (integrationQuery.isLoading) {
     return (
       <div>
@@ -221,7 +254,68 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           onCheckedChange={handleEnabledToggle}
           disabled={toggle.isPending}
         />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label={tSftpList('cardActions')}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={() => {
+                setConfirmDeleteOpen(true)
+              }}
+            >
+              {tSftpList('cardDelete')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PageHeader>
+
+      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{tSftpList('deleteConfirmTitle')}</DialogTitle>
+            <DialogDescription>
+              {tSftpList('deleteConfirmDescription', { name: integration.name })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmDeleteOpen(false)
+              }}
+              disabled={uninstall.isPending}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void handleConfirmDelete()
+              }}
+              disabled={uninstall.isPending}
+              className="gap-1.5"
+            >
+              {uninstall.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {tSftpList('deleting')}
+                </>
+              ) : (
+                tSftpList('deleteConfirm')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="px-6 md:px-8 py-6 space-y-6 max-w-4xl">
         <Link

@@ -1,10 +1,17 @@
 'use client'
 
-import { ChevronRight, Loader2, Plus, SlidersHorizontal, Wand2 } from 'lucide-react'
+import {
+  ChevronRight,
+  Loader2,
+  MoreVertical,
+  Plus,
+  SlidersHorizontal,
+  Wand2,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { SetupWizard } from '@/components/integrations/setup-wizard'
 import { PageHeader } from '@/components/shared/page-header'
@@ -14,15 +21,25 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import {
   useInstallIntegration,
   useIntegrationsList,
   useToggleIntegration,
+  useUninstallIntegration,
 } from '@/lib/api/use-integrations'
 import { useSchedules } from '@/lib/api/use-schedules'
 import { cn } from '@/lib/utils'
@@ -46,6 +63,7 @@ export default function AutomaticPage(): JSX.Element {
   const integrations = useIntegrationsList('marketplace')
   const [chooserOpen, setChooserOpen] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [directNameOpen, setDirectNameOpen] = useState(false)
 
   const automatic = (integrations.data ?? []).filter(
     (row) => row.marketplaceKey !== null && AUTOMATIC_KEYS.has(row.marketplaceKey),
@@ -58,6 +76,11 @@ export default function AutomaticPage(): JSX.Element {
   function handlePickWizard(): void {
     setChooserOpen(false)
     setWizardOpen(true)
+  }
+
+  function handlePickDirect(): void {
+    setChooserOpen(false)
+    setDirectNameOpen(true)
   }
 
   return (
@@ -97,7 +120,9 @@ export default function AutomaticPage(): JSX.Element {
         open={chooserOpen}
         onOpenChange={setChooserOpen}
         onPickWizard={handlePickWizard}
+        onPickDirect={handlePickDirect}
       />
+      <SftpNameDialog open={directNameOpen} onOpenChange={setDirectNameOpen} />
       <SetupWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </div>
   )
@@ -107,20 +132,87 @@ interface AddMethodDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onPickWizard: () => void
+  onPickDirect: () => void
 }
 
 function AddMethodDialog({
   open,
   onOpenChange,
   onPickWizard,
+  onPickDirect,
 }: AddMethodDialogProps): JSX.Element {
   const tSftp = useTranslations('integrations.sftp.list')
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{tSftp('addMethodTitle')}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {tSftp('addMethodTitle')}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <button
+            type="button"
+            onClick={onPickWizard}
+            className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left hover:bg-accent transition"
+          >
+            <Wand2 className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {tSftp('addMethodWizard')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {tSftp('addMethodWizardDescription')}
+              </p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={onPickDirect}
+            className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left hover:bg-accent transition"
+          >
+            <SlidersHorizontal className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {tSftp('addMethodDirect')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {tSftp('addMethodDirectDescription')}
+              </p>
+            </div>
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface SftpNameDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+function SftpNameDialog({ open, onOpenChange }: SftpNameDialogProps): JSX.Element {
+  const tSftp = useTranslations('integrations.sftp.list')
+  const tCommon = useTranslations('common')
   const router = useRouter()
   const install = useInstallIntegration()
+  const [name, setName] = useState('')
 
-  function handlePickDirect(): void {
+  // Reset the input each time the dialog opens so a previous attempt's value
+  // doesn't carry over.
+  useEffect(() => {
+    if (open) setName('')
+  }, [open])
+
+  function handleSubmit(e: React.FormEvent): void {
+    e.preventDefault()
+    if (install.isPending) return
+    const trimmed = name.trim()
     install.mutate(
-      { key: 'sftp', name: 'SFTP Import' },
+      { key: 'sftp', name: trimmed || 'SFTP Import' },
       {
         onSuccess: (result) => {
           onOpenChange(false)
@@ -137,49 +229,44 @@ function AddMethodDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{tSftp('addMethodTitle')}</DialogTitle>
-          <DialogDescription className="sr-only">
-            {tSftp('addMethodTitle')}
-          </DialogDescription>
+          <DialogTitle>{tSftp('directNameDialogTitle')}</DialogTitle>
+          <DialogDescription>{tSftp('directNameDialogDescription')}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-2">
-          <button
-            type="button"
-            onClick={onPickWizard}
-            disabled={install.isPending}
-            className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left hover:bg-accent transition disabled:opacity-50"
-          >
-            <Wand2 className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">
-                {tSftp('addMethodWizard')}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {tSftp('addMethodWizardDescription')}
-              </p>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={handlePickDirect}
-            disabled={install.isPending}
-            className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left hover:bg-accent transition disabled:opacity-50"
-          >
-            {install.isPending ? (
-              <Loader2 className="h-5 w-5 text-brand-600 mt-0.5 shrink-0 animate-spin" />
-            ) : (
-              <SlidersHorizontal className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
-            )}
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">
-                {tSftp('addMethodDirect')}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {tSftp('addMethodDirectDescription')}
-              </p>
-            </div>
-          </button>
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="sftp-direct-name">{tSftp('directNameLabel')}</Label>
+            <Input
+              id="sftp-direct-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={tSftp('directNamePlaceholder')}
+              autoFocus
+              disabled={install.isPending}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                onOpenChange(false)
+              }}
+              disabled={install.isPending}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button type="submit" disabled={install.isPending} className="gap-1.5">
+              {install.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {tSftp('directNameCreating')}
+                </>
+              ) : (
+                tSftp('directNameCreate')
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
@@ -198,8 +285,11 @@ interface AutomaticCardProps {
 
 function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
   const tSftp = useTranslations('integrations.sftp.list')
+  const tCommon = useTranslations('common')
   const toggle = useToggleIntegration()
+  const uninstall = useUninstallIntegration()
   const schedulesQuery = useSchedules(integration.id)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const enabled = integration.isEnabled
 
   const healthClass = HEALTH_DOT[integration.healthStatus] ?? HEALTH_DOT.unknown
@@ -213,6 +303,16 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
         },
       },
     )
+  }
+
+  async function handleConfirmDelete(): Promise<void> {
+    try {
+      await uninstall.mutateAsync(integration.id)
+      toast({ title: tSftp('deleteSuccess', { name: integration.name }) })
+      setConfirmDeleteOpen(false)
+    } catch {
+      toast({ title: tSftp('deleteFailed'), variant: 'destructive' })
+    }
   }
 
   const firstActiveSchedule = schedulesQuery.data?.find((s) => s.isActive)
@@ -242,11 +342,35 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
               : tSftp('notYetRun')}
           </p>
         </div>
-        <Switch
-          checked={enabled}
-          onCheckedChange={handleToggle}
-          disabled={toggle.isPending}
-        />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Switch
+            checked={enabled}
+            onCheckedChange={handleToggle}
+            disabled={toggle.isPending}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={tSftp('cardActions')}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => {
+                  setConfirmDeleteOpen(true)
+                }}
+              >
+                {tSftp('cardDelete')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -263,6 +387,45 @@ function AutomaticCard({ integration }: AutomaticCardProps): JSX.Element {
           <ChevronRight className="h-3 w-3" />
         </Link>
       </div>
+
+      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{tSftp('deleteConfirmTitle')}</DialogTitle>
+            <DialogDescription>
+              {tSftp('deleteConfirmDescription', { name: integration.name })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmDeleteOpen(false)
+              }}
+              disabled={uninstall.isPending}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void handleConfirmDelete()
+              }}
+              disabled={uninstall.isPending}
+              className="gap-1.5"
+            >
+              {uninstall.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {tSftp('deleting')}
+                </>
+              ) : (
+                tSftp('deleteConfirm')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

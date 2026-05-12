@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-13 (Batch 5 geplant. Sebastian-Triage hat 17 zusätzliche Findings produziert; Cycle 5-A schreibt gerade Ghost Integration Fix + Delete-Konsistenz.)
+**Last updated:** 2026-05-13 (Cycle 5-A abgeschlossen — Ghost Integration Fix + SFTP Delete-Affordances auf Card + Edit-Page. S1/S2/S27 geschlossen.)
 
 ---
 
@@ -22,7 +22,7 @@
 
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
-| **5-A** | S1 (Ghost Integration), S2 (Delete-Button fehlt), S27 (Card-Konsistenz mit Marketplace) | M | skip | 🚧 In Arbeit — `PROMPT_5-A_GHOST_INTEGRATION_DELETE.md` |
+| **5-A** | S1 (Ghost Integration), S2 (Delete-Button fehlt), S27 (Card-Konsistenz mit Marketplace) | M | skip | ✅ Ausgeführt 2026-05-13 — `prompts/results/RESULT_5-A_GHOST_INTEGRATION_DELETE.md` |
 | **5-A.5** | Section-Local-Saves auf Edit-Seite | S–M | skip | pending |
 | **5-B** | S15, S16, S17, S20, S25 — Schedule Builder Rebuild + i18n | M | recommended | pending |
 | **5-C** | S22 — File-Handling delete/archive (Backend + Schema + Frontend) | M | mandatory | pending |
@@ -46,8 +46,8 @@
 ## 📋 Finding-Liste (Batch 5)
 
 ### Bugs (HIGH)
-- **S1** — Geister-Integration bei "Direkte Konfiguration": sofortiger API-Call statt zwei-Schritt-Flow → 5-A
-- **S2** — SFTP-Integrationen nicht löschbar (Card + Edit-Seite) → 5-A
+- ~~**S1**~~ — Geister-Integration bei "Direkte Konfiguration": sofortiger API-Call statt zwei-Schritt-Flow → ✅ gefixt in 5-A (2026-05-13)
+- ~~**S2**~~ — SFTP-Integrationen nicht löschbar (Card + Edit-Seite) → ✅ gefixt in 5-A (2026-05-13)
 
 ### UX/Visual (MEDIUM, aus Batch-3-Review)
 - **S3** — Breadcrumb-Style auf Config-Seite → 5-G (Duplikat S23)
@@ -81,7 +81,7 @@
 - **S26** — "Jetzt importieren" Primary Action im Header (analog `/products` Add-Button) → 5-G
 
 ### Konsistenz (aus Triage 2026-05-13)
-- **S27** — Drei-Punkte-Menü auf SFTP-Card analog Marketplace (Bearbeiten + Löschen) + Löschen auf Edit-Seite → 5-A
+- ~~**S27**~~ — Drei-Punkte-Menü auf SFTP-Card analog Marketplace (Bearbeiten + Löschen) + Löschen auf Edit-Seite → ✅ gefixt in 5-A (2026-05-13, nur Löschen — Bearbeiten redundant zu Card-Link)
 
 ### Funktionstest
 - **S11** — SFTP End-to-End-Test mit echtem Server → 5-D

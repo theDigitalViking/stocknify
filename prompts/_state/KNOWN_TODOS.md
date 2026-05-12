@@ -2,7 +2,7 @@
 
 > Tech debt and deferred Codex findings. Not blocking, but tracked. Claude Code appends to this list when a finding is classified as deferred. Sebastian or Claude (Chat) removes items when fixed.
 
-**Last updated:** 2026-05-12 (Cycle 4-E — Movements table now reflects the chart filter dropdowns; backend accepts comma-separated plural filter params. Removed the stale "chart filter and table can disagree" frontend entry that 4-E closes.)
+**Last updated:** 2026-05-13 (Cycle 5-A — Ghost-integration fix + SFTP/FTP delete affordances on cards and edit-page. No new TODOs; the cycle closed S1/S2/S27 cleanly.)
 
 ---
 
