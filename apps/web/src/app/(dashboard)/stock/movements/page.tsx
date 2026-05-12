@@ -20,11 +20,12 @@ import {
 } from '@/components/stock/stock-movement-chart'
 import { StockMovementTable } from '@/components/stock/stock-movement-table'
 import { Button } from '@/components/ui/button'
+import { useLocations, useStorageLocations } from '@/lib/api/use-locations'
 import { useStockMovements } from '@/lib/api/use-stock-movements'
+import { useStockTypes } from '@/lib/api/use-stock-types'
 
 const DEFAULT_PER_PAGE = 50
 const CHART_PER_PAGE = 200 // wider window so the area chart shows real history
-const OPTIONS_PER_PAGE = 200 // backend caps movements at perPage <= 200
 const DEFAULT_RANGE_DAYS = 30
 
 const PRESETS = [
@@ -287,6 +288,37 @@ export default function StockMovementsPage(): JSX.Element {
     })
   }, [search, writeRangeToUrl])
 
+  // On mount, migrate legacy single-value URL params (`locationId` /
+  // `storageLocationId` / `stockType`) into the multi-select form
+  // (`locations` / `storageLocations` / `stockTypes`). Without this, the URL
+  // sync effect below would read the absent multi-select params, resolve to
+  // `'all'`, and immediately overwrite the legacy-seeded initial state on
+  // the first post-mount tick (Cycle 4-D Bug 1). Placed BEFORE the sync
+  // effect so they fire in declaration order within the same commit — the
+  // URL is the single source of truth from tick zero.
+  useEffect(() => {
+    const params = new URLSearchParams(search.toString())
+    let dirty = false
+
+    if (legacyLocationId && !params.has('locations')) {
+      params.set('locations', legacyLocationId)
+      dirty = true
+    }
+    if (legacyStorageLocationId && !params.has('storageLocations')) {
+      params.set('storageLocations', legacyStorageLocationId)
+      dirty = true
+    }
+    if (legacyStockType && !params.has('stockTypes')) {
+      params.set('stockTypes', legacyStockType)
+      dirty = true
+    }
+
+    if (dirty) {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Sync external URL changes for the multi-select filters back into state.
   // After mount, the URL is the single source of truth for filter state —
   // the legacy single-value fallbacks only fire at first render.
@@ -431,31 +463,21 @@ export default function StockMovementsPage(): JSX.Element {
     ],
   )
 
-  // Filter-options fetch — same scope as the chart (product/variant + range)
-  // but without the per-row narrowing the chart applies in pristine entry.
-  // This guarantees dropdowns surface every location/bin/stock-type that has
-  // movements for the current product in range, so a deep-link from the stock
-  // list (which narrows the chart to a single combo) no longer collapses each
-  // dropdown to a one-option list (Cycle 4-B fix).
-  const optionsFilters = useMemo(
-    () => ({
-      variantId,
-      productId,
-      from: range.from,
-      to: range.to,
-      page: 1,
-      perPage: OPTIONS_PER_PAGE,
-      sortDir: 'desc' as const,
-    }),
-    [variantId, productId, range.from, range.to],
-  )
+  // Filter options come from tenant-wide hooks rather than movement data
+  // (Cycle 4-D Bug 2). Sourcing options from the movements payload meant a
+  // product with movements at only one warehouse showed exactly one option in
+  // the location dropdown — the operator could never broaden beyond what
+  // already existed in the data. Tenant-wide hooks surface every
+  // location/bin/stock-type the tenant has configured; the cascade logic
+  // below scopes the bin dropdown to the selected warehouses.
+  const { data: allLocations = [] } = useLocations()
+  const { data: allStorageLocations = [] } = useStorageLocations()
+  const { data: allStockTypeDefs = [] } = useStockTypes()
 
   const { data: tableData, isLoading: tableLoading } = useStockMovements(tableFilters)
   const { data: chartData } = useStockMovements(chartFilters)
-  const { data: optionsData } = useStockMovements(optionsFilters)
 
   const chartRows = chartData?.data ?? []
-  const optionsRows = optionsData?.data ?? []
   const chartTotal = chartData?.meta.total ?? 0
   const isChartTruncated = chartTotal > chartRows.length
   const hasRange = Boolean(range.from || range.to)
@@ -493,39 +515,33 @@ export default function StockMovementsPage(): JSX.Element {
     return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [hasScope, chartRows, t])
 
-  const locationOptions = useMemo<FilterOption[]>(() => {
-    if (!hasScope) return []
-    const map = new Map<string, string>()
-    for (const row of optionsRows) {
-      if (!map.has(row.locationId)) map.set(row.locationId, row.locationName)
-    }
-    return Array.from(map.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [hasScope, optionsRows])
+  const locationOptions = useMemo<FilterOption[]>(
+    () =>
+      allLocations
+        .map((loc) => ({ value: loc.id, label: loc.name }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [allLocations],
+  )
 
   // Storage-location options carry their parent locationId so the cascade
-  // helper can prune below. Bin-agnostic rows (storageLocationId === null)
-  // contribute no option — they cannot be picked individually and instead
-  // appear by default when the storage filter is 'all'.
+  // helper can prune below. Bin-agnostic movements are still represented in
+  // the chart via the `'all'` sentinel — the bin dropdown only enumerates
+  // concrete bins because they're the only things a user can pick.
   interface StorageOption extends FilterOption {
     parentLocationId: string
   }
 
-  const allStorageOptions = useMemo<StorageOption[]>(() => {
-    if (!hasScope) return []
-    const map = new Map<string, StorageOption>()
-    for (const row of optionsRows) {
-      if (!row.storageLocationId || !row.storageLocationName) continue
-      if (map.has(row.storageLocationId)) continue
-      map.set(row.storageLocationId, {
-        value: row.storageLocationId,
-        label: row.storageLocationName,
-        parentLocationId: row.locationId,
-      })
-    }
-    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label))
-  }, [hasScope, optionsRows])
+  const allStorageOptions = useMemo<StorageOption[]>(
+    () =>
+      allStorageLocations
+        .map((sl) => ({
+          value: sl.id,
+          label: sl.name,
+          parentLocationId: sl.locationId,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [allStorageLocations],
+  )
 
   // Cascade: bin dropdown shows only bins under the currently-selected
   // warehouses. With selectedLocations === 'all', every bin is visible.
@@ -538,14 +554,13 @@ export default function StockMovementsPage(): JSX.Element {
       .map(({ value, label }) => ({ value, label }))
   }, [allStorageOptions, selectedLocations])
 
-  const stockTypeOptions = useMemo<FilterOption[]>(() => {
-    if (!hasScope) return []
-    const set = new Set<string>()
-    for (const row of optionsRows) set.add(row.stockType)
-    return Array.from(set)
-      .map((v) => ({ value: v, label: v }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [hasScope, optionsRows])
+  const stockTypeOptions = useMemo<FilterOption[]>(
+    () =>
+      allStockTypeDefs
+        .map((st) => ({ value: st.key, label: st.key }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [allStockTypeDefs],
+  )
 
   // When the user changes warehouses, prune any bin selections whose parent
   // is no longer selected. Doing this inside the change handler (vs an effect
