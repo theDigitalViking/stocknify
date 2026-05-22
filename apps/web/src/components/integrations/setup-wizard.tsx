@@ -467,6 +467,12 @@ function Step5Summary({
 }): JSX.Element {
   const t = useTranslations('integrations.sftp.wizard.step5')
   const tSchedule = useTranslations('integrations.sftp.scheduleBuilder')
+  // Cycle 5-C — wizard summary surfaces the default post-import handling
+  // so the operator sees what happens to their CSV file after a successful
+  // or failed import. The wizard doesn't expose toggles for these fields;
+  // every new install inherits the schema defaults (archive / archive,
+  // 3 retries) and the Edit-Page is where they can be changed.
+  const tConfig = useTranslations('integrations.sftp.config')
   const locale = useLocale()
   return (
     <div className="space-y-3 text-sm">
@@ -501,6 +507,14 @@ function Step5Summary({
             ? t('manualOnly')
             : formatSchedulePreview(state.schedule, locale, tSchedule)
         }
+      />
+      <SummaryRow
+        label={tConfig('postImportSuccessSubsection')}
+        value={tConfig('actionArchive')}
+      />
+      <SummaryRow
+        label={tConfig('postImportFailedSubsection')}
+        value={`${tConfig('actionArchive')} (${tConfig('maxRetriesLabel')}: 3)`}
       />
     </div>
   )

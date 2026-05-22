@@ -568,7 +568,21 @@
         "mappingSaveFailed": "Mapping konnte nicht aktualisiert werden",
         "needCredentialForSchedule": "Zugangsdaten zuerst ausw\u00e4hlen",
         "savingShort": "Wird gespeichert\u2026",
-        "savedShort": "Gespeichert"
+        "savedShort": "Gespeichert",
+        "postImportActionSection": "Nach dem Import",
+        "postImportSuccessSubsection": "Erfolgreiche Imports",
+        "postImportFailedSubsection": "Fehlgeschlagene Imports",
+        "actionArchive": "Archivieren",
+        "actionDelete": "L\u00f6schen",
+        "archiveSubdirLabel": "Archiv-Ordnername",
+        "failedSubdirLabel": "Fehler-Ordnername",
+        "archivePathHint": "Dateien werden nach `<remotePath>/{subdir}/<YYYY-MM>/` verschoben.",
+        "failedPathHint": "Fehlerhafte Dateien werden nach `<remotePath>/{subdir}/<YYYY-MM>/` verschoben.",
+        "maxRetriesLabel": "Wiederholungen",
+        "maxRetriesHint": "Wie oft eine fehlgeschlagene Datei vom Scheduler erneut versucht wird, bevor die Failed-Aktion greift (0\u201310).",
+        "manualRetryNote": "Manuelle Imports laufen immer mit Wiederholungen=0 \u2014 die Failed-Aktion greift sofort beim Fehlschlag.",
+        "saved": "Gespeichert",
+        "saveFailed": "Speichern fehlgeschlagen"
       },
       "health": {
         "healthy": "Gesund",
@@ -677,7 +691,8 @@
           "running": "L\u00e4uft\u2026",
           "successToast": "Import abgeschlossen \u2014 {rows} Zeile(n) verarbeitet.",
           "partialToast": "Import mit Zeilen-Fehlern beendet. Details in der Historie.",
-          "failedToast": "Import fehlgeschlagen."
+          "failedToast": "Import fehlgeschlagen.",
+          "manualImportNoRetryNote": "Manuelle Imports werden nicht automatisch wiederholt. Schl\u00e4gt der Import fehl, wird die Quelldatei sofort gem\u00e4\u00df der Failed-Import-Einstellung verarbeitet."
         }
       },
       "wizard": {

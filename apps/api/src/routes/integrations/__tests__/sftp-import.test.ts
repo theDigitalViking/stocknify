@@ -9,7 +9,10 @@ import {
   testFtpConnection,
 } from '../../../integrations/ftp-client.js'
 import {
+  deleteSftpFile,
+  ensureSftpDirectory,
   listSftpDirectory,
+  moveSftpFile,
   streamSftpFile,
   testSftpConnection,
   type SftpFileInfo,
@@ -27,17 +30,29 @@ vi.mock('../../../integrations/sftp-client.js', () => ({
   testSftpConnection: vi.fn(),
   listSftpDirectory: vi.fn(),
   streamSftpFile: vi.fn(),
+  // Cycle 5-C primitives — no-op by default so the service module's
+  // cleanup branch (invoked after every successful or failed import) never
+  // touches a real socket. Tests can override via `mockedXxx.mockReset()`.
+  ensureSftpDirectory: vi.fn().mockResolvedValue(undefined),
+  moveSftpFile: vi.fn().mockResolvedValue(undefined),
+  deleteSftpFile: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../../../integrations/ftp-client.js', () => ({
   testFtpConnection: vi.fn(),
   listFtpDirectory: vi.fn(),
   streamFtpFile: vi.fn(),
+  ensureFtpDirectory: vi.fn().mockResolvedValue(undefined),
+  moveFtpFile: vi.fn().mockResolvedValue(undefined),
+  deleteFtpFile: vi.fn().mockResolvedValue(undefined),
 }))
 
 const mockedListSftp = vi.mocked(listSftpDirectory)
 const mockedStreamSftp = vi.mocked(streamSftpFile)
 const mockedListFtp = vi.mocked(listFtpDirectory)
 const mockedStreamFtp = vi.mocked(streamFtpFile)
+const mockedEnsureSftp = vi.mocked(ensureSftpDirectory)
+const mockedMoveSftp = vi.mocked(moveSftpFile)
+const mockedDeleteSftp = vi.mocked(deleteSftpFile)
 // Connection tests aren't exercised here but the credential vault preamble
 // imports them transitively — the explicit reset keeps state clean.
 vi.mocked(testSftpConnection).mockResolvedValue({ success: true })
@@ -48,6 +63,14 @@ beforeEach(() => {
   mockedStreamSftp.mockReset()
   mockedListFtp.mockReset()
   mockedStreamFtp.mockReset()
+  mockedEnsureSftp.mockReset()
+  mockedMoveSftp.mockReset()
+  mockedDeleteSftp.mockReset()
+  // Re-arm the cleanup primitives as no-op resolved so the service
+  // module's archive/delete calls inside the route never throw.
+  mockedEnsureSftp.mockResolvedValue(undefined)
+  mockedMoveSftp.mockResolvedValue(undefined)
+  mockedDeleteSftp.mockResolvedValue(undefined)
 })
 
 interface ImportRunBody {
@@ -652,6 +675,76 @@ describe('GET /v1/integrations/:id/runs (Cycle 3-C R6)', () => {
       })
       expect(own.statusCode).toBe(200)
       expect((own.json() as RunsListBody).data).toHaveLength(0)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Cycle 5-C — manual-import post-import cleanup wiring
+// ---------------------------------------------------------------------------
+
+describe('POST /v1/integrations/:id/import-now → post-import cleanup (Cycle 5-C)', () => {
+  it('successful manual import archives the source file (default postImportAction)', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    // Wire integration default credential so the route reaches the
+    // archive branch (postImportAction defaults to 'archive').
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { credentialId: credential.id },
+    })
+    mockedStreamSftp.mockResolvedValue(makeStreamHandle(STOCK_CSV))
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { filePath: '/exports/data.csv' },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as ImportRunBody
+      expect(body.data.status).toBe('success')
+
+      // applyPostImportAction → archive path → ensure + move on SFTP.
+      expect(mockedEnsureSftp).toHaveBeenCalledTimes(1)
+      expect(mockedMoveSftp).toHaveBeenCalledTimes(1)
+      const moveSource = mockedMoveSftp.mock.calls[0]?.[1]
+      const moveDest = mockedMoveSftp.mock.calls[0]?.[2] ?? ''
+      expect(moveSource).toBe('/exports/data.csv')
+      expect(moveDest).toMatch(/^\/exports\/archive\/\d{4}-\d{2}\/data\.csv$/)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('failed manual import runs failed cleanup immediately (effective retries=0)', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { credentialId: credential.id, failedAction: 'delete' },
+    })
+    mockedStreamSftp.mockRejectedValue(new Error('Stream broke'))
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { filePath: '/exports/data.csv' },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as ImportRunBody
+      expect(body.data.status).toBe('failed')
+
+      // Manual + failed + failedAction=delete → deleteSftpFile called
+      // immediately. No counter lookup, no maxImportRetries gate.
+      expect(mockedDeleteSftp).toHaveBeenCalledWith(
+        expect.anything(),
+        '/exports/data.csv',
+      )
+      expect(mockedEnsureSftp).not.toHaveBeenCalled()
     } finally {
       await app.close()
     }

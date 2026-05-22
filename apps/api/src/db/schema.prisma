@@ -402,6 +402,18 @@ model Integration {
   // same FKs as optional overrides (schema preserves for future power-user UI).
   credentialId         String?   @map("credential_id") @db.Uuid
   csvMappingTemplateId String?   @map("csv_mapping_template_id") @db.Uuid
+  // Post-import file handling (Cycle 5-C).
+  // Success branch: `postImportAction` decides delete vs. archive of the
+  // source CSV. Failed branch: scheduled imports keep the file across cron
+  // ticks up to `maxImportRetries` (counter derived from ImportRun history,
+  // not stored). Manual imports treat failures as effective retries=0 and
+  // run the failed-action immediately. Subdirs are plain folder names; the
+  // full archive path is hardcoded `<source-dir>/<subdir>/<YYYY-MM>/`.
+  postImportAction   String  @default("archive")  @map("post_import_action")
+  archiveSubdir      String  @default("archive")  @map("archive_subdir")
+  maxImportRetries   Int     @default(3)          @map("max_import_retries")
+  failedAction       String  @default("archive")  @map("failed_action")
+  failedSubdir       String  @default("failed")   @map("failed_subdir")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz

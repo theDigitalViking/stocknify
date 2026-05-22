@@ -15,6 +15,11 @@ const listQuerySchema = z.object({
   type: z.enum(['marketplace', 'csv']).optional(),
 })
 
+// Cycle 5-C: subdir is a folder NAME, not a path. Reject slashes / dots /
+// whitespace so the operator can't accidentally place archives outside the
+// expected `<source-dir>/<subdir>/<YYYY-MM>/` layout.
+const SUBDIR_PATTERN = /^[A-Za-z0-9_-]+$/
+
 const updateIntegrationSchema = z
   .object({
     isEnabled: z.boolean().optional(),
@@ -22,6 +27,12 @@ const updateIntegrationSchema = z
     config: z.record(z.unknown()).optional(),
     credentialId: z.string().uuid().nullable().optional(),
     csvMappingTemplateId: z.string().uuid().nullable().optional(),
+    // Cycle 5-C — post-import handling fields.
+    postImportAction: z.enum(['delete', 'archive']).optional(),
+    archiveSubdir: z.string().min(1).max(64).regex(SUBDIR_PATTERN).optional(),
+    maxImportRetries: z.number().int().min(0).max(10).optional(),
+    failedAction: z.enum(['delete', 'archive']).optional(),
+    failedSubdir: z.string().min(1).max(64).regex(SUBDIR_PATTERN).optional(),
   })
   .strict()
 
@@ -660,6 +671,25 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
           parsed.data.csvMappingTemplateId === null
             ? { disconnect: true }
             : { connect: { id: parsed.data.csvMappingTemplateId } }
+      }
+      // Cycle 5-C — post-import handling fields. All are NOT NULL with
+      // defaults at the DB level, so PATCH only ever transitions between
+      // valid values. The Zod schema already validated enum / range /
+      // pattern, so we pass them through directly.
+      if (parsed.data.postImportAction !== undefined) {
+        data.postImportAction = parsed.data.postImportAction
+      }
+      if (parsed.data.archiveSubdir !== undefined) {
+        data.archiveSubdir = parsed.data.archiveSubdir
+      }
+      if (parsed.data.maxImportRetries !== undefined) {
+        data.maxImportRetries = parsed.data.maxImportRetries
+      }
+      if (parsed.data.failedAction !== undefined) {
+        data.failedAction = parsed.data.failedAction
+      }
+      if (parsed.data.failedSubdir !== undefined) {
+        data.failedSubdir = parsed.data.failedSubdir
       }
 
       if (Object.keys(data).length === 0) {

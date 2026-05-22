@@ -33,6 +33,7 @@ import { decryptCredential } from '../../lib/encryption.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/require-role.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
+import { applyPostImportAction } from '../../services/integrations/post-import-action.js'
 import {
   buildStockExtractor,
   decodeBuffer,
@@ -377,9 +378,22 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
 
     // Cycle 5-A.5: credentialId / mappingTemplateId fall back to the
     // Integration's defaults when the body omits them.
+    // Cycle 5-C: also pull the post-import handling fields so we can pass
+    // them to `applyPostImportAction` at the bottom of this handler.
     const integrationDefaults = await request.db.integration.findFirst({
       where: { id: params.data.id, tenantId: request.tenantId, deletedAt: null },
-      select: { id: true, credentialId: true, csvMappingTemplateId: true },
+      select: {
+        id: true,
+        tenantId: true,
+        credentialId: true,
+        csvMappingTemplateId: true,
+        postImportAction: true,
+        archiveSubdir: true,
+        maxImportRetries: true,
+        failedAction: true,
+        failedSubdir: true,
+        lastSuccessfulSyncAt: true,
+      },
     })
     if (!integrationDefaults) {
       return reply.code(404).send({
@@ -454,6 +468,44 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
       },
     })
 
+    // Cycle 5-C: hoist filePath so the cleanup branches below can pass it
+    // to applyPostImportAction. Undefined if the connector throws before
+    // any file is resolved.
+    let filePath: string | undefined
+
+    const runPostImportCleanupManual = async (
+      status: 'success' | 'partial' | 'failed',
+    ): Promise<void> => {
+      if (filePath === undefined) return
+      await applyPostImportAction({
+        db: request.db,
+        log: request.log,
+        integration: {
+          id: integrationDefaults.id,
+          tenantId: integrationDefaults.tenantId,
+          postImportAction: integrationDefaults.postImportAction,
+          archiveSubdir: integrationDefaults.archiveSubdir,
+          maxImportRetries: integrationDefaults.maxImportRetries,
+          failedAction: integrationDefaults.failedAction,
+          failedSubdir: integrationDefaults.failedSubdir,
+          lastSuccessfulSyncAt: integrationDefaults.lastSuccessfulSyncAt,
+        },
+        credentialType: ctx.credential.credentialType,
+        remoteConfig: {
+          host: ctx.credential.host,
+          port: ctx.credential.port,
+          username: ctx.credential.username,
+          ...(ctx.credential.password !== undefined
+            ? { password: ctx.credential.password }
+            : {}),
+        },
+        sourceFilePath: filePath,
+        importRunStatus: status,
+        importRunId: importRun.id,
+        trigger: 'manual',
+      })
+    }
+
     // We catch every failure so the ImportRun row reflects the outcome
     // even when the connector or the pipeline blows up mid-stream. The
     // route always responds with the run record (200) — the operator
@@ -462,7 +514,7 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
       // Resolve the file path. When the body omits filePath, list the
       // remote directory and pick the newest .csv file. Empty directory →
       // ImportRun is failed with a clear reason.
-      let filePath = body.data.filePath
+      filePath = body.data.filePath
       if (!filePath) {
         const dir = resolvePath(undefined, ctx.credential.remotePath)
         const files = await listRemoteDirectory(ctx.credential, dir, { extension: '.csv' })
@@ -476,6 +528,7 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
               completedAt: new Date(),
             },
           })
+          // No file resolved → nothing to clean up. Return failed run.
           return reply.send({ data: failed })
         }
         filePath = joinRemotePath(dir, newest.name)
@@ -542,7 +595,14 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
           completedAt: new Date(),
         },
       })
-      return reply.send({ data: finalRun })
+      await runPostImportCleanupManual(status)
+      // Re-read the run after cleanup — applyPostImportAction may have
+      // appended a cleanup-failure note to errorSummary that the operator
+      // should see in the response immediately.
+      const responseRun = await request.db.importRun.findUnique({
+        where: { id: importRun.id },
+      })
+      return reply.send({ data: responseRun ?? finalRun })
     } catch (err) {
       const code = (err as { code?: string } | undefined)?.code
       const reason =
@@ -562,7 +622,14 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
           completedAt: new Date(),
         },
       })
-      return reply.send({ data: failed })
+      // Manual = effective retries 0 → failed cleanup fires immediately,
+      // even on a single failed attempt. If filePath was never resolved
+      // (connector threw on listing), cleanup is skipped.
+      await runPostImportCleanupManual('failed')
+      const responseRun = await request.db.importRun.findUnique({
+        where: { id: importRun.id },
+      })
+      return reply.send({ data: responseRun ?? failed })
     }
   })
 

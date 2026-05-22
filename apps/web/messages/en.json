@@ -568,7 +568,21 @@
         "mappingSaveFailed": "Could not update mapping",
         "needCredentialForSchedule": "Select credentials first",
         "savingShort": "Saving…",
-        "savedShort": "Saved"
+        "savedShort": "Saved",
+        "postImportActionSection": "After import",
+        "postImportSuccessSubsection": "Successful imports",
+        "postImportFailedSubsection": "Failed imports",
+        "actionArchive": "Archive",
+        "actionDelete": "Delete",
+        "archiveSubdirLabel": "Archive folder name",
+        "failedSubdirLabel": "Failed-import folder name",
+        "archivePathHint": "Files will be moved to `<remotePath>/{subdir}/<YYYY-MM>/`.",
+        "failedPathHint": "Failed files will be moved to `<remotePath>/{subdir}/<YYYY-MM>/`.",
+        "maxRetriesLabel": "Retry attempts",
+        "maxRetriesHint": "How often a failed file is retried by the scheduler before the failed-action runs (0–10).",
+        "manualRetryNote": "Manual imports always run with retries=0 — the failed-action applies immediately on failure.",
+        "saved": "Saved",
+        "saveFailed": "Could not save"
       },
       "health": {
         "healthy": "Healthy",
@@ -677,7 +691,8 @@
           "running": "Running\u2026",
           "successToast": "Import complete \u2014 {rows} row(s) processed.",
           "partialToast": "Import finished with row errors. See history for details.",
-          "failedToast": "Import failed."
+          "failedToast": "Import failed.",
+          "manualImportNoRetryNote": "Manual imports do not retry automatically. If the import fails, the source file is handled immediately according to the failed-import setting."
         }
       },
       "wizard": {

@@ -142,6 +142,12 @@ export interface IntegrationDetail {
   // yet); when set they act as the default for schedules and manual imports.
   credentialId: string | null
   csvMappingTemplateId: string | null
+  // Cycle 5-C: post-import file handling.
+  postImportAction: 'delete' | 'archive'
+  archiveSubdir: string
+  maxImportRetries: number
+  failedAction: 'delete' | 'archive'
+  failedSubdir: string
   createdAt: string
   updatedAt: string
 }
@@ -188,6 +194,12 @@ export interface UpdateIntegrationInput {
   isEnabled?: boolean
   credentialId?: string | null
   csvMappingTemplateId?: string | null
+  // Cycle 5-C: post-import file handling.
+  postImportAction?: 'delete' | 'archive'
+  archiveSubdir?: string
+  maxImportRetries?: number
+  failedAction?: 'delete' | 'archive'
+  failedSubdir?: string
 }
 
 export function useUpdateIntegration(): UseMutationResult<

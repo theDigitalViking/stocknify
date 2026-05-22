@@ -382,3 +382,144 @@ describe('PATCH /v1/integrations/:id — Cycle 5-A.5 csvMappingTemplateId field'
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 5-C — PATCH post-import handling fields
+// ---------------------------------------------------------------------------
+
+describe('PATCH /v1/integrations/:id — Cycle 5-C post-import fields', () => {
+  it('accepts all five fields together with valid values', async () => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: {
+          postImportAction: 'delete',
+          archiveSubdir: 'success-archive',
+          maxImportRetries: 5,
+          failedAction: 'archive',
+          failedSubdir: 'rejects',
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = await testDb.integration.findUnique({
+        where: { id: seed.integrationId },
+      })
+      expect(row?.postImportAction).toBe('delete')
+      expect(row?.archiveSubdir).toBe('success-archive')
+      expect(row?.maxImportRetries).toBe(5)
+      expect(row?.failedAction).toBe('archive')
+      expect(row?.failedSubdir).toBe('rejects')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    ['postImportAction', 'invalid'],
+    ['failedAction', 'shred'],
+  ])('rejects %s with invalid enum value', async (field, value) => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { [field]: value },
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as ErrorBody).error.code).toBe('VALIDATION_ERROR')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    ['archiveSubdir', '../escape'],
+    ['archiveSubdir', 'with spaces'],
+    ['archiveSubdir', 'archive/nested'],
+    ['archiveSubdir', '.hidden'],
+    ['failedSubdir', '../etc'],
+    ['failedSubdir', 'has space'],
+    ['failedSubdir', ''],
+  ])('rejects %s with invalid pattern: "%s"', async (field, value) => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { [field]: value },
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as ErrorBody).error.code).toBe('VALIDATION_ERROR')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('accepts archiveSubdir with valid pattern letters/digits/_/-', async () => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { archiveSubdir: 'valid_name-01' },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = await testDb.integration.findUnique({
+        where: { id: seed.integrationId },
+      })
+      expect(row?.archiveSubdir).toBe('valid_name-01')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    ['maxImportRetries', 11],
+    ['maxImportRetries', -1],
+    ['maxImportRetries', 1.5],
+  ])('rejects %s with out-of-range value %s', async (field, value) => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { [field]: value },
+      })
+      expect(res.statusCode).toBe(400)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([0, 10])('accepts maxImportRetries=%s (range boundaries)', async (value) => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { maxImportRetries: value },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = await testDb.integration.findUnique({
+        where: { id: seed.integrationId },
+      })
+      expect(row?.maxImportRetries).toBe(value)
+    } finally {
+      await app.close()
+    }
+  })
+})

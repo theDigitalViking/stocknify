@@ -11,9 +11,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { testFtpConnection } from '../../integrations/ftp-client.js'
 import {
   listSftpDirectory,
+  streamSftpFile,
   testSftpConnection,
 } from '../../integrations/sftp-client.js'
 import { encryptCredential } from '../../lib/encryption.js'
+import { applyPostImportAction } from '../../services/integrations/post-import-action.js'
 import { createTestTenant, testDb } from '../../test/db.js'
 import { processSftpImportJob } from '../sftp-import.worker.js'
 
@@ -21,11 +23,20 @@ vi.mock('../../integrations/sftp-client.js', () => ({
   testSftpConnection: vi.fn(),
   listSftpDirectory: vi.fn(),
   streamSftpFile: vi.fn(),
+  ensureSftpDirectory: vi.fn(),
+  moveSftpFile: vi.fn(),
+  deleteSftpFile: vi.fn(),
 }))
 vi.mock('../../integrations/ftp-client.js', () => ({
   testFtpConnection: vi.fn(),
   listFtpDirectory: vi.fn(),
   streamFtpFile: vi.fn(),
+  ensureFtpDirectory: vi.fn(),
+  moveFtpFile: vi.fn(),
+  deleteFtpFile: vi.fn(),
+}))
+vi.mock('../../services/integrations/post-import-action.js', () => ({
+  applyPostImportAction: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Connection-test imports are pulled transitively by other modules; the
@@ -34,9 +45,14 @@ vi.mocked(testSftpConnection).mockResolvedValue({ success: true })
 vi.mocked(testFtpConnection).mockResolvedValue({ success: true })
 
 const mockedList = vi.mocked(listSftpDirectory)
+const mockedStream = vi.mocked(streamSftpFile)
+const mockedApplyPostImport = vi.mocked(applyPostImportAction)
 
 beforeEach(() => {
   mockedList.mockReset()
+  mockedStream.mockReset()
+  mockedApplyPostImport.mockReset()
+  mockedApplyPostImport.mockResolvedValue(undefined)
 })
 
 interface SeedResult {
@@ -294,5 +310,74 @@ describe('processSftpImportJob — Integration default credential fallback (Cycl
       where: { scheduleId: schedule.id },
     })
     expect(runs).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Cycle 5-C — post-import cleanup gating
+// ---------------------------------------------------------------------------
+
+describe('processSftpImportJob — post-import cleanup wiring (Cycle 5-C)', () => {
+  it('catch path on isFinalAttempt: true with filePath resolved calls applyPostImportAction', async () => {
+    const { schedule } = await seedSchedule()
+    mockedList.mockResolvedValueOnce([
+      {
+        name: 'data.csv',
+        size: 100,
+        modifiedAt: new Date().toISOString(),
+        type: 'file',
+      },
+    ])
+    mockedStream.mockRejectedValueOnce(new Error('Stream broke'))
+
+    await expect(
+      processSftpImportJob(
+        { scheduleId: schedule.id },
+        { isFinalAttempt: true },
+      ),
+    ).rejects.toThrow('Stream broke')
+
+    expect(mockedApplyPostImport).toHaveBeenCalledTimes(1)
+    const args = mockedApplyPostImport.mock.calls[0]?.[0]
+    expect(args?.trigger).toBe('scheduled')
+    expect(args?.importRunStatus).toBe('failed')
+    expect(args?.sourceFilePath).toBe('/exports/data.csv')
+  })
+
+  it('catch path on isFinalAttempt: false does NOT call applyPostImportAction', async () => {
+    const { schedule } = await seedSchedule()
+    mockedList.mockResolvedValueOnce([
+      {
+        name: 'data.csv',
+        size: 100,
+        modifiedAt: new Date().toISOString(),
+        type: 'file',
+      },
+    ])
+    mockedStream.mockRejectedValueOnce(new Error('Stream broke'))
+
+    await expect(
+      processSftpImportJob(
+        { scheduleId: schedule.id },
+        { isFinalAttempt: false },
+      ),
+    ).rejects.toThrow('Stream broke')
+
+    expect(mockedApplyPostImport).not.toHaveBeenCalled()
+  })
+
+  it('catch path with filePath unresolved (listing threw) does NOT call applyPostImportAction', async () => {
+    const { schedule } = await seedSchedule()
+    // Listing throws BEFORE filePath resolves.
+    mockedList.mockRejectedValueOnce(new Error('Connection refused'))
+
+    await expect(
+      processSftpImportJob(
+        { scheduleId: schedule.id },
+        { isFinalAttempt: true },
+      ),
+    ).rejects.toThrow('Connection refused')
+
+    expect(mockedApplyPostImport).not.toHaveBeenCalled()
   })
 })

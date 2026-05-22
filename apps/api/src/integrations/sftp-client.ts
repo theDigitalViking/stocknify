@@ -37,6 +37,7 @@ export interface SftpStreamHandle {
 
 const CONNECT_TIMEOUT_MS = 10_000
 const LIST_TIMEOUT_MS = 30_000
+const OP_TIMEOUT_MS = 30_000
 
 export async function testSftpConnection(
   config: SftpTestConfig,
@@ -111,6 +112,70 @@ export async function listSftpDirectory(
       await client.end()
     } catch {
       // ignore disconnect failures
+    }
+  }
+}
+
+// Post-import file-handling primitives (Cycle 5-C). Each opens its own
+// client, runs one op, and closes — symmetric with the existing list/stream
+// helpers. Errors propagate through `sanitizeConnectionError` so the
+// caller gets a sanitised string (no stack traces / paths leaking).
+
+export async function ensureSftpDirectory(
+  config: SftpTestConfig,
+  remotePath: string,
+): Promise<void> {
+  const client = await connectSftp(config)
+  try {
+    // ssh2-sftp-client's mkdir(path, recursive). The recursive flag both
+    // creates intermediate segments and swallows the "already exists" error
+    // on the final segment, which is exactly the idempotent semantics the
+    // archive flow needs.
+    await withTimeout(client.mkdir(remotePath, true), OP_TIMEOUT_MS)
+  } catch (err) {
+    throw new Error(sanitizeConnectionError(err))
+  } finally {
+    try {
+      await client.end()
+    } catch {
+      // ignore disconnect failures
+    }
+  }
+}
+
+export async function moveSftpFile(
+  config: SftpTestConfig,
+  sourcePath: string,
+  destPath: string,
+): Promise<void> {
+  const client = await connectSftp(config)
+  try {
+    await withTimeout(client.rename(sourcePath, destPath), OP_TIMEOUT_MS)
+  } catch (err) {
+    throw new Error(sanitizeConnectionError(err))
+  } finally {
+    try {
+      await client.end()
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function deleteSftpFile(
+  config: SftpTestConfig,
+  remotePath: string,
+): Promise<void> {
+  const client = await connectSftp(config)
+  try {
+    await withTimeout(client.delete(remotePath), OP_TIMEOUT_MS)
+  } catch (err) {
+    throw new Error(sanitizeConnectionError(err))
+  } finally {
+    try {
+      await client.end()
+    } catch {
+      // ignore
     }
   }
 }

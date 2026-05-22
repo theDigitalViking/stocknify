@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Cycle 5-B ✅ done — Schedule Builder Rebuild: Presets fixed (S15/S16), Wizard-Summary lokalisiert (S20), Edit-Page mitgezogen (S25). Frontend-only, review:skip. Phase 1 Pre-Test fast komplett — nur noch 5-C (File-Handling) offen, dann Phase 2 Funktionstest.)
+**Last updated:** 2026-05-22 (Cycle 5-C ✅ done — File-Handling delete/archive: 5 neue Integration-Spalten, shared `applyPostImportAction`-Service, 6 Connector-Primitiven, Worker + Manual-Import + PATCH + Edit-Page-Sektion + Wizard-Summary + Import-Dialog-Hint. Phase 1 Pre-Test komplett — als nächstes Phase 2 Funktionstest (5-D, manuell).)
 
 ---
 
@@ -12,7 +12,7 @@
 
 **Batch 5 — SFTP Polish + Funktionstest.** Sebastian hat am 2026-05-13 alle bisherigen Findings konsolidiert (S1–S10 aus dem Batch-3-Production-Review) und durch eine detaillierte Walk-Through-Session 17 weitere Findings hinzugefügt (S12–S27). S9 bereits in 4-E gefixt, S18 als zu komplex für MVP verworfen. **Wichtige Architektur-Entscheidung in 5-A.5:** Credential + Mapping wandern aus `IntegrationSchedule` auf `Integration` als persistente Defaults — Schedules werden zu reinen Zeit-Plänen.
 
-**Backend-Tests:** 111 grün (Stand Cycle 5-A.5 + Codex-Review). 5-B war frontend-only — keine neuen Backend-Tests.
+**Backend-Tests:** 149 grün (Stand Cycle 5-C). 5-C brachte +44 neue Tests (file-operations smoke, post-import-action service tree, worker cleanup gating, manual-import cleanup, PATCH validations).
 
 ---
 
@@ -25,13 +25,13 @@
 | **5-A** | S1 (Ghost Integration), S2 (Delete-Button), S27 (Card-Konsistenz) | M | skip | ✅ Done |
 | **5-A.5** | Schema-Refactor: Credential+Mapping auf Integration verschieben + Name inline-edit + Section-Local-Saves auf Edit-Page | M–L | mandatory | ✅ Done 2026-05-22 |
 | **5-B** | S15, S16, S20, S25 — Schedule Builder Rebuild (Presets fixen + Locale-aware Cron-Description, profitiert von schlankerem Schedule-Modell aus 5-A.5) | M | skip | ✅ Done 2026-05-22 |
-| **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | next |
+| **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | ✅ Done 2026-05-22 |
 
 ### Phase 2 — Test
 
 | Cycle | Findings | Größe | Status |
 |-------|----------|-------|--------|
-| **5-D** | S11 — SFTP End-to-End-Test mit echtem Server | manuell | pending |
+| **5-D** | S11 — SFTP End-to-End-Test mit echtem Server | manuell | next |
 
 ### Phase 3 — Post-Test Polish
 
@@ -72,7 +72,7 @@
 - **S21** — Wizard-Navigation Step-Sprung → 5-F
 
 ### Neue Features
-- **S22** — Post-Import Datei-Handling → 5-C
+- ~~**S22**~~ — Post-Import Datei-Handling → ✅ 5-C
 
 ### Config-Seite (aus Triage 2026-05-13)
 - **S23** — Breadcrumbs Config-Seite → 5-G (Duplikat S3)

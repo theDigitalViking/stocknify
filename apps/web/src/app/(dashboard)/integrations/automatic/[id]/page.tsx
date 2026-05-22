@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import { useCredentials } from '@/lib/api/use-credentials'
@@ -102,6 +103,20 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
       setNameDraft(integration.name)
     }
   }, [nameEditing, integration])
+
+  // Cycle 5-C — post-import handling section. Subdir inputs and the retry
+  // count are draft-then-blur (same pattern as the directory-path field):
+  // local state seeds from the integration row, and only commits via
+  // `useUpdateIntegration` on blur when the value actually changed.
+  const [archiveSubdirDraft, setArchiveSubdirDraft] = useState('')
+  const [failedSubdirDraft, setFailedSubdirDraft] = useState('')
+  const [maxRetriesDraft, setMaxRetriesDraft] = useState('')
+  useEffect(() => {
+    if (!integration) return
+    setArchiveSubdirDraft(integration.archiveSubdir)
+    setFailedSubdirDraft(integration.failedSubdir)
+    setMaxRetriesDraft(String(integration.maxImportRetries))
+  }, [integration])
 
   const [scheduleValue, setScheduleValue] = useState<ScheduleBuilderValue>({
     scheduleType: 'interval_hours',
@@ -273,6 +288,34 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
         toast({ title: t('scheduleToggleFailedToast'), variant: 'destructive' })
       },
     })
+  }
+
+  // Cycle 5-C — post-import field save helper. Wraps useUpdateIntegration
+  // with subtle success/error toasts and refetches on settle so the section
+  // converges with server state.
+  function handlePostImportPatch(
+    patch: Partial<{
+      postImportAction: 'delete' | 'archive'
+      archiveSubdir: string
+      maxImportRetries: number
+      failedAction: 'delete' | 'archive'
+      failedSubdir: string
+    }>,
+  ): void {
+    if (!integration) return
+    updateIntegration.mutate(
+      { id: integration.id, ...patch },
+      {
+        onSuccess: () => {
+          toast({ title: t('saved') })
+          void integrationQuery.refetch()
+        },
+        onError: () => {
+          toast({ title: t('saveFailed'), variant: 'destructive' })
+          void integrationQuery.refetch()
+        },
+      },
+    )
   }
 
   async function handleConfirmDelete(): Promise<void> {
@@ -554,6 +597,154 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           <MappingTemplateSelector value={mappingTemplateId} onChange={handleMappingChange} />
         </section>
 
+        {/* Post-import handling (Cycle 5-C) */}
+        <section className="rounded-lg border border-border bg-card p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-foreground">
+            {t('postImportActionSection')}
+          </h2>
+
+          {/* Success branch */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {t('postImportSuccessSubsection')}
+            </h3>
+            <div className="flex gap-2">
+              {(['archive', 'delete'] as const).map((action) => (
+                <label
+                  key={action}
+                  className={postImportRadioClass(integration.postImportAction === action)}
+                >
+                  <input
+                    type="radio"
+                    name="post-import-action"
+                    value={action}
+                    checked={integration.postImportAction === action}
+                    onChange={() => {
+                      handlePostImportPatch({ postImportAction: action })
+                    }}
+                    className="sr-only"
+                  />
+                  {t(action === 'archive' ? 'actionArchive' : 'actionDelete')}
+                </label>
+              ))}
+            </div>
+            {integration.postImportAction === 'archive' ? (
+              <div className="space-y-1 pt-2">
+                <Label htmlFor="archive-subdir" className="text-xs">
+                  {t('archiveSubdirLabel')}
+                </Label>
+                <Input
+                  id="archive-subdir"
+                  value={archiveSubdirDraft}
+                  onChange={(e) => {
+                    setArchiveSubdirDraft(e.target.value)
+                  }}
+                  onBlur={() => {
+                    const next = archiveSubdirDraft.trim()
+                    if (next.length > 0 && next !== integration.archiveSubdir) {
+                      handlePostImportPatch({ archiveSubdir: next })
+                    } else if (next.length === 0) {
+                      setArchiveSubdirDraft(integration.archiveSubdir)
+                    }
+                  }}
+                  className="w-48 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('archivePathHint', {
+                    subdir: archiveSubdirDraft || integration.archiveSubdir,
+                  })}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Failed branch */}
+          <div className="space-y-2 pt-3 border-t border-border">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {t('postImportFailedSubsection')}
+            </h3>
+            <div className="space-y-1">
+              <Label htmlFor="max-retries" className="text-xs">
+                {t('maxRetriesLabel')}
+              </Label>
+              <Input
+                id="max-retries"
+                type="number"
+                min={0}
+                max={10}
+                value={maxRetriesDraft}
+                onChange={(e) => {
+                  setMaxRetriesDraft(e.target.value)
+                }}
+                onBlur={() => {
+                  const n = Number.parseInt(maxRetriesDraft, 10)
+                  if (
+                    Number.isFinite(n) &&
+                    n >= 0 &&
+                    n <= 10 &&
+                    n !== integration.maxImportRetries
+                  ) {
+                    handlePostImportPatch({ maxImportRetries: n })
+                  } else if (!Number.isFinite(n) || n < 0 || n > 10) {
+                    setMaxRetriesDraft(String(integration.maxImportRetries))
+                  }
+                }}
+                className="w-24 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">{t('maxRetriesHint')}</p>
+              <p className="text-xs text-muted-foreground italic">{t('manualRetryNote')}</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              {(['archive', 'delete'] as const).map((action) => (
+                <label
+                  key={action}
+                  className={postImportRadioClass(integration.failedAction === action)}
+                >
+                  <input
+                    type="radio"
+                    name="failed-action"
+                    value={action}
+                    checked={integration.failedAction === action}
+                    onChange={() => {
+                      handlePostImportPatch({ failedAction: action })
+                    }}
+                    className="sr-only"
+                  />
+                  {t(action === 'archive' ? 'actionArchive' : 'actionDelete')}
+                </label>
+              ))}
+            </div>
+            {integration.failedAction === 'archive' ? (
+              <div className="space-y-1 pt-2">
+                <Label htmlFor="failed-subdir" className="text-xs">
+                  {t('failedSubdirLabel')}
+                </Label>
+                <Input
+                  id="failed-subdir"
+                  value={failedSubdirDraft}
+                  onChange={(e) => {
+                    setFailedSubdirDraft(e.target.value)
+                  }}
+                  onBlur={() => {
+                    const next = failedSubdirDraft.trim()
+                    if (next.length > 0 && next !== integration.failedSubdir) {
+                      handlePostImportPatch({ failedSubdir: next })
+                    } else if (next.length === 0) {
+                      setFailedSubdirDraft(integration.failedSubdir)
+                    }
+                  }}
+                  className="w-48 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('failedPathHint', {
+                    subdir: failedSubdirDraft || integration.failedSubdir,
+                  })}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
         {/* Schedule (Cycle 5-A.5: time-only) */}
         <section className="rounded-lg border border-border bg-card p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -626,4 +817,16 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
       </div>
     </div>
   )
+}
+
+// Segmented-button radio (matches credential-form.tsx pattern) used by the
+// Cycle 5-C post-import section. Two-option set, kept inline to avoid
+// pulling in Radix RadioGroup for a single screen.
+function postImportRadioClass(active: boolean): string {
+  return [
+    'cursor-pointer rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+    active
+      ? 'border-brand-600 bg-brand-50 text-brand-700'
+      : 'border-border bg-background text-muted-foreground hover:bg-muted',
+  ].join(' ')
 }

@@ -40,7 +40,9 @@ import {
   type SftpTestConfig,
 } from '../integrations/sftp-client.js'
 import { decryptCredential } from '../lib/encryption.js'
+import { joinRemotePath } from '../lib/remote-path.js'
 import { prisma as defaultPrisma } from '../middleware/tenant.js'
+import { applyPostImportAction } from '../services/integrations/post-import-action.js'
 import {
   buildStockExtractor,
   decodeBuffer,
@@ -61,12 +63,6 @@ function isTestableType(value: string): value is TestableType {
 
 function sourceForCredentialType(type: TestableType): 'sftp' | 'ftp' {
   return type === 'sftp' ? 'sftp' : 'ftp'
-}
-
-function joinRemotePath(dir: string, file: string): string {
-  if (!dir || dir === '/') return file.startsWith('/') ? file : `/${file}`
-  if (file.startsWith('/')) return file
-  return dir.endsWith('/') ? `${dir}${file}` : `${dir}/${file}`
 }
 
 async function bufferRemoteStream(
@@ -279,6 +275,43 @@ export async function processSftpImportJob(
     },
   })
 
+  // Cycle 5-C: hoisted out of the try block so the catch path can pass it
+  // to `applyPostImportAction`. Undefined when the connector throws before
+  // a file is resolved — that case skips cleanup (nothing to clean).
+  let filePath: string | undefined
+
+  // Cycle 5-C: shared cleanup helper closed over the worker's loaded
+  // context. Centralises the (a) BullMQ retry-burst gate on the failed
+  // branch and (b) the no-filePath guard. Success/partial always cleanup
+  // because those statuses come from successful library invocations that
+  // BullMQ won't retry.
+  const runPostImportCleanup = async (
+    status: 'success' | 'partial' | 'failed',
+  ): Promise<void> => {
+    if (filePath === undefined) return
+    if (status === 'failed' && !isFinalAttempt) return
+    await applyPostImportAction({
+      db,
+      log,
+      integration: {
+        id: integration.id,
+        tenantId: schedule.tenantId,
+        postImportAction: integration.postImportAction,
+        archiveSubdir: integration.archiveSubdir,
+        maxImportRetries: integration.maxImportRetries,
+        failedAction: integration.failedAction,
+        failedSubdir: integration.failedSubdir,
+        lastSuccessfulSyncAt: integration.lastSuccessfulSyncAt,
+      },
+      credentialType: credential.credentialType,
+      remoteConfig: cfg,
+      sourceFilePath: filePath,
+      importRunStatus: status,
+      importRunId: importRun.id,
+      trigger: 'scheduled',
+    })
+  }
+
   try {
     const dir = (credential.remotePath ?? '/').trim() || '/'
     const files = await listRemote(credential.credentialType, cfg, dir)
@@ -297,9 +330,10 @@ export async function processSftpImportJob(
         failed.errorSummary,
         isFinalAttempt,
       )
+      // No filePath resolved → nothing to clean up.
       return { status: 'failed', importRunId: importRun.id, reason: 'no_files' }
     }
-    const filePath = joinRemotePath(dir, newest.name)
+    filePath = joinRemotePath(dir, newest.name)
 
     let mappings: ColumnMapping[] | null = null
     let defaults: Record<string, string> = {}
@@ -327,6 +361,7 @@ export async function processSftpImportJob(
           failed.errorSummary,
           isFinalAttempt,
         )
+        await runPostImportCleanup('failed')
         return { status: 'failed', importRunId: importRun.id, reason: 'invalid_template' }
       }
       mappings = t.columnMappings as unknown as ColumnMapping[]
@@ -403,6 +438,8 @@ export async function processSftpImportJob(
       isFinalAttempt,
     )
 
+    await runPostImportCleanup(status)
+
     return { status, importRunId: importRun.id }
   } catch (err) {
     const code = (err as { code?: string } | undefined)?.code
@@ -425,6 +462,13 @@ export async function processSftpImportJob(
       reason,
       isFinalAttempt,
     )
+    // Cycle 5-C: cleanup only fires on the BullMQ final attempt (gate
+    // inside `runPostImportCleanup`) so a single transient failure doesn't
+    // cycle through three identical scheduled-failed retry-counter bumps
+    // and trigger the failed-action prematurely. If the connector threw
+    // before a file was resolved, `filePath` is undefined and cleanup is
+    // skipped (no file to clean).
+    await runPostImportCleanup('failed')
     // Re-throw so BullMQ counts this as a failed attempt and applies retry
     // backoff. The Incident + consecutiveFailures bump only fires on the
     // final attempt (gated inside markScheduleAndHealth via isFinalAttempt)

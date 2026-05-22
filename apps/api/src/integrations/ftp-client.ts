@@ -25,6 +25,7 @@ export interface FtpTestConfig {
 
 const CONNECT_TIMEOUT_MS = 10_000
 const LIST_TIMEOUT_MS = 30_000
+const OP_TIMEOUT_MS = 30_000
 
 export async function testFtpConnection(config: FtpTestConfig): Promise<ConnectionTestResult> {
   const client = new FtpClient(CONNECT_TIMEOUT_MS)
@@ -102,6 +103,68 @@ export async function listFtpDirectory(
       client.close()
     } catch {
       // ignore disconnect failures
+    }
+  }
+}
+
+// Post-import file-handling primitives (Cycle 5-C). basic-ftp's API:
+//   ensureDir(path)  → recursive mkdir, idempotent
+//   rename(src, dest) → atomic move
+//   remove(path)     → delete file
+// Each opens its own connection, runs one op, and closes. Errors funnel
+// through the sanitizer for consistent operator-facing messages.
+
+export async function ensureFtpDirectory(
+  config: FtpTestConfig,
+  remotePath: string,
+): Promise<void> {
+  const client = await connectFtp(config)
+  try {
+    await withTimeout(client.ensureDir(remotePath), OP_TIMEOUT_MS)
+  } catch (err) {
+    throw new Error(sanitizeConnectionError(err))
+  } finally {
+    try {
+      client.close()
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function moveFtpFile(
+  config: FtpTestConfig,
+  sourcePath: string,
+  destPath: string,
+): Promise<void> {
+  const client = await connectFtp(config)
+  try {
+    await withTimeout(client.rename(sourcePath, destPath), OP_TIMEOUT_MS)
+  } catch (err) {
+    throw new Error(sanitizeConnectionError(err))
+  } finally {
+    try {
+      client.close()
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function deleteFtpFile(
+  config: FtpTestConfig,
+  remotePath: string,
+): Promise<void> {
+  const client = await connectFtp(config)
+  try {
+    await withTimeout(client.remove(remotePath), OP_TIMEOUT_MS)
+  } catch (err) {
+    throw new Error(sanitizeConnectionError(err))
+  } finally {
+    try {
+      client.close()
+    } catch {
+      // ignore
     }
   }
 }

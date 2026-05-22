@@ -265,6 +265,13 @@ function ImportNowDialog({
               </p>
             </div>
           ) : null}
+
+          {/* Cycle 5-C: surfaces the manual-no-retry contract — operators
+              who chose `failedAction: 'delete'` need to know a single
+              failed manual import deletes the source file immediately. */}
+          <p className="text-xs text-muted-foreground italic">
+            {t('manualImportNoRetryNote')}
+          </p>
         </div>
 
         <DialogFooter>
