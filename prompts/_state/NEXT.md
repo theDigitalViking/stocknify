@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Cycle 5-C ✅ done — File-Handling delete/archive: 5 neue Integration-Spalten, shared `applyPostImportAction`-Service, 6 Connector-Primitiven, Worker + Manual-Import + PATCH + Edit-Page-Sektion + Wizard-Summary + Import-Dialog-Hint. Phase 1 Pre-Test komplett — als nächstes Phase 2 Funktionstest (5-D, manuell).)
+**Last updated:** 2026-05-22 (Phasen-Reihenfolge angepasst: Funktionstest 5-D ans Ende verschoben. Nächster Cycle: 5-E Click-Through-Verzeichnisbrowser.)
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## 🟢 Batch 5 — Cycle-Plan
 
-### Phase 1 — Pre-Test (testbar machen)
+### Phase 1 — Build (✅ done)
 
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
@@ -27,19 +27,19 @@
 | **5-B** | S15, S16, S20, S25 — Schedule Builder Rebuild (Presets fixen + Locale-aware Cron-Description, profitiert von schlankerem Schedule-Modell aus 5-A.5) | M | skip | ✅ Done 2026-05-22 |
 | **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | ✅ Done 2026-05-22 |
 
-### Phase 2 — Test
-
-| Cycle | Findings | Größe | Status |
-|-------|----------|-------|--------|
-| **5-D** | S11 — SFTP End-to-End-Test mit echtem Server | manuell | next |
-
-### Phase 3 — Post-Test Polish
+### Phase 2 — Polish (pending)
 
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
-| **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | pending |
+| **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | next |
 | **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | pending |
 | **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | pending |
+
+### Phase 3 — Test (pending, am Ende)
+
+| Cycle | Findings | Größe | Status |
+|-------|----------|-------|--------|
+| **5-D** | S11 — SFTP End-to-End-Test mit echtem Server | manuell | pending |
 
 ---
 

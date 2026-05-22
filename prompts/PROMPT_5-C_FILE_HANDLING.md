@@ -743,7 +743,7 @@ Target backend suite: ≥ 130 (from 111).
    - Cross-reference the existing "stock_movements row growth from identical-quantity uploads" entry — Cycle 5-C's archive default partially mitigates because successful imports move the file out of the next-tick selection window.
 3. **`prompts/_state/NEXT.md`** — mark S22 ✅, Cycle 5-C status `✅ Done`. Next cycle is 5-D (Functional test).
 4. Result file: `prompts/results/RESULT_5-C_FILE_HANDLING.md`.
-5. **Notion entry status** → ✅ Ausgeführt after Codex passes.
+5. **Notion entry status** → ✅ Ausgeführt. URL from the prompt header. Add result file path under "Ergebnis" + today's date.
 
 ## Push (mandatory final step on `develop`)
 
@@ -751,17 +751,13 @@ Target backend suite: ≥ 130 (from 111).
 git push origin develop
 ```
 
-## Codex review
-
-`review:mandatory` — worker logic, schema migration with five columns, six new external-effect primitives, multi-tenant data path, retry-counter semantics that could go subtly wrong under BullMQ retry bursts. After push:
+## Push (mandatory final step on `develop`)
 
 ```
-/codex:adversarial-review --base origin/main
+git push origin develop
 ```
 
-Classify findings per DECISIONS 2026-04-16. Fix ACTIONABLE in-session. Document in `prompts/results/REVIEW_5-C_FILE_HANDLING.md`.
-
-## Reminders
+After the push, the prompt is complete. Codex adversarial review is a manual step Sebastian runs himself outside the prompt flow.
 
 - **Branch is `develop`.** Verify with `git rev-parse --abbrev-ref HEAD`.
 - **Do not push to `main`.**
