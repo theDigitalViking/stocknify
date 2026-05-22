@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Cycle 5-F ✅ done — Wizard UX Polish: S14 template-link new-tab, S19 mapping name in summary, S21 step-jump navigation. Frontend-only, review:skip. Nächster Cycle: 5-G Polish-Sammelcycle.)
+**Last updated:** 2026-05-22 (Cycle 5-G ✅ done — Polish Collection: Breadcrumbs, Health conditional, Header cleanup, Marketplace UX, Import-now button. Phase 2 komplett. Nächster Schritt: 5-D manueller SFTP-Funktionstest gegen Production nach `develop → main` Merge.)
 
 ---
 
@@ -33,13 +33,13 @@
 |-------|----------|-------|--------|--------|
 | **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | ✅ Done 2026-05-22 |
 | **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | ✅ Done 2026-05-22 |
-| **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | next |
+| **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | ✅ Done 2026-05-22 |
 
 ### Phase 3 — Test (pending, am Ende)
 
 | Cycle | Findings | Größe | Status |
 |-------|----------|-------|--------|
-| **5-D** | S11 — SFTP End-to-End-Test mit echtem Server | manuell | pending |
+| **5-D** | S11 — SFTP End-to-End-Test mit echtem Server | manuell | next |
 
 ---
 
@@ -50,14 +50,14 @@
 - ~~**S2**~~ — SFTP nicht löschbar → ✅ 5-A
 
 ### UX/Visual (MEDIUM, aus Batch-3-Review)
-- **S3** — Breadcrumb-Style auf Config-Seite → 5-G (Duplikat S23)
-- **S4** — Health-Info bei neuer Integration unsinnig → 5-G
-- **S5** — Header-Layout Config-Seite ("Unerkennbar" + Toggle-Position) → 5-G
-- **S6** — Marketplace Install-Count-Badge Position → 5-G
-- **S7** — Marketplace Katalog schließen nach Installation → 5-G
+- ~~**S3**~~ — Breadcrumb-Style auf Config-Seite → ✅ 5-G
+- ~~**S4**~~ — Health-Info bei neuer Integration unsinnig → ✅ 5-G
+- ~~**S5**~~ — Header-Layout Config-Seite → ✅ 5-G
+- ~~**S6**~~ — Marketplace Install-Count-Badge Position → ✅ 5-G
+- ~~**S7**~~ — Marketplace Katalog schließen nach Installation → ✅ 5-G
 - ~~**S8**~~ — Wizard Step 2 Directory-Browser → ✅ 5-E
 - ~~S9~~ — Movements-Filter → ✅ 4-E
-- **S10** — Marketplace-Integrationen brauchen Edit-Möglichkeit → 5-G
+- ~~**S10**~~ — Marketplace-Integrationen brauchen Edit-Möglichkeit → ✅ 5-G
 
 ### Wizard (aus Triage 2026-05-13)
 - ~~**S12**~~ — Wizard Step 2 leer → ✅ 5-E
@@ -75,10 +75,10 @@
 - ~~**S22**~~ — Post-Import Datei-Handling → ✅ 5-C
 
 ### Config-Seite (aus Triage 2026-05-13)
-- **S23** — Breadcrumbs Config-Seite → 5-G (Duplikat S3)
+- ~~**S23**~~ — Breadcrumbs Config-Seite → ✅ 5-G
 - ~~**S24**~~ — Remote-Verzeichnis Click-Through → ✅ 5-E
 - ~~**S25**~~ — Zeitplan-Section erbt Wizard-Issues → ✅ 5-B (Edit-Page rendert dieselbe `<ScheduleBuilder />`, R1 + R2 propagieren automatisch)
-- **S26** — "Jetzt importieren" Primary Action im Header → 5-G
+- ~~**S26**~~ — "Jetzt importieren" Primary Action im Header → ✅ 5-G
 
 ### Konsistenz (aus Triage 2026-05-13)
 - ~~**S27**~~ — Drei-Punkte-Menü auf SFTP-Card → ✅ 5-A
