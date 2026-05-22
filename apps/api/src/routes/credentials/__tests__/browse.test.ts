@@ -240,3 +240,151 @@ describe('GET /v1/credentials/:id/browse (Cycle 5-E)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 5-E Codex review fix F2 — browse containment.
+//
+// The endpoint previously forwarded any `?path=` straight to the listing
+// primitive. With this fix, paths outside `credential.remotePath` and
+// traversal attempts are rejected with 400 before any socket is opened.
+// ---------------------------------------------------------------------------
+describe('GET /v1/credentials/:id/browse — containment (Cycle 5-E review fix F2)', () => {
+  it.each([
+    ['/etc', 'absolute path outside the credential base'],
+    ['/etc/passwd', 'unrelated absolute file'],
+    ['/exportsfoo', 'sibling that prefix-matches but is not under base'],
+  ])('rejects out-of-base path %j with BROWSE_PATH_OUT_OF_BASE', async (path) => {
+    const { tenant, user, credential } = await seedSftpCredential()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/credentials/${credential.id}/browse?path=${encodeURIComponent(path)}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(400)
+      const body = res.json() as ErrorBody
+      expect(body.error.code).toBe('BROWSE_PATH_OUT_OF_BASE')
+      // No socket opened on the rejection path.
+      expect(mockedListSftp).not.toHaveBeenCalled()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    '/exports/../etc',
+    '/exports/daily/../../etc',
+    '/exports/sub/../../..',
+  ])('rejects traversal path %j with BROWSE_PATH_OUT_OF_BASE', async (path) => {
+    const { tenant, user, credential } = await seedSftpCredential()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/credentials/${credential.id}/browse?path=${encodeURIComponent(path)}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(400)
+      const body = res.json() as ErrorBody
+      // Either OUT_OF_BASE (canonicalized outside) or INVALID (root escape).
+      expect(['BROWSE_PATH_OUT_OF_BASE', 'BROWSE_PATH_INVALID']).toContain(
+        body.error.code,
+      )
+      expect(mockedListSftp).not.toHaveBeenCalled()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects relative paths (must be absolute)', async () => {
+    const { tenant, user, credential } = await seedSftpCredential()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/credentials/${credential.id}/browse?path=exports`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as ErrorBody).error.code).toBe('BROWSE_PATH_INVALID')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    '/exports',
+    '/exports/daily',
+    '/exports/daily/2026-05',
+    '/exports/./daily',           // canonicalizes to /exports/daily
+    '/exports/daily/../weekly',    // canonicalizes to /exports/weekly
+  ])('accepts %j (inside or equal to credential.remotePath)', async (path) => {
+    const { tenant, user, credential } = await seedSftpCredential()
+    const app = await buildTestApp()
+    try {
+      mockedListSftp.mockResolvedValue([])
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/credentials/${credential.id}/browse?path=${encodeURIComponent(path)}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('credential.remotePath="/" opts in to wide-open browsing', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const credential = await testDb.integrationCredential.create({
+      data: {
+        tenantId: tenant.id,
+        credentialType: 'sftp',
+        name: 'Root credential',
+        host: 'sftp.example.com',
+        port: 22,
+        username: 'sebastian',
+        password: encryptCredential('s'),
+        remotePath: '/',
+        isActive: true,
+      },
+    })
+    const app = await buildTestApp()
+    try {
+      mockedListSftp.mockResolvedValue([])
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/credentials/${credential.id}/browse?path=${encodeURIComponent('/etc')}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      // With base=/, the operator has explicitly opted in to broader
+      // browsing — same posture as any admin with SSH access.
+      expect(res.statusCode).toBe(200)
+      expect(mockedListSftp).toHaveBeenCalledWith(expect.anything(), '/etc')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('returns meta.path and meta.base alongside data', async () => {
+    const { tenant, user, credential } = await seedSftpCredential()
+    const app = await buildTestApp()
+    try {
+      mockedListSftp.mockResolvedValue([])
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/credentials/${credential.id}/browse?path=${encodeURIComponent('/exports/daily')}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(res.statusCode).toBe(200)
+      const body = res.json() as BrowseBody & {
+        meta: { path: string; base: string }
+      }
+      expect(body.meta.path).toBe('/exports/daily')
+      expect(body.meta.base).toBe('/exports')
+    } finally {
+      await app.close()
+    }
+  })
+})

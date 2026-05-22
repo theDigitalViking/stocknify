@@ -5,6 +5,11 @@ import { z } from 'zod'
 import { listFtpDirectory, testFtpConnection } from '../../integrations/ftp-client.js'
 import { listSftpDirectory, testSftpConnection } from '../../integrations/sftp-client.js'
 import { decryptCredential, encryptCredential, MASKED_SECRET } from '../../lib/encryption.js'
+import {
+  canonicalizeRemotePath,
+  isUnderBase,
+  normalizeBaseRoot,
+} from '../../lib/remote-path.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/require-role.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
@@ -658,8 +663,62 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const port = credential.port ?? defaultPortForType(credential.credentialType)
-    const effectivePath =
-      query.data.path?.trim() || credential.remotePath?.trim() || '/'
+
+    // Cycle 5-E review fix F2 — containment check.
+    //
+    // Before this gate, `?path` flowed straight to the listing primitive.
+    // An admin (or a misconfigured UI) could enumerate any directory the
+    // SSH user can read by submitting an absolute path or a `..`
+    // traversal — undermining the per-credential scoping that
+    // `remotePath` was meant to enforce.
+    //
+    // The new contract:
+    //   - `base` is the canonicalized `credential.remotePath` (defaulting
+    //     to `/` when null). When base is `/`, the credential is
+    //     explicitly opted in to wide-open browsing; everything is "under
+    //     base" by definition.
+    //   - When `?path` is omitted, list `base`.
+    //   - When `?path` is provided, it must be an absolute path that
+    //     canonicalizes to a location at or under `base`. Otherwise the
+    //     request is rejected with 400 BROWSE_PATH_OUT_OF_BASE.
+    const base = normalizeBaseRoot(credential.remotePath)
+    let effectivePath: string
+    if (query.data.path === undefined) {
+      effectivePath = base
+    } else {
+      const trimmed = query.data.path.trim()
+      if (trimmed === '') {
+        effectivePath = base
+      } else {
+        if (!trimmed.startsWith('/')) {
+          return reply.code(400).send({
+            error: {
+              code: 'BROWSE_PATH_INVALID',
+              message: 'path must be absolute (start with "/")',
+            },
+          })
+        }
+        const canon = canonicalizeRemotePath(trimmed)
+        if (canon === null) {
+          return reply.code(400).send({
+            error: {
+              code: 'BROWSE_PATH_INVALID',
+              message: 'path is not a valid POSIX path',
+            },
+          })
+        }
+        const canonAbs = canon === '' ? '/' : canon
+        if (!isUnderBase(canonAbs, base)) {
+          return reply.code(400).send({
+            error: {
+              code: 'BROWSE_PATH_OUT_OF_BASE',
+              message: 'path is not inside the credential\'s remote path',
+            },
+          })
+        }
+        effectivePath = canonAbs
+      }
+    }
 
     try {
       const entries =
@@ -683,7 +742,14 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
               },
               effectivePath,
             )
-      return reply.send({ data: entries })
+      return reply.send({
+        // The browser needs to know the effective root to keep parent-
+        // navigation from escaping (UX), so we surface both the resolved
+        // path that was listed AND the base the operator is scoped to.
+        // Existing callers reading only `data` still work.
+        data: entries,
+        meta: { path: effectivePath, base },
+      })
     } catch (err) {
       request.log.error(
         { err, credentialId: credential.id, path: effectivePath },

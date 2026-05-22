@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { MARKETPLACE_CATALOG, getCatalogEntry } from '../../lib/marketplace-catalog.js'
+import { normalizeRelativeRemotePath } from '../../lib/remote-path.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { tenantMiddleware } from '../../middleware/tenant.js'
 
@@ -35,8 +36,13 @@ const updateIntegrationSchema = z
     failedSubdir: z.string().min(1).max(64).regex(SUBDIR_PATTERN).optional(),
     // Cycle 5-E — sub-directory under the credential's remote path; null
     // clears the override so listings fall back to credential.remotePath.
-    // Paths are opaque strings (spaces, unicode, dots all allowed); only
-    // length is constrained here.
+    // Strict validation happens in the handler via
+    // `normalizeRelativeRemotePath` (Codex 5-E review fix F1): the value
+    // must be relative, no leading `/`, no `..`, no NUL byte. Without
+    // these checks, an absolute path would silently override
+    // `credential.remotePath` because `joinRemotePath` passes absolute
+    // second-arg through unchanged — opening import + delete + archive
+    // to arbitrary remote paths.
     importPath: z.string().max(512).nullable().optional(),
   })
   .strict()
@@ -696,9 +702,22 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
       if (parsed.data.failedSubdir !== undefined) {
         data.failedSubdir = parsed.data.failedSubdir
       }
-      // Cycle 5-E — importPath is a nullable scalar; explicit null clears.
+      // Cycle 5-E + review fix F1 — importPath must be a safe relative
+      // segment (no leading `/`, no `..`, no NUL). The normalizer also
+      // collapses empty / whitespace-only input to null so callers don't
+      // need separate "clear" vs "set to empty" handling. Explicit null
+      // from the request still clears the override.
       if (parsed.data.importPath !== undefined) {
-        data.importPath = parsed.data.importPath
+        const normalised = normalizeRelativeRemotePath(parsed.data.importPath)
+        if (!normalised.ok) {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_IMPORT_PATH',
+              message: `importPath ${normalised.reason}`,
+            },
+          })
+        }
+        data.importPath = normalised.value
       }
 
       if (Object.keys(data).length === 0) {

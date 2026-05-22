@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/components/ui/use-toast'
+import { useCredentials } from '@/lib/api/use-credentials'
 import { useImportNow, useImportRuns, type ImportRun } from '@/lib/api/use-import'
 
 interface ImportRunsTableProps {
@@ -204,8 +205,19 @@ function ImportNowDialog({
   const t = useTranslations('integrations.sftp.runs.importDialog')
   const tCommon = useTranslations('common')
   const importNow = useImportNow(integrationId)
+  const credentialsQuery = useCredentials()
   const [credentialId, setCredentialId] = useState<string | null>(defaultCredentialId)
   const [filePath, setFilePath] = useState<string | null>(null)
+
+  // Codex 5-E review fix F2 — clamp browser navigation to the selected
+  // credential's `remotePath`. Without this the operator would see a
+  // confusing 400 when the backend rejects an out-of-base listing
+  // (the secure server-side guard is the source of truth; this is UX).
+  const selectedCredential =
+    credentialId !== null
+      ? credentialsQuery.data?.find((c) => c.id === credentialId)
+      : undefined
+  const selectedBase = selectedCredential?.remotePath ?? null
 
   async function handleImport(): Promise<void> {
     if (!credentialId) return
@@ -254,6 +266,8 @@ function ImportNowDialog({
               <Label className="mb-1 block">{t('fileLabel')}</Label>
               <DirectoryBrowser
                 credentialId={credentialId}
+                initialPath={selectedBase ?? ''}
+                baseRoot={selectedBase}
                 selectedFile={filePath}
                 onFileSelect={(p) => {
                   setFilePath(p)

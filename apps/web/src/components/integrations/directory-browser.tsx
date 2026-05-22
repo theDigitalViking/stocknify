@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/lib/api/client'
 import { useRemoteBrowse, type RemoteFile } from '@/lib/api/use-import'
+import { normalizeBaseRoot, parentRemotePath } from '@/lib/remote-path'
 
 // Cycle 5-E — click-through directory browser. The browser is driven by a
 // credentialId; it knows nothing about integrations. The wizard uses it
@@ -24,6 +25,14 @@ interface DirectoryBrowserProps {
   // Where to start. The browser keeps its own path state and never writes
   // back to the parent — callers commit via onDirectorySelect.
   initialPath?: string
+  // Lower bound for click-through navigation (Codex 5-E review fix F2).
+  // Operators must not be able to navigate above the credential's
+  // `remotePath` — the backend rejects out-of-base paths with 400, so the
+  // browser would otherwise hit confusing "Connection failed" errors when
+  // climbing too high. When set, breadcrumbs render base → activePath
+  // only, and the parent-dir row disappears at the base. When unset, the
+  // base is `/` (no constraint).
+  baseRoot?: string | null
   onFileSelect?: (filePath: string) => void
   // Fires when the operator clicks "Use this directory". Receives the
   // currently-displayed path (whatever the operator has clicked through to).
@@ -51,25 +60,23 @@ function joinPath(dir: string, file: string): string {
   return dir.endsWith('/') ? `${dir}${file}` : `${dir}/${file}`
 }
 
-function parentPath(path: string): string {
-  if (!path || path === '/') return '/'
-  // Strip trailing slash (if any) before locating the parent.
-  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path
-  const idx = trimmed.lastIndexOf('/')
-  if (idx <= 0) return '/'
-  return trimmed.slice(0, idx)
-}
-
 interface Crumb {
   label: string
   path: string
 }
 
-function buildCrumbs(path: string, rootLabel: string): Crumb[] {
-  const crumbs: Crumb[] = [{ label: rootLabel, path: '/' }]
-  if (!path || path === '/') return crumbs
-  const segments = path.split('/').filter(Boolean)
-  let acc = ''
+// Crumbs always start at the base root (Codex 5-E review fix F2): clicking
+// segments above the base is meaningless since the backend would reject
+// them, so we hide them.
+function buildCrumbs(path: string, base: string, rootLabel: string): Crumb[] {
+  const crumbs: Crumb[] = [{ label: rootLabel, path: base }]
+  if (!path || path === base) return crumbs
+  const normBase = base.replace(/\/+$/, '') || '/'
+  // When the active path is somehow outside the base, fall back to base-only.
+  if (normBase !== '/' && !path.startsWith(normBase + '/')) return crumbs
+  const relative = normBase === '/' ? path.replace(/^\/+/, '') : path.slice(normBase.length).replace(/^\/+/, '')
+  const segments = relative.split('/').filter(Boolean)
+  let acc = normBase === '/' ? '' : normBase
   for (const segment of segments) {
     acc = `${acc}/${segment}`
     crumbs.push({ label: segment, path: acc })
@@ -82,6 +89,7 @@ const FILE_EXT_PATTERN = /\.csv$/i
 export function DirectoryBrowser({
   credentialId,
   initialPath = '',
+  baseRoot,
   onFileSelect,
   onDirectorySelect,
   selectedFile = null,
@@ -89,23 +97,31 @@ export function DirectoryBrowser({
   showDirectorySelect = true,
 }: DirectoryBrowserProps): JSX.Element {
   const t = useTranslations('integrations.sftp.directoryBrowser')
+  // Codex 5-E review fix F2 — `effectiveBase` is the floor click-through
+  // navigation cannot escape. The backend enforces the same boundary
+  // independently; the UI clamp is purely about UX (don't let operators
+  // navigate to a folder the server will reject).
+  const effectiveBase = useMemo(
+    () => normalizeBaseRoot(baseRoot ?? initialPath ?? null),
+    [baseRoot, initialPath],
+  )
   // The browser tracks the *active* path it is currently listing. Calls to
   // refetch / re-render keep this stable; only click-through and breadcrumb
   // clicks mutate it.
-  const [activePath, setActivePath] = useState<string>(initialPath || '/')
+  const [activePath, setActivePath] = useState<string>(initialPath || effectiveBase)
 
   // Reset to the initialPath whenever the credential or initialPath changes
   // — otherwise the operator switching credentials would still see the
   // previous credential's last-visited folder.
   useEffect(() => {
-    setActivePath(initialPath || '/')
-  }, [credentialId, initialPath])
+    setActivePath(initialPath || effectiveBase)
+  }, [credentialId, initialPath, effectiveBase])
 
   const query = useRemoteBrowse(credentialId, activePath)
 
   const crumbs = useMemo(
-    () => buildCrumbs(activePath, t('breadcrumbRoot')),
-    [activePath, t],
+    () => buildCrumbs(activePath, effectiveBase, t('breadcrumbRoot')),
+    [activePath, effectiveBase, t],
   )
 
   // Sort: directories first, then files, both alphabetical (case-insensitive).
@@ -125,7 +141,9 @@ export function DirectoryBrowser({
       : t('connectionFailed')
     : null
 
-  const showParent = activePath !== '' && activePath !== '/'
+  // Parent row hides at the base — operators cannot navigate above
+  // `credential.remotePath` (backend would 400 anyway).
+  const showParent = activePath !== effectiveBase && activePath !== '/' && activePath !== ''
 
   return (
     <div className="space-y-3">
@@ -241,7 +259,7 @@ export function DirectoryBrowser({
                 <tr
                   className="border-t border-border cursor-pointer hover:bg-muted/40"
                   onClick={() => {
-                    setActivePath(parentPath(activePath))
+                    setActivePath(parentRemotePath(activePath, effectiveBase))
                   }}
                 >
                   <td className="px-3 py-2 flex items-center gap-2 text-muted-foreground">

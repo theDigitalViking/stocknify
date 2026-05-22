@@ -523,3 +523,123 @@ describe('PATCH /v1/integrations/:id — Cycle 5-C post-import fields', () => {
     }
   })
 })
+
+// Cycle 5-E Codex review fix F1 — importPath must be a safe relative
+// segment. Before this gate, an absolute or `..`-bearing value would slip
+// through and silently redirect the worker / manual-import / post-import
+// action to arbitrary remote paths (because `joinRemotePath` passes
+// absolute second-args through unchanged).
+describe('PATCH /v1/integrations/:id — Cycle 5-E importPath strict validation', () => {
+  it.each([
+    ['/exports', 'must be relative'],
+    ['/etc/passwd', 'must be relative'],
+    ['../escape', 'must not contain "." or ".."'],
+    ['daily/../../etc', 'must not contain "." or ".."'],
+    ['./current', 'must not contain "." or ".."'],
+    ['~root', 'must not start with "~"'],
+    ['foo\0bar', 'must not contain NUL byte'],
+  ])('rejects importPath=%j with INVALID_IMPORT_PATH', async (value) => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { importPath: value },
+      })
+      expect(res.statusCode).toBe(400)
+      const body = res.json() as ErrorBody
+      expect(body.error.code).toBe('INVALID_IMPORT_PATH')
+      // Stored value must remain at the pre-PATCH state (NULL by default).
+      const row = await testDb.integration.findUnique({
+        where: { id: seed.integrationId },
+      })
+      expect(row?.importPath).toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each([
+    ['daily', 'daily'],
+    ['daily/morning', 'daily/morning'],
+    ['with-dashes_and_underscores', 'with-dashes_and_underscores'],
+    ['unicode-ünterordner', 'unicode-ünterordner'],
+    ['has space', 'has space'],
+  ])('accepts safe relative importPath=%j and stores %j', async (input, stored) => {
+    const seed = await seedSftpIntegration()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { importPath: input },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = await testDb.integration.findUnique({
+        where: { id: seed.integrationId },
+      })
+      expect(row?.importPath).toBe(stored)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('normalizes empty / whitespace-only importPath to null', async () => {
+    const seed = await seedSftpIntegration()
+    // Pre-set so the clear path actually has something to clear.
+    await testDb.integration.update({
+      where: { id: seed.integrationId },
+      data: { importPath: 'daily' },
+    })
+    const app = await buildTestApp()
+    try {
+      for (const value of ['', '   ', '\t']) {
+        const res = await app.inject({
+          method: 'PATCH',
+          url: `/v1/integrations/${seed.integrationId}`,
+          headers: seed.headers,
+          payload: { importPath: value },
+        })
+        expect(res.statusCode).toBe(200)
+        const row = await testDb.integration.findUnique({
+          where: { id: seed.integrationId },
+        })
+        expect(row?.importPath).toBeNull()
+        // Re-seed for the next iteration.
+        await testDb.integration.update({
+          where: { id: seed.integrationId },
+          data: { importPath: 'daily' },
+        })
+      }
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('null importPath explicitly clears the override', async () => {
+    const seed = await seedSftpIntegration()
+    await testDb.integration.update({
+      where: { id: seed.integrationId },
+      data: { importPath: 'daily' },
+    })
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/integrations/${seed.integrationId}`,
+        headers: seed.headers,
+        payload: { importPath: null },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = await testDb.integration.findUnique({
+        where: { id: seed.integrationId },
+      })
+      expect(row?.importPath).toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+})

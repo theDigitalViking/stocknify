@@ -31,6 +31,7 @@ import {
   useInstallIntegration,
   useUpdateIntegration,
 } from '@/lib/api/use-integrations'
+import { absoluteToRelativeImportPath } from '@/lib/remote-path'
 import { cn } from '@/lib/utils'
 
 interface SetupWizardProps {
@@ -414,8 +415,14 @@ function Step2Directory({
       <DirectoryBrowser
         credentialId={state.credentialId ?? undefined}
         initialPath={linkedRemotePath ?? ''}
+        baseRoot={linkedRemotePath}
         onDirectorySelect={(dir) => {
-          setState((s) => ({ ...s, importPath: dir }))
+          // Convert the absolute path from the browser into the relative
+          // sub-segment the backend stores (Codex 5-E review fix F1).
+          // `null` clears the override — happens when the operator picks
+          // the credential root itself.
+          const relative = absoluteToRelativeImportPath(dir, linkedRemotePath)
+          setState((s) => ({ ...s, importPath: relative }))
         }}
         onFileSelect={(file) => {
           setState((s) => ({ ...s, filePath: file }))

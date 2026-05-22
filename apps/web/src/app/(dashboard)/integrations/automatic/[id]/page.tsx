@@ -50,6 +50,7 @@ import {
   useUpdateSchedule,
   type IntegrationSchedule,
 } from '@/lib/api/use-schedules'
+import { absoluteToRelativeImportPath } from '@/lib/remote-path'
 import { cn } from '@/lib/utils'
 
 interface PageProps {
@@ -631,16 +632,32 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
             ) : null}
           </div>
           {credentialId ? (
-            <DirectoryBrowser
-              credentialId={credentialId}
-              initialPath={
-                integration.importPath ?? linkedCredential?.remotePath ?? ''
-              }
-              onDirectorySelect={(dir) => {
-                handleImportPathChange(dir)
-              }}
-              selectedDirectory={integration.importPath}
-            />
+            (() => {
+              // `Integration.importPath` is a RELATIVE segment under
+              // `credential.remotePath` (Codex 5-E review fix F1). For
+              // the browser we need an ABSOLUTE path. Reconstitute by
+              // joining base + relative.
+              const base = linkedCredential?.remotePath ?? '/'
+              const trimmedBase = base.replace(/\/+$/, '') || '/'
+              const absoluteSelected = integration.importPath
+                ? (trimmedBase === '/'
+                    ? `/${integration.importPath}`
+                    : `${trimmedBase}/${integration.importPath}`)
+                : null
+              return (
+                <DirectoryBrowser
+                  credentialId={credentialId}
+                  initialPath={absoluteSelected ?? trimmedBase}
+                  baseRoot={trimmedBase}
+                  onDirectorySelect={(dir) => {
+                    handleImportPathChange(
+                      absoluteToRelativeImportPath(dir, trimmedBase),
+                    )
+                  }}
+                  selectedDirectory={absoluteSelected}
+                />
+              )
+            })()
           ) : (
             <p className="text-xs text-muted-foreground">{t('needCredential')}</p>
           )}
