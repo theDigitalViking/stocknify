@@ -104,6 +104,7 @@ async function seedImportRun(
   fileName: string,
   status: string,
   createdAt?: Date,
+  wasFinalAttempt = true,
 ): Promise<{ id: string }> {
   const data: {
     tenantId: string
@@ -112,6 +113,7 @@ async function seedImportRun(
     status: string
     trigger: string
     rowsTotal: number
+    wasFinalAttempt: boolean
     createdAt?: Date
   } = {
     tenantId,
@@ -120,6 +122,7 @@ async function seedImportRun(
     status,
     trigger: 'scheduled',
     rowsTotal: 0,
+    wasFinalAttempt,
   }
   if (createdAt) data.createdAt = createdAt
   return testDb.importRun.create({ data, select: { id: true } })
@@ -341,6 +344,62 @@ describe('applyPostImportAction — scheduled failed counter (Cycle 5-C)', () =>
 
     expect(mockedEnsure).not.toHaveBeenCalled()
     expect(mockedMove).not.toHaveBeenCalled()
+  })
+
+  it('BullMQ retry-burst: 3 non-final + 1 final attempts in one tick count as ONE failure (Codex review fix)', async () => {
+    // Simulates one cron tick with 3 BullMQ attempts (attempts: 3 in the
+    // queue config). Without `wasFinalAttempt` gating, the counter would
+    // see 4 rows for this single tick and trip a maxImportRetries=3
+    // threshold immediately. With the gate it sees 1, so the cleanup
+    // waits for additional cron ticks as the operator configured.
+    const { tenantId, integrationId, integrationRow } = await seed({
+      maxImportRetries: 3,
+    })
+    // 3 retry-burst attempts (non-final) — should NOT count.
+    await seedImportRun(
+      tenantId,
+      integrationId,
+      'bad.csv',
+      'failed',
+      undefined,
+      false,
+    )
+    await seedImportRun(
+      tenantId,
+      integrationId,
+      'bad.csv',
+      'failed',
+      undefined,
+      false,
+    )
+    // The final attempt of this tick (also counted as ONE in the gate
+    // semantics; it's the just-finalised row for `applyPostImportAction`).
+    const run = await seedImportRun(
+      tenantId,
+      integrationId,
+      'bad.csv',
+      'failed',
+      undefined,
+      true,
+    )
+
+    await applyPostImportAction({
+      db: testDb,
+      log: silentLog,
+      integration: integrationRow,
+      credentialType: 'sftp',
+      remoteConfig: cfg,
+      sourceFilePath: '/exports/bad.csv',
+      importRunStatus: 'failed',
+      importRunId: run.id,
+      trigger: 'scheduled',
+    })
+
+    // Effective counter = 1 (only the final-attempt row). Well below
+    // maxRetries+1=4 → no cleanup, source file stays.
+    expect(mockedEnsure).not.toHaveBeenCalled()
+    expect(mockedMove).not.toHaveBeenCalled()
+    expect(mockedDelete).not.toHaveBeenCalled()
   })
 
   it('counter resets after a success: prior failures pre-success are excluded', async () => {

@@ -97,7 +97,14 @@ export async function applyPostImportAction(args: PostImportActionArgs): Promise
   // Scheduled-failed: count prior failed runs for the same filename since
   // the last success. The current (just-finalised) run is included in the
   // count, so the cleanup triggers once the count EXCEEDS maxImportRetries
-  // (e.g. maxImportRetries=3 → cleanup fires on the 4th failed run).
+  // (e.g. maxImportRetries=3 → cleanup fires on the 4th failed cron tick).
+  //
+  // Cycle 5-C review fix — filter on `wasFinalAttempt: true`. BullMQ's
+  // retry policy (3 attempts per scheduled fire) writes one ImportRun row
+  // per attempt; without this filter the counter would see 3 rows per
+  // cron tick and `maxImportRetries=3` would trip after the 2nd cron
+  // tick instead of the 4th. Manual / success-path rows default to
+  // `wasFinalAttempt=true` so they're counted normally.
   const fileName = baseName(args.sourceFilePath)
   const since = integration.lastSuccessfulSyncAt
   const failedCount = await args.db.importRun.count({
@@ -105,6 +112,7 @@ export async function applyPostImportAction(args: PostImportActionArgs): Promise
       integrationId: integration.id,
       fileName,
       status: 'failed',
+      wasFinalAttempt: true,
       ...(since ? { createdAt: { gt: since } } : {}),
     },
   })

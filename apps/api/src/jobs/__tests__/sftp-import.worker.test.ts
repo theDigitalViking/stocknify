@@ -366,6 +366,42 @@ describe('processSftpImportJob — post-import cleanup wiring (Cycle 5-C)', () =
     expect(mockedApplyPostImport).not.toHaveBeenCalled()
   })
 
+  it('non-final BullMQ retry writes ImportRun with wasFinalAttempt=false (Codex review fix)', async () => {
+    const { schedule } = await seedSchedule()
+    mockedList.mockRejectedValueOnce(new Error('Connection refused'))
+
+    await expect(
+      processSftpImportJob(
+        { scheduleId: schedule.id },
+        { isFinalAttempt: false },
+      ),
+    ).rejects.toThrow()
+
+    const runs = await testDb.importRun.findMany({
+      where: { scheduleId: schedule.id },
+    })
+    expect(runs).toHaveLength(1)
+    expect(runs[0]?.wasFinalAttempt).toBe(false)
+  })
+
+  it('final BullMQ retry writes ImportRun with wasFinalAttempt=true', async () => {
+    const { schedule } = await seedSchedule()
+    mockedList.mockRejectedValueOnce(new Error('Connection refused'))
+
+    await expect(
+      processSftpImportJob(
+        { scheduleId: schedule.id },
+        { isFinalAttempt: true },
+      ),
+    ).rejects.toThrow()
+
+    const runs = await testDb.importRun.findMany({
+      where: { scheduleId: schedule.id },
+    })
+    expect(runs).toHaveLength(1)
+    expect(runs[0]?.wasFinalAttempt).toBe(true)
+  })
+
   it('catch path with filePath unresolved (listing threw) does NOT call applyPostImportAction', async () => {
     const { schedule } = await seedSchedule()
     // Listing throws BEFORE filePath resolves.

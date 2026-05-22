@@ -992,6 +992,13 @@ model ImportRun {
   rowsSkipped     Int       @default(0) @map("rows_skipped")
   rowsErrored    Int        @default(0) @map("rows_errored")
   errorSummary    String?   @map("error_summary") @db.Text
+  // Cycle 5-C — true when this run was the BullMQ final attempt for its
+  // cron tick (or a manual / success-path run, which have no retry
+  // concept). The post-import-action counter filters on this so a
+  // 3-attempt retry burst within one cron tick only contributes ONE row
+  // to the `maxImportRetries` threshold, not three. Default true so
+  // pre-existing rows and manual / success-path rows are counted normally.
+  wasFinalAttempt Boolean   @default(true) @map("was_final_attempt")
   startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz
   completedAt     DateTime? @map("completed_at") @db.Timestamptz
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz

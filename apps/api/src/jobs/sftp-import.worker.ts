@@ -272,6 +272,14 @@ export async function processSftpImportJob(
       credentialId: credential.id,
       trigger: 'scheduled',
       status: 'running',
+      // Cycle 5-C review fix — `wasFinalAttempt` is what the post-import
+      // counter filters on so a 3-attempt BullMQ retry burst within one
+      // cron tick only contributes ONE row to `maxImportRetries`. The
+      // success path is unconditionally "final" (BullMQ doesn't retry
+      // successes), but we set this at create time so the row reflects
+      // the intent of THIS attempt: if BullMQ later resolves another
+      // retry, that's a separate `ImportRun` row.
+      wasFinalAttempt: isFinalAttempt,
     },
   })
 
