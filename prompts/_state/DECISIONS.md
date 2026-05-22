@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-05-22 — Directory browsing: credential-based endpoint (Option A), no early integration creation
+
+**Decision:** The click-through directory browser uses a new `GET /v1/credentials/:id/browse` endpoint that only requires a `credentialId`. The existing `GET /v1/integrations/:id/files` stays for the import-now dialog. The Wizard continues to create the integration at submit time (Step 5), not earlier.
+
+**Rationale:** The Wizard doesn’t have an `integrationId` until submit. Creating the integration mid-flow (Option B) would reintroduce ghost integrations on wizard abandonment — the same class of bug Cycle 5-A fixed for the direct-config path. Browser tab close, crashes, and navigation-away cannot reliably trigger cleanup. Option A avoids the problem by design: browsing is a credential operation, not an integration operation. Both Wizard and Edit-Page share the same `DirectoryBrowser` component via `credentialId`.
+
+**Alternatives considered:** (B) Create integration at Wizard Step 2 + cancel-tracking with cleanup dialog — rejected: handles explicit cancel but not implicit abandonment (tab close, crash, navigation). Would require server-side orphan cleanup job as fallback, adding more total complexity than one new endpoint.
+
 ## 2026-05-12 — Redis: self-hosted on Hetzner, replacing Upstash
 
 **Decision:** BullMQ Redis runs as a Kamal accessory (`redis:7-alpine`) on the same Hetzner VPS as the API. `REDIS_URL=redis://stocknify-api-redis:6379` (Docker network, no TLS, no password). Upstash decommissioned.

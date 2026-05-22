@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Phasen-Reihenfolge angepasst: Funktionstest 5-D ans Ende verschoben. Nächster Cycle: 5-E Click-Through-Verzeichnisbrowser.)
+**Last updated:** 2026-05-22 (Cycle 5-E ✅ done — Click-Through Directory Browser + Integration.importPath. Neuer Browse-Endpoint auf Credentials, DirectoryBrowser-Refactor, Wizard Step 2 live, importPath auf Worker + Manual-Import. Codex-Review: 2 ACTIONABLE (path-escape + browse containment), beide in-session gefixt. Tests 152→252. Nächster Cycle: 5-F Wizard-UX-Polish.)
 
 ---
 
@@ -31,8 +31,8 @@
 
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
-| **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | next |
-| **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | pending |
+| **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | ✅ Done 2026-05-22 |
+| **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | next |
 | **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | pending |
 
 ### Phase 3 — Test (pending, am Ende)
@@ -55,13 +55,13 @@
 - **S5** — Header-Layout Config-Seite ("Unerkennbar" + Toggle-Position) → 5-G
 - **S6** — Marketplace Install-Count-Badge Position → 5-G
 - **S7** — Marketplace Katalog schließen nach Installation → 5-G
-- **S8** — Wizard Step 2 Directory-Browser → 5-E (präzisiert durch S12+S13)
+- ~~**S8**~~ — Wizard Step 2 Directory-Browser → ✅ 5-E
 - ~~S9~~ — Movements-Filter → ✅ 4-E
 - **S10** — Marketplace-Integrationen brauchen Edit-Möglichkeit → 5-G
 
 ### Wizard (aus Triage 2026-05-13)
-- **S12** — Wizard Step 2 leer → 5-E
-- **S13** — Click-Through-Verzeichnisbrowser → 5-E
+- ~~**S12**~~ — Wizard Step 2 leer → ✅ 5-E
+- ~~**S13**~~ — Click-Through-Verzeichnisbrowser → ✅ 5-E
 - **S14** — "Template verwalten"-Link bricht Wizard ab → 5-F
 - ~~**S15**~~ — Zeitplan-Presets kaputt → ✅ 5-B
 - ~~**S16**~~ — Zeitplan-Presets müssen Typ mitziehen → ✅ 5-B
@@ -76,7 +76,7 @@
 
 ### Config-Seite (aus Triage 2026-05-13)
 - **S23** — Breadcrumbs Config-Seite → 5-G (Duplikat S3)
-- **S24** — Remote-Verzeichnis Click-Through → 5-E
+- ~~**S24**~~ — Remote-Verzeichnis Click-Through → ✅ 5-E
 - ~~**S25**~~ — Zeitplan-Section erbt Wizard-Issues → ✅ 5-B (Edit-Page rendert dieselbe `<ScheduleBuilder />`, R1 + R2 propagieren automatisch)
 - **S26** — "Jetzt importieren" Primary Action im Header → 5-G
 
