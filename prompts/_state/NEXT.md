@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Cycle 5-A.5 ✅ done — Integration ist Konfig-Anker, Edit-Page restructured, SFTP/FTP/FTPS rename gate offen. Backend-Tests 95 → 109. Nächster Cycle 5-B Schedule Builder Rebuild profitiert vom schlankeren Schedule-Body.)
+**Last updated:** 2026-05-22 (Cycle 5-A.5 ✅ done inkl. Codex-Review. Planung Cycle 5-B: S17 ist Backlog — Multi-Time-Schedule braucht Schema-Änderung, nicht MVP.)
 
 ---
 
@@ -24,7 +24,7 @@
 |-------|----------|-------|--------|--------|
 | **5-A** | S1 (Ghost Integration), S2 (Delete-Button), S27 (Card-Konsistenz) | M | skip | ✅ Done |
 | **5-A.5** | Schema-Refactor: Credential+Mapping auf Integration verschieben + Name inline-edit + Section-Local-Saves auf Edit-Page | M–L | mandatory | ✅ Done 2026-05-22 |
-| **5-B** | S15, S16, S17 (optional), S20, S25 — Schedule Builder Rebuild (profitiert von schlankerem Schedule-Modell) | M | recommended | next |
+| **5-B** | S15, S16, S20, S25 — Schedule Builder Rebuild (Presets fixen + Locale-aware Cron-Description, profitiert von schlankerem Schedule-Modell aus 5-A.5) | M | recommended | next |
 | **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | pending |
 
 ### Phase 2 — Test
@@ -65,7 +65,7 @@
 - **S14** — "Template verwalten"-Link bricht Wizard ab → 5-F
 - **S15** — Zeitplan-Presets kaputt → 5-B
 - **S16** — Zeitplan-Presets müssen Typ mitziehen → 5-B
-- **S17** — Täglich-Schedule mehrere Uhrzeiten → 5-B (optional, ggf. raus)
+- **S17** — Täglich-Schedule mehrere Uhrzeiten → **Backlog** (siehe KNOWN_TODOS.md: Multi-Time-Schedule braucht Schema-Änderung + Worker-Anpassung, nicht MVP-relevant)
 - ~~S18~~ — Wöchentlich + Multi-Time → **out** (MVP-Entscheidung)
 - **S19** — Step 5 Mapping als UUID → 5-F
 - **S20** — Step 5 Zeitplan englisch → 5-B
@@ -135,7 +135,8 @@
 
 ## 🟠 Backlog (bestehend)
 
-- **Schedule-level Credential/Mapping-Override UI** (nach 5-A.5) — Schema unterstützt es, UI zeigt nur Integration-Ebene; falls jemals Power-User-Use-Case auftaucht
+- **Schedule: multiple times-of-day per daily run** (S17 aus Batch-5-Triage) — Schema-Änderung nötig (timesOfDay-Array oder separate Tabelle); eigener kleiner Cycle wenn Operator-Bedarf entsteht
+- **Schedule-level Credential/Mapping-Override UI** (nach 5-A.5)
 - **Marketplace rename für non-SFTP** — narrowing in 5-A.5 ließ Shopify/Hive/Byrd-Rename offen
 - **Frontend test infra cycle** — React Testing Library setup
 - **CI test-blocking flip** — change CI to blocking
