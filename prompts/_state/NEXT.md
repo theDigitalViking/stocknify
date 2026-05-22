@@ -2,17 +2,17 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-13 (Cycle 5-A abgeschlossen — Ghost Integration Fix + SFTP Delete-Affordances auf Card + Edit-Page. S1/S2/S27 geschlossen.)
+**Last updated:** 2026-05-13 (Cycle 5-A ✅ done, 5-A.5 🚧 in flight. Schema-Refactor mit aufgenommen: Credential + Mapping wandern auf Integration.)
 
 ---
 
 ## Context
 
-**Batch 1–4** abgeschlossen. Batch 5 ist gestartet.
+**Batch 1–4** abgeschlossen. **Batch 5** in Arbeit.
 
-**Batch 5 — SFTP Polish + Funktionstest.** Sebastian hat am 2026-05-13 alle bisherigen Findings konsolidiert (S1–S10 aus dem Batch-3-Production-Review) und durch eine detaillierte Walk-Through-Session 17 weitere Findings hinzugefügt (S12–S27, plus S22 als File-Handling-Feature). S9 bereits in 4-E gefixt; S18 als zu komplex für MVP verworfen.
+**Batch 5 — SFTP Polish + Funktionstest.** Sebastian hat am 2026-05-13 alle bisherigen Findings konsolidiert (S1–S10 aus dem Batch-3-Production-Review) und durch eine detaillierte Walk-Through-Session 17 weitere Findings hinzugefügt (S12–S27). S9 bereits in 4-E gefixt, S18 als zu komplex für MVP verworfen. **Wichtige Architektur-Entscheidung in 5-A.5:** Credential + Mapping wandern aus `IntegrationSchedule` auf `Integration` als persistente Defaults — Schedules werden zu reinen Zeit-Plänen.
 
-**Backend-Tests:** 95 grün (Stand Cycle 4-E).
+**Backend-Tests:** 95 grün (Stand Cycle 4-E), Ziel nach 5-A.5: ≥105.
 
 ---
 
@@ -22,10 +22,10 @@
 
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
-| **5-A** | S1 (Ghost Integration), S2 (Delete-Button fehlt), S27 (Card-Konsistenz mit Marketplace) | M | skip | ✅ Ausgeführt 2026-05-13 — `prompts/results/RESULT_5-A_GHOST_INTEGRATION_DELETE.md` |
-| **5-A.5** | Section-Local-Saves auf Edit-Seite | S–M | skip | pending |
-| **5-B** | S15, S16, S17, S20, S25 — Schedule Builder Rebuild + i18n | M | recommended | pending |
-| **5-C** | S22 — File-Handling delete/archive (Backend + Schema + Frontend) | M | mandatory | pending |
+| **5-A** | S1 (Ghost Integration), S2 (Delete-Button), S27 (Card-Konsistenz) | M | skip | ✅ Done |
+| **5-A.5** | Schema-Refactor: Credential+Mapping auf Integration verschieben + Name inline-edit + Section-Local-Saves auf Edit-Page | M–L | mandatory | 🚧 In Arbeit |
+| **5-B** | S15, S16, S17 (optional), S20, S25 — Schedule Builder Rebuild (profitiert von schlankerem Schedule-Modell) | M | recommended | pending |
+| **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | pending |
 
 ### Phase 2 — Test
 
@@ -37,17 +37,17 @@
 
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
-| **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section) | M–L | mandatory/recommended | pending |
+| **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | pending |
 | **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | pending |
 | **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | pending |
 
 ---
 
-## 📋 Finding-Liste (Batch 5)
+## 📋 Finding-Status (Batch 5)
 
 ### Bugs (HIGH)
-- ~~**S1**~~ — Geister-Integration bei "Direkte Konfiguration": sofortiger API-Call statt zwei-Schritt-Flow → ✅ gefixt in 5-A (2026-05-13)
-- ~~**S2**~~ — SFTP-Integrationen nicht löschbar (Card + Edit-Seite) → ✅ gefixt in 5-A (2026-05-13)
+- ~~**S1**~~ — Geister-Integration → ✅ 5-A
+- ~~**S2**~~ — SFTP nicht löschbar → ✅ 5-A
 
 ### UX/Visual (MEDIUM, aus Batch-3-Review)
 - **S3** — Breadcrumb-Style auf Config-Seite → 5-G (Duplikat S23)
@@ -55,58 +55,66 @@
 - **S5** — Header-Layout Config-Seite ("Unerkennbar" + Toggle-Position) → 5-G
 - **S6** — Marketplace Install-Count-Badge Position → 5-G
 - **S7** — Marketplace Katalog schließen nach Installation → 5-G
-- **S8** — Wizard Step 2 Directory-Browser fehlt → 5-E (präzisiert durch S12+S13)
-- ~~S9~~ — Movements-Filter wirken nur auf Chart → ✅ gefixt in 4-E
-- **S10** — Marketplace-Integrationen brauchen Edit-Möglichkeit → 5-G (teilweise abgedeckt durch S27)
+- **S8** — Wizard Step 2 Directory-Browser → 5-E (präzisiert durch S12+S13)
+- ~~S9~~ — Movements-Filter → ✅ 4-E
+- **S10** — Marketplace-Integrationen brauchen Edit-Möglichkeit → 5-G
 
 ### Wizard (aus Triage 2026-05-13)
-- **S12** — Wizard Step 2 "Verzeichnis" leer; Browser erst nach Anlage → 5-E
-- **S13** — Click-Through-Verzeichnisbrowser (Wizard + Edit-Seite) → 5-E
-- **S14** — "Template verwalten"-Link bricht Wizard ab, State geht verloren → 5-F
-- **S15** — Zeitplan-Presets kaputt (kein Typ-Sync zwischen Preset und Selector) → 5-B
-- **S16** — Zeitplan-Presets müssen Typ mitziehen (wenn Presets bleiben) → 5-B
-- **S17** — Täglich-Schedule: mehrere Uhrzeiten via +-Button → 5-B
-- ~~S18~~ — Wöchentlich + Multi-Time pro Tag → **out** (zu viel für MVP, Sebastian-Entscheidung)
-- **S19** — Step 5 (Zusammenfassung) zeigt Mapping als UUID statt Name → 5-F
-- **S20** — Step 5 Zeitplan-Text auf Englisch ("weekly on days one and at") statt übersetzt → 5-B
-- **S21** — Wizard-Navigation: Sprung zu beliebigem Step ohne Datenverlust → 5-F
+- **S12** — Wizard Step 2 leer → 5-E
+- **S13** — Click-Through-Verzeichnisbrowser → 5-E
+- **S14** — "Template verwalten"-Link bricht Wizard ab → 5-F
+- **S15** — Zeitplan-Presets kaputt → 5-B
+- **S16** — Zeitplan-Presets müssen Typ mitziehen → 5-B
+- **S17** — Täglich-Schedule mehrere Uhrzeiten → 5-B (optional, ggf. raus)
+- ~~S18~~ — Wöchentlich + Multi-Time → **out** (MVP-Entscheidung)
+- **S19** — Step 5 Mapping als UUID → 5-F
+- **S20** — Step 5 Zeitplan englisch → 5-B
+- **S21** — Wizard-Navigation Step-Sprung → 5-F
 
 ### Neue Features
-- **S22** — Post-Import Datei-Handling: pro Integration konfigurierbar (löschen oder archivieren in `<remotePath>/archive/<YYYY-MM>/`, Default = archivieren) → 5-C
+- **S22** — Post-Import Datei-Handling → 5-C
 
 ### Config-Seite (aus Triage 2026-05-13)
-- **S23** — Breadcrumbs Config-Seite (Duplikat S3) → 5-G
-- **S24** — Remote-Verzeichnis-Tabelle: kein Click-Through → 5-E
-- **S25** — Zeitplan-Section erbt alle Wizard-Issues → 5-B (gemeinsame Component)
-- **S26** — "Jetzt importieren" Primary Action im Header (analog `/products` Add-Button) → 5-G
+- **S23** — Breadcrumbs Config-Seite → 5-G (Duplikat S3)
+- **S24** — Remote-Verzeichnis Click-Through → 5-E
+- **S25** — Zeitplan-Section erbt Wizard-Issues → 5-B
+- **S26** — "Jetzt importieren" Primary Action im Header → 5-G
 
 ### Konsistenz (aus Triage 2026-05-13)
-- ~~**S27**~~ — Drei-Punkte-Menü auf SFTP-Card analog Marketplace (Bearbeiten + Löschen) + Löschen auf Edit-Seite → ✅ gefixt in 5-A (2026-05-13, nur Löschen — Bearbeiten redundant zu Card-Link)
+- ~~**S27**~~ — Drei-Punkte-Menü auf SFTP-Card → ✅ 5-A
 
 ### Funktionstest
-- **S11** — SFTP End-to-End-Test mit echtem Server → 5-D
+- **S11** — SFTP End-to-End-Test → 5-D
 
 ---
 
-## 🔑 Design-Entscheidungen Batch 5
+## 🔑 Design-Entscheidungen Batch 5 (live)
 
-**Save-Pattern auf Edit-Seite (für 5-A.5):**
-Hybrid — section-local saves statt globaler Speichern-Button. Details:
-- Name (Header) → inline-edit, blur-save oder Pencil-Icon
-- Toggle → direkt
-- Zugangsdaten → Auto-Save bei Auswahlwechsel
-- Verzeichnis → "Speichern"-Button bei Dirty-State
-- Mapping → Auto-Save bei Auswahlwechsel
-- Zeitplan → "Zeitplan speichern"-Button (atomic, da Sub-Form mit invaliden Zwischenzuständen)
-- File-Handling → Dropdown-Auto-Save, "Pfad speichern"-Button für Custom-Path
+**5-A.5 — Konfig-Anker:**
+- `Integration.credentialId` + `Integration.csvMappingTemplateId` als nullable FK-Felder
+- `IntegrationSchedule.credentialId` wird nullable (Override-Semantik bleibt für Schema, UI zeigt es nicht)
+- Migration: Backfill von Schedule → Integration für bestehende Daten
+- DELETE Credential blockt sowohl bei Schedule- als auch bei Integration-Referenz (409)
+- Worker liest Integration als Primary Source, Schedule als optionaler Override
+- Manual-Import + Schedule-Create: credentialId-Body-Field wird optional, Fallback auf Integration
 
-**Create-Page (für 5-A):**
-Bewusst minimal — nur Name-Modal (analog `MarketplaceInstallDialog`). User landet auf der Edit-Seite und konfiguriert dort weiter. Volle Create-Page mit allen Sektionen kommt erst wenn der Edit-Modus mit Section-Local-Saves stabil läuft (5-A.5+).
+**5-A.5 — Edit-Page UX:**
+- Name im Header: inline-edit mit Pencil-Icon
+- PATCH erlaubt `name` für SFTP/FTP/FTPS-Marketplace-Keys (Narrowing der bestehenden Immutability)
+- Credential + Mapping als eigene Sektionen mit Auto-Save bei Auswahlwechsel
+- Schedule-Section schrumpft auf Zeit-Felder; Save bleibt atomic
+- Schedule-Create gated wenn Integration.credentialId == null
 
-**File-Handling Schema (für 5-C):**
+**Aus früherer Planung (gültig):**
+
+**File-Handling (5-C):**
 - `postImportAction: 'delete' | 'archive'` (Default: `'archive'`)
 - `archivePath: string?` (Default: `<remotePath>/archive/<YYYY-MM>/`)
-- Felder auf `Integration` (nicht `IntegrationSchedule`) — gilt für alle Schedules der Integration, auch manuelle Imports
+- Felder auf `Integration` (passt jetzt thematisch zu 5-A.5)
+
+**Directory-Path (5-E):**
+- `Integration.importPath` als Sub-Verzeichnis pro Integration (unter Credential.remotePath)
+- Click-Through-Browser im Wizard + Edit-Page
 
 ---
 
@@ -127,6 +135,8 @@ Bewusst minimal — nur Name-Modal (analog `MarketplaceInstallDialog`). User lan
 
 ## 🟠 Backlog (bestehend)
 
+- **Schedule-level Credential/Mapping-Override UI** (nach 5-A.5) — Schema unterstützt es, UI zeigt nur Integration-Ebene; falls jemals Power-User-Use-Case auftaucht
+- **Marketplace rename für non-SFTP** — narrowing in 5-A.5 ließ Shopify/Hive/Byrd-Rename offen
 - **Frontend test infra cycle** — React Testing Library setup
 - **CI test-blocking flip** — change CI to blocking
 - **Staging-System** — sobald erste Kunden live
@@ -137,7 +147,6 @@ Bewusst minimal — nur Name-Modal (analog `MarketplaceInstallDialog`). User lan
 - **Server-side sorting**
 - **Bulk-select + bulk-delete für Stock page**
 - **Marketplace mutation toasts under masked-success transport failures**
-- **Marketplace integration rename after install**
 - **Identity-lock list-view completeness**
 - **Stock list `productId` deploy-skew defensive guard**
 - **CSV stock import: storage-location silent fallback**
