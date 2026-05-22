@@ -123,20 +123,21 @@ export function MarketplaceAppStoreModal({
                   {filtered.map((integration) => (
                     <div
                       key={integration.key}
-                      className="rounded-lg border border-border p-4 flex gap-3"
+                      className="relative rounded-lg border border-border p-4 flex gap-3"
                     >
+                      {integration.installCount > 0 ? (
+                        <Badge
+                          variant="secondary"
+                          className="absolute -top-2 -right-2 text-[10px] px-1.5 py-0"
+                        >
+                          {t('installCount', { count: integration.installCount })}
+                        </Badge>
+                      ) : null}
                       <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
                         <CatalogLogo name={integration.name} logoUrl={integration.logoUrl} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">{integration.name}</p>
-                          {integration.installCount > 0 ? (
-                            <Badge variant="secondary" className="text-[10px]">
-                              {t('installCount', { count: integration.installCount })}
-                            </Badge>
-                          ) : null}
-                        </div>
+                        <p className="text-sm font-medium text-foreground">{integration.name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                           {integration.description}
                         </p>
@@ -164,6 +165,10 @@ export function MarketplaceAppStoreModal({
         integration={selectedIntegration}
         open={installDialogOpen}
         onOpenChange={setInstallDialogOpen}
+        onInstalled={() => {
+          setInstallDialogOpen(false)
+          onOpenChange(false)
+        }}
       />
     </>
   )

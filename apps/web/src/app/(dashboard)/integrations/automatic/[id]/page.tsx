@@ -1,6 +1,17 @@
 'use client'
 
-import { ArrowLeft, Check, Loader2, MoreVertical, Pencil, Save, Trash2, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Loader2,
+  MoreVertical,
+  Pencil,
+  Play,
+  Save,
+  Trash2,
+  X,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -65,6 +76,14 @@ const HEALTH_COLOR: Record<string, string> = {
   unknown: 'bg-gray-300',
 }
 
+// Cycle 5-G (R3): per-protocol colored badge so the protocol is immediately
+// recognisable at a glance. Unknown keys fall back to neutral border styling.
+const PROTOCOL_BADGE_CLASS: Record<string, string> = {
+  sftp: 'border-blue-300 bg-blue-50 text-blue-700',
+  ftp: 'border-amber-300 bg-amber-50 text-amber-700',
+  ftps: 'border-green-300 bg-green-50 text-green-700',
+}
+
 export default function AutomaticIntegrationConfigPage({ params }: PageProps): JSX.Element {
   const t = useTranslations('integrations.sftp.config')
   const tSftpList = useTranslations('integrations.sftp.list')
@@ -82,6 +101,10 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
   const deleteSchedule = useDeleteSchedule(params.id)
   const toggleSchedule = useToggleSchedule(params.id)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  // Cycle 5-G (R7): lift the "Import now" dialog open-state to the page so
+  // the new header button and the existing trigger inside ImportRunsTable
+  // share one slot.
+  const [importNowOpen, setImportNowOpen] = useState(false)
 
   const integration = integrationQuery.data?.integration
   const schedules = schedulesQuery.data ?? []
@@ -474,40 +497,56 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           )
         }
       >
-        <Badge variant="outline" className="text-[10px] uppercase">
+        <Badge
+          variant="outline"
+          className={cn(
+            'text-xs uppercase',
+            PROTOCOL_BADGE_CLASS[integration.marketplaceKey ?? 'sftp'],
+          )}
+        >
           {integration.marketplaceKey ?? 'sftp'}
         </Badge>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className={cn('h-2 w-2 rounded-full', HEALTH_COLOR[integration.healthStatus] ?? HEALTH_COLOR.unknown)} />
-          {healthLabel}
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={integration.isEnabled}
+            onCheckedChange={handleEnabledToggle}
+            disabled={toggle.isPending}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => {
+              setImportNowOpen(true)
+            }}
+            disabled={!credentialId}
+          >
+            <Play className="h-3.5 w-3.5" />
+            {t('importNowButton')}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={tSftpList('cardActions')}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => {
+                  setConfirmDeleteOpen(true)
+                }}
+              >
+                {tSftpList('cardDelete')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <Switch
-          checked={integration.isEnabled}
-          onCheckedChange={handleEnabledToggle}
-          disabled={toggle.isPending}
-        />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              aria-label={tSftpList('cardActions')}
-            >
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onSelect={() => {
-                setConfirmDeleteOpen(true)
-              }}
-            >
-              {tSftpList('cardDelete')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </PageHeader>
 
       <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
@@ -550,35 +589,65 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
       </Dialog>
 
       <div className="px-6 md:px-8 py-6 space-y-6 max-w-4xl">
-        <Link
-          href="/integrations/automatic"
-          className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          {t('backToList')}
-        </Link>
+        {/* Cycle 5-G (R1): breadcrumbs replace the previous ArrowLeft back-link. */}
+        <nav className="flex items-center gap-1.5 text-xs" aria-label="Breadcrumb">
+          <Link
+            href="/integrations/marketplace"
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {t('breadcrumbIntegrations')}
+          </Link>
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+          <Link
+            href="/integrations/automatic"
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {t('breadcrumbAutomatic')}
+          </Link>
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+          <span className="text-foreground font-medium truncate">{integration.name}</span>
+        </nav>
 
-        {/* Health summary */}
-        <section className="rounded-lg border border-border bg-card p-4 space-y-1 text-xs">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-muted-foreground">
-            <div>
-              <span className="font-medium text-foreground">{t('lastSuccessLabel')}: </span>
-              {integration.lastSuccessfulSyncAt
-                ? new Date(integration.lastSuccessfulSyncAt).toLocaleString()
-                : t('never')}
+        {/* Cycle 5-G (R2 + R3): health summary is hidden on fresh integrations
+            with no sync data. When shown, the health dot + label moved here
+            from the PageHeader so the section owns the entire health story. */}
+        {integration.lastSuccessfulSyncAt ||
+        integration.lastErrorAt ||
+        integration.consecutiveFailures > 0 ? (
+          <section className="rounded-lg border border-border bg-card p-4 space-y-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  HEALTH_COLOR[integration.healthStatus] ?? HEALTH_COLOR.unknown,
+                )}
+              />
+              <span className="font-medium text-foreground">{healthLabel}</span>
             </div>
-            <div>
-              <span className="font-medium text-foreground">{t('lastErrorLabel')}: </span>
-              {integration.lastErrorAt
-                ? new Date(integration.lastErrorAt).toLocaleString()
-                : t('never')}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-muted-foreground">
+              <div>
+                <span className="font-medium text-foreground">{t('lastSuccessLabel')}: </span>
+                {integration.lastSuccessfulSyncAt
+                  ? new Date(integration.lastSuccessfulSyncAt).toLocaleString()
+                  : t('never')}
+              </div>
+              <div>
+                <span className="font-medium text-foreground">{t('lastErrorLabel')}: </span>
+                {integration.lastErrorAt
+                  ? new Date(integration.lastErrorAt).toLocaleString()
+                  : t('never')}
+              </div>
+              <div>
+                <span className="font-medium text-foreground">
+                  {t('consecutiveFailuresLabel')}:{' '}
+                </span>
+                {integration.consecutiveFailures}
+              </div>
             </div>
-            <div>
-              <span className="font-medium text-foreground">{t('consecutiveFailuresLabel')}: </span>
-              {integration.consecutiveFailures}
-            </div>
-          </div>
-        </section>
+          </section>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">{t('noHealthDataYet')}</p>
+        )}
 
         {/* Credentials (Cycle 5-A.5: Integration-level, auto-save) */}
         <section className="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -892,6 +961,8 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           <ImportRunsTable
             integrationId={integration.id}
             defaultCredentialId={credentialId}
+            importDialogOpen={importNowOpen}
+            onImportDialogOpenChange={setImportNowOpen}
           />
         </section>
       </div>

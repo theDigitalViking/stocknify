@@ -1,6 +1,7 @@
 'use client'
 
 import { MoreVertical } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
@@ -19,6 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
@@ -51,6 +53,7 @@ export function MarketplaceIntegrationCard({
 }: MarketplaceIntegrationCardProps): JSX.Element {
   const t = useTranslations('integrations.marketplace')
   const tCommon = useTranslations('common')
+  const router = useRouter()
   const toggle = useToggleIntegration()
   const uninstall = useUninstallIntegration()
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -114,6 +117,14 @@ export function MarketplaceIntegrationCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() => {
+                router.push(`/integrations/automatic/${card.integrationId}`)
+              }}
+            >
+              {t('configure')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {
                 setConfirmOpen(true)

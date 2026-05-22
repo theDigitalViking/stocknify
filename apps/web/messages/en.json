@@ -589,7 +589,11 @@
         "importPathDefault": "Using credential default",
         "importPathReset": "Reset to default",
         "importPathSaved": "Import path updated",
-        "importPathSaveFailed": "Could not update import path"
+        "importPathSaveFailed": "Could not update import path",
+        "breadcrumbIntegrations": "Integrations",
+        "breadcrumbAutomatic": "Automatic import",
+        "noHealthDataYet": "No sync data yet — health info will appear after the first import run.",
+        "importNowButton": "Import now"
       },
       "health": {
         "healthy": "Healthy",
@@ -781,6 +785,7 @@
       "installing": "Installing\u2026",
       "installConfirm": "Install",
       "actions": "Actions",
+      "configure": "Configure",
       "uninstall": "Uninstall",
       "uninstallConfirmTitle": "Uninstall {name}?",
       "uninstallConfirmDescription": "The integration and its locked mapping templates will be removed. Stock data is preserved.",

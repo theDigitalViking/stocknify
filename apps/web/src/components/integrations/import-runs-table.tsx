@@ -29,6 +29,12 @@ interface ImportRunsTableProps {
   integrationId: string
   // Optional default credential — pre-select inside the "Import now" dialog.
   defaultCredentialId?: string | null
+  // Cycle 5-G: parent (config page) can hoist the dialog open-state so the
+  // header "Import now" button can trigger the same dialog. When omitted,
+  // the component keeps its own local state for back-compat with other call
+  // sites that don't need a remote trigger.
+  importDialogOpen?: boolean
+  onImportDialogOpenChange?: (open: boolean) => void
 }
 
 const PAGE_SIZE = 20
@@ -64,11 +70,18 @@ function StatusBadge({ status }: { status: ImportRun['status'] }): JSX.Element {
 export function ImportRunsTable({
   integrationId,
   defaultCredentialId = null,
+  importDialogOpen,
+  onImportDialogOpenChange,
 }: ImportRunsTableProps): JSX.Element {
   const t = useTranslations('integrations.sftp.runs')
   const [page, setPage] = useState(1)
   const runs = useImportRuns(integrationId, page, PAGE_SIZE)
-  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  // Either lift the open-state to the parent (Cycle 5-G config page) or fall
+  // back to local state. Whichever the parent picked, the inner trigger row
+  // and the dialog read/write the same slot.
+  const [localOpen, setLocalOpen] = useState(false)
+  const dialogOpen = importDialogOpen ?? localOpen
+  const setDialogOpen = onImportDialogOpenChange ?? setLocalOpen
 
   const data = runs.data?.data ?? []
   const total = runs.data?.meta.total ?? 0
@@ -82,7 +95,7 @@ export function ImportRunsTable({
           type="button"
           size="sm"
           onClick={() => {
-            setImportDialogOpen(true)
+            setDialogOpen(true)
           }}
           className="gap-1.5"
         >
@@ -182,8 +195,8 @@ export function ImportRunsTable({
       <ImportNowDialog
         integrationId={integrationId}
         defaultCredentialId={defaultCredentialId}
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
       />
     </div>
   )

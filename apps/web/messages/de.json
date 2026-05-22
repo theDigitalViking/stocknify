@@ -589,7 +589,11 @@
         "importPathDefault": "Standardpfad der Zugangsdaten",
         "importPathReset": "Auf Standard zur\u00fccksetzen",
         "importPathSaved": "Import-Verzeichnis aktualisiert",
-        "importPathSaveFailed": "Import-Verzeichnis konnte nicht gespeichert werden"
+        "importPathSaveFailed": "Import-Verzeichnis konnte nicht gespeichert werden",
+        "breadcrumbIntegrations": "Integrationen",
+        "breadcrumbAutomatic": "Automatischer Import",
+        "noHealthDataYet": "Noch keine Sync-Daten — die Statusinformation erscheint nach dem ersten Import.",
+        "importNowButton": "Jetzt importieren"
       },
       "health": {
         "healthy": "Gesund",
@@ -781,6 +785,7 @@
       "installing": "Wird installiert\u2026",
       "installConfirm": "Installieren",
       "actions": "Aktionen",
+      "configure": "Konfigurieren",
       "uninstall": "Deinstallieren",
       "uninstallConfirmTitle": "{name} deinstallieren?",
       "uninstallConfirmDescription": "Die Integration und ihre fest verkn\u00fcpften Mapping-Templates werden entfernt. Bestandsdaten bleiben erhalten.",
