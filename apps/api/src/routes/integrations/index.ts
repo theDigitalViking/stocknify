@@ -20,8 +20,18 @@ const updateIntegrationSchema = z
     isEnabled: z.boolean().optional(),
     name: z.string().min(1).max(200).optional(),
     config: z.record(z.unknown()).optional(),
+    credentialId: z.string().uuid().nullable().optional(),
+    csvMappingTemplateId: z.string().uuid().nullable().optional(),
   })
   .strict()
+
+// Cycle 5-A.5: marketplace keys that allow rename via PATCH. Other marketplace
+// integrations (Shopify, Hive, Byrd, …) still reject `name` until a future
+// cycle widens the gate further.
+const RENAMABLE_MARKETPLACE_KEYS = new Set(['sftp', 'ftp', 'ftps'])
+
+// Credential types that may be set as a default on an Integration.
+const SFTP_FAMILY_CREDENTIAL_TYPES = new Set(['sftp', 'ftp', 'ftps'])
 
 const installBodySchema = z
   .object({
@@ -514,6 +524,10 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const isMarketplace = existing.marketplaceKey !== null
+      const isRenamableMarketplace =
+        isMarketplace &&
+        existing.marketplaceKey !== null &&
+        RENAMABLE_MARKETPLACE_KEYS.has(existing.marketplaceKey)
 
       if (!isMarketplace && parsed.data.isEnabled !== undefined) {
         return reply.code(400).send({
@@ -523,13 +537,110 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
           },
         })
       }
-      if (isMarketplace && (parsed.data.name !== undefined || parsed.data.config !== undefined)) {
+      // Cycle 5-A.5: narrow the rename gate so SFTP/FTP/FTPS marketplace
+      // entries can be renamed; others stay locked. `config` stays immutable
+      // for ALL marketplace integrations.
+      if (
+        isMarketplace &&
+        parsed.data.name !== undefined &&
+        !isRenamableMarketplace
+      ) {
         return reply.code(400).send({
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'name and config are immutable on marketplace integrations',
+            message: 'name is immutable on this marketplace integration',
           },
         })
+      }
+      if (isMarketplace && parsed.data.config !== undefined) {
+        return reply.code(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'config is immutable on marketplace integrations',
+          },
+        })
+      }
+
+      // Cycle 5-A.5: validate credentialId when non-null.
+      if (parsed.data.credentialId !== undefined && parsed.data.credentialId !== null) {
+        const credential = await request.db.integrationCredential.findFirst({
+          where: {
+            id: parsed.data.credentialId,
+            tenantId: request.tenantId,
+            deletedAt: null,
+          },
+          select: { id: true, isActive: true, credentialType: true, integrationId: true },
+        })
+        if (!credential) {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_CREDENTIAL',
+              message: 'Credential not found in this tenant',
+            },
+          })
+        }
+        if (!credential.isActive) {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_CREDENTIAL',
+              message: 'Credential is not active',
+            },
+          })
+        }
+        if (!SFTP_FAMILY_CREDENTIAL_TYPES.has(credential.credentialType)) {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_CREDENTIAL',
+              message: 'Credential type must be sftp, ftp, or ftps',
+            },
+          })
+        }
+        // Integration-bound credentials must match this integration (reusable
+        // credentials have integrationId = null and pass automatically).
+        if (credential.integrationId !== null && credential.integrationId !== params.data.id) {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_CREDENTIAL',
+              message: 'Credential is bound to a different integration',
+            },
+          })
+        }
+      }
+
+      // Cycle 5-A.5: validate csvMappingTemplateId when non-null.
+      if (parsed.data.csvMappingTemplateId !== undefined && parsed.data.csvMappingTemplateId !== null) {
+        const template = await request.db.csvMappingTemplate.findFirst({
+          where: {
+            id: parsed.data.csvMappingTemplateId,
+            tenantId: request.tenantId,
+            deletedAt: null,
+          },
+          select: { id: true, direction: true, resourceType: true },
+        })
+        if (!template) {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_MAPPING_TEMPLATE',
+              message: 'Mapping template not found in this tenant',
+            },
+          })
+        }
+        if (template.direction !== 'import') {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_MAPPING_TEMPLATE',
+              message: 'Mapping template must be an import template',
+            },
+          })
+        }
+        if (template.resourceType !== 'stock') {
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_MAPPING_TEMPLATE',
+              message: 'Mapping template must target stock',
+            },
+          })
+        }
       }
 
       const data: Prisma.IntegrationUpdateInput = {}
@@ -537,6 +648,18 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
       if (parsed.data.name !== undefined) data.name = parsed.data.name
       if (parsed.data.config !== undefined) {
         data.config = parsed.data.config as unknown as Prisma.InputJsonObject
+      }
+      if (parsed.data.credentialId !== undefined) {
+        data.credential =
+          parsed.data.credentialId === null
+            ? { disconnect: true }
+            : { connect: { id: parsed.data.credentialId } }
+      }
+      if (parsed.data.csvMappingTemplateId !== undefined) {
+        data.csvMappingTemplate =
+          parsed.data.csvMappingTemplateId === null
+            ? { disconnect: true }
+            : { connect: { id: parsed.data.csvMappingTemplateId } }
       }
 
       if (Object.keys(data).length === 0) {

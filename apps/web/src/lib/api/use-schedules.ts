@@ -37,13 +37,17 @@ export interface IntegrationSchedule {
   deletedAt: string | null
 }
 
+// Cycle 5-A.5: credentialId is optional on create — the backend falls back to
+// Integration.credentialId when omitted. Schedule-level override semantics
+// remain in the schema for a future power-user UI; the current Edit-Page
+// never passes them.
 export interface CreateScheduleInput {
   name: string
   scheduleType: ScheduleType
   intervalValue?: number
   timeOfDay?: string
   weekdays?: number[]
-  credentialId: string
+  credentialId?: string
   csvMappingTemplateId?: string
   timezone?: string
 }
@@ -55,7 +59,7 @@ export interface UpdateScheduleInput {
   intervalValue?: number | null
   timeOfDay?: string | null
   weekdays?: number[] | null
-  credentialId?: string
+  credentialId?: string | null
   csvMappingTemplateId?: string | null
   timezone?: string
   isActive?: boolean

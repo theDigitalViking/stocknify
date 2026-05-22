@@ -245,6 +245,62 @@ describe('credentials routes (Cycle 3-B)', () => {
     }
   })
 
+  // Cycle 5-A.5: DELETE 409 now also fires when an Integration row references
+  // the credential via Integration.credentialId (the new default field). The
+  // existing schedule-reference test above pins the schedule path; this test
+  // pins the Integration-default path independently (no schedule involved).
+  it('rejects DELETE when an Integration references the credential via Integration.credentialId (CREDENTIAL_IN_USE)', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const integration = await testDb.integration.create({
+        data: {
+          tenantId: tenant.id,
+          type: 'sftp',
+          name: 'Hive SFTP',
+          status: 'active',
+        },
+      })
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/credentials',
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+        payload: {
+          name: 'Hive Production',
+          credentialType: 'sftp',
+          host: 'sftp.example.com',
+          username: 'sebastian',
+          password: 'pw',
+          integrationId: integration.id,
+        },
+      })
+      expect(created.statusCode).toBe(201)
+      const credentialId = (created.json() as SingleBody).data.id
+
+      // Wire the credential as the Integration's default — no schedule.
+      await testDb.integration.update({
+        where: { id: integration.id },
+        data: { credentialId },
+      })
+
+      const del = await app.inject({
+        method: 'DELETE',
+        url: `/v1/credentials/${credentialId}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(del.statusCode).toBe(409)
+      expect((del.json() as ErrorBody).error.code).toBe('CREDENTIAL_IN_USE')
+
+      // Credential still present.
+      const stillThere = await testDb.integrationCredential.findUnique({
+        where: { id: credentialId },
+      })
+      expect(stillThere).not.toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+
   it('cross-tenant isolation: tenant B cannot read, update, delete, or test tenant A credentials', async () => {
     const tenantA = await createTestTenant(testDb)
     const tenantB = await createTestTenant(testDb)

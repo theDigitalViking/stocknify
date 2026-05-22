@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface PageHeaderProps {
-  title: string
+  // `ReactNode` so callers can render an inline-editable title with controls
+  // (Cycle 5-A.5) instead of just a string. Plain-string callers stay valid.
+  title: ReactNode
   children?: ReactNode
   // When the page already wraps the header area in its own sticky container
   // (e.g. movements page with breadcrumb + title stacked), opt out of the

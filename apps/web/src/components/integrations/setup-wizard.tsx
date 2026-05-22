@@ -25,7 +25,10 @@ import {
   useCredentials,
   type CredentialType,
 } from '@/lib/api/use-credentials'
-import { useInstallIntegration } from '@/lib/api/use-integrations'
+import {
+  useInstallIntegration,
+  useUpdateIntegration,
+} from '@/lib/api/use-integrations'
 import { cn } from '@/lib/utils'
 
 interface SetupWizardProps {
@@ -72,6 +75,7 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
 
   const credentialsQuery = useCredentials()
   const install = useInstallIntegration()
+  const updateIntegration = useUpdateIntegration()
 
   const linkedCredential =
     state.credentialId !== null
@@ -113,6 +117,17 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
         throw new Error('Install succeeded but integration id is missing')
       }
 
+      // Cycle 5-A.5: persist Credential + Mapping on the Integration itself
+      // (authoritative defaults). The schedule POST below then omits them
+      // and the backend / worker resolve them via Integration fallback.
+      if (state.credentialId || state.mappingTemplateId) {
+        await updateIntegration.mutateAsync({
+          id: integrationId,
+          ...(state.credentialId ? { credentialId: state.credentialId } : {}),
+          ...(state.mappingTemplateId ? { csvMappingTemplateId: state.mappingTemplateId } : {}),
+        })
+      }
+
       // Inline schedule create via fetch — TanStack hooks need their
       // integrationId bound at instantiation, but we only learn it here.
       // Switching to a service function or a deferred mutation factory is a
@@ -136,10 +151,8 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
                 : {}),
               ...(state.schedule.timeOfDay ? { timeOfDay: state.schedule.timeOfDay } : {}),
               ...(state.schedule.weekdays ? { weekdays: state.schedule.weekdays } : {}),
-              credentialId: state.credentialId,
-              ...(state.mappingTemplateId
-                ? { csvMappingTemplateId: state.mappingTemplateId }
-                : {}),
+              // Cycle 5-A.5: credential + mapping omitted — backend reads
+              // them from Integration via the PATCH above.
             }),
           },
         )

@@ -556,7 +556,19 @@
         "scheduleDeletedToast": "Zeitplan gel\u00f6scht.",
         "scheduleSaveFailedToast": "Zeitplan konnte nicht gespeichert werden.",
         "scheduleDeleteFailedToast": "Zeitplan konnte nicht gel\u00f6scht werden.",
-        "scheduleToggleFailedToast": "Zeitplan konnte nicht umgeschaltet werden."
+        "scheduleToggleFailedToast": "Zeitplan konnte nicht umgeschaltet werden.",
+        "editName": "Name bearbeiten",
+        "saveName": "Namen speichern",
+        "cancelEdit": "Abbrechen",
+        "nameSaved": "Name aktualisiert",
+        "nameSaveFailed": "Name konnte nicht aktualisiert werden",
+        "credentialSaved": "Zugangsdaten aktualisiert",
+        "credentialSaveFailed": "Zugangsdaten konnten nicht aktualisiert werden",
+        "mappingSaved": "Mapping aktualisiert",
+        "mappingSaveFailed": "Mapping konnte nicht aktualisiert werden",
+        "needCredentialForSchedule": "Zugangsdaten zuerst ausw\u00e4hlen",
+        "savingShort": "Wird gespeichert\u2026",
+        "savedShort": "Gespeichert"
       },
       "health": {
         "healthy": "Gesund",

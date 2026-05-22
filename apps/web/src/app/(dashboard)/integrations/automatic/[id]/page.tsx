@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, Loader2, MoreVertical, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, MoreVertical, Pencil, Save, Trash2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -31,6 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import { useCredentials } from '@/lib/api/use-credentials'
@@ -38,6 +39,7 @@ import {
   useIntegration,
   useToggleIntegration,
   useUninstallIntegration,
+  useUpdateIntegration,
 } from '@/lib/api/use-integrations'
 import {
   useCreateSchedule,
@@ -72,6 +74,7 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
   const schedulesQuery = useSchedules(params.id)
   const toggle = useToggleIntegration()
   const uninstall = useUninstallIntegration()
+  const updateIntegration = useUpdateIntegration()
   const createSchedule = useCreateSchedule(params.id)
   const updateSchedule = useUpdateSchedule(params.id)
   const deleteSchedule = useDeleteSchedule(params.id)
@@ -82,23 +85,37 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
   const schedules = schedulesQuery.data ?? []
   const existingSchedule: IntegrationSchedule | undefined = schedules[0]
 
-  const [credentialId, setCredentialId] = useState<string | null>(null)
-  const [mappingTemplateId, setMappingTemplateId] = useState<string | null>(null)
+  // Cycle 5-A.5: Credential + Mapping are now read directly from the
+  // Integration row (authoritative). The schedule's own credentialId /
+  // csvMappingTemplateId are deliberately ignored on the UI for now (schema
+  // still carries them as a future override path).
+  const credentialId = integration?.credentialId ?? null
+  const mappingTemplateId = integration?.csvMappingTemplateId ?? null
+
+  // Inline name edit (R7). `nameEditing` flips the title between the static
+  // label and an Input. `nameDraft` holds the in-flight value so the
+  // controlled input doesn't fight the integration row on each keystroke.
+  const [nameEditing, setNameEditing] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  useEffect(() => {
+    if (nameEditing && integration) {
+      setNameDraft(integration.name)
+    }
+  }, [nameEditing, integration])
+
   const [scheduleValue, setScheduleValue] = useState<ScheduleBuilderValue>({
     scheduleType: 'interval_hours',
     intervalValue: 1,
   })
 
-  // Hydrate UI state from server data once both queries land. Subsequent
-  // user edits override; we never overwrite local state after the initial
-  // hydration to avoid clobbering in-flight changes.
+  // Hydrate the schedule time fields from server data once the schedules
+  // query lands. Subsequent user edits override; we never overwrite local
+  // state after the initial hydration to avoid clobbering in-flight changes.
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => {
     if (hydrated) return
     if (!schedulesQuery.data) return
     if (existingSchedule) {
-      setCredentialId(existingSchedule.credentialId)
-      setMappingTemplateId(existingSchedule.csvMappingTemplateId)
       setScheduleValue({
         scheduleType: existingSchedule.scheduleType,
         intervalValue: existingSchedule.intervalValue ?? undefined,
@@ -131,9 +148,76 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
     )
   }
 
+  function handleCredentialChange(nextId: string | null): void {
+    if (!integration) return
+    if (nextId === integration.credentialId) return
+    updateIntegration.mutate(
+      { id: integration.id, credentialId: nextId },
+      {
+        onSuccess: () => {
+          toast({ title: t('credentialSaved') })
+          void integrationQuery.refetch()
+        },
+        onError: () => {
+          toast({ title: t('credentialSaveFailed'), variant: 'destructive' })
+          void integrationQuery.refetch()
+        },
+      },
+    )
+  }
+
+  function handleMappingChange(nextId: string | null): void {
+    if (!integration) return
+    if (nextId === integration.csvMappingTemplateId) return
+    updateIntegration.mutate(
+      { id: integration.id, csvMappingTemplateId: nextId },
+      {
+        onSuccess: () => {
+          toast({ title: t('mappingSaved') })
+          void integrationQuery.refetch()
+        },
+        onError: () => {
+          toast({ title: t('mappingSaveFailed'), variant: 'destructive' })
+          void integrationQuery.refetch()
+        },
+      },
+    )
+  }
+
+  function commitNameEdit(): void {
+    if (!integration) return
+    const trimmed = nameDraft.trim()
+    if (trimmed.length === 0 || trimmed === integration.name) {
+      setNameEditing(false)
+      return
+    }
+    updateIntegration.mutate(
+      { id: integration.id, name: trimmed },
+      {
+        onSuccess: () => {
+          toast({ title: t('nameSaved') })
+          setNameEditing(false)
+          void integrationQuery.refetch()
+        },
+        onError: () => {
+          toast({ title: t('nameSaveFailed'), variant: 'destructive' })
+        },
+      },
+    )
+  }
+
+  function cancelNameEdit(): void {
+    if (integration) setNameDraft(integration.name)
+    setNameEditing(false)
+  }
+
   async function handleSaveSchedule(): Promise<void> {
-    if (!credentialId) {
-      toast({ title: t('needCredential'), variant: 'destructive' })
+    if (!integration) return
+    // Cycle 5-A.5: schedule create now relies on Integration.credentialId
+    // (worker fallback). Without it the backend would 400 — short-circuit
+    // here with a clearer toast.
+    if (!integration.credentialId) {
+      toast({ title: t('needCredentialForSchedule'), variant: 'destructive' })
       return
     }
     try {
@@ -145,21 +229,17 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           intervalValue: scheduleValue.intervalValue ?? null,
           timeOfDay: scheduleValue.timeOfDay ?? null,
           weekdays: scheduleValue.weekdays ?? null,
-          credentialId,
-          csvMappingTemplateId: mappingTemplateId,
         })
         toast({ title: t('scheduleSavedToast') })
       } else {
         await createSchedule.mutateAsync({
-          name: integration?.name ?? 'SFTP/FTP import',
+          name: integration.name ?? 'SFTP/FTP import',
           scheduleType: scheduleValue.scheduleType,
           ...(scheduleValue.intervalValue !== undefined
             ? { intervalValue: scheduleValue.intervalValue }
             : {}),
           ...(scheduleValue.timeOfDay ? { timeOfDay: scheduleValue.timeOfDay } : {}),
           ...(scheduleValue.weekdays ? { weekdays: scheduleValue.weekdays } : {}),
-          credentialId,
-          ...(mappingTemplateId ? { csvMappingTemplateId: mappingTemplateId } : {}),
         })
         toast({ title: t('scheduleCreatedToast') })
       }
@@ -238,10 +318,94 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
   }
 
   const healthLabel = tHealth(integration.healthStatus as 'healthy' | 'degraded' | 'failing' | 'paused' | 'unknown')
+  const isSavingName =
+    updateIntegration.isPending && updateIntegration.variables?.name !== undefined
+  const isSavingCredential =
+    updateIntegration.isPending && updateIntegration.variables?.credentialId !== undefined
+  const isSavingMapping =
+    updateIntegration.isPending && updateIntegration.variables?.csvMappingTemplateId !== undefined
 
   return (
     <div>
-      <PageHeader title={integration.name}>
+      <PageHeader
+        title={
+          nameEditing ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Input
+                value={nameDraft}
+                onChange={(e) => {
+                  setNameDraft(e.target.value)
+                }}
+                onBlur={commitNameEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    commitNameEdit()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    cancelNameEdit()
+                  }
+                }}
+                autoFocus
+                disabled={isSavingName}
+                className="h-8 w-64 text-base font-semibold"
+                aria-label={t('editName')}
+              />
+              {isSavingName ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onMouseDown={(e) => {
+                      // Prevent the input's onBlur (which would also commit)
+                      // from racing against the explicit commit click. The
+                      // commit still runs via the click handler.
+                      e.preventDefault()
+                    }}
+                    onClick={commitNameEdit}
+                    aria-label={t('saveName')}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                    }}
+                    onClick={cancelNameEdit}
+                    aria-label={t('cancelEdit')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <span>{integration.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  setNameEditing(true)
+                }}
+                aria-label={t('editName')}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </span>
+          )
+        }
+      >
         <Badge variant="outline" className="text-[10px] uppercase">
           {integration.marketplaceKey ?? 'sftp'}
         </Badge>
@@ -348,10 +512,18 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           </div>
         </section>
 
-        {/* Credentials */}
+        {/* Credentials (Cycle 5-A.5: Integration-level, auto-save) */}
         <section className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">{t('credentialsSection')}</h2>
-          <CredentialSelector value={credentialId} onChange={setCredentialId} />
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">{t('credentialsSection')}</h2>
+            {isSavingCredential ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('savingShort')}
+              </span>
+            ) : null}
+          </div>
+          <CredentialSelector value={credentialId} onChange={handleCredentialChange} />
         </section>
 
         {/* Directory */}
@@ -368,13 +540,21 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           )}
         </section>
 
-        {/* Mapping */}
+        {/* Mapping (Cycle 5-A.5: Integration-level, auto-save) */}
         <section className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">{t('mappingSection')}</h2>
-          <MappingTemplateSelector value={mappingTemplateId} onChange={setMappingTemplateId} />
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">{t('mappingSection')}</h2>
+            {isSavingMapping ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('savingShort')}
+              </span>
+            ) : null}
+          </div>
+          <MappingTemplateSelector value={mappingTemplateId} onChange={handleMappingChange} />
         </section>
 
-        {/* Schedule */}
+        {/* Schedule (Cycle 5-A.5: time-only) */}
         <section className="rounded-lg border border-border bg-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">{t('scheduleSection')}</h2>

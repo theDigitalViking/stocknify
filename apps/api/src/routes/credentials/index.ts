@@ -407,8 +407,16 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
           const activeSchedules = await tx.integrationSchedule.count({
             where: { tenantId, credentialId, deletedAt: null },
           })
-          if (activeSchedules > 0) {
-            return { kind: 'inUse', count: activeSchedules }
+          // Cycle 5-A.5: integrations now also reference a default credential
+          // directly (Integration.credentialId). Both reference paths block
+          // deletion; the user-visible 409 sums them so a single message
+          // covers "this credential is in use" regardless of path.
+          const referencingIntegrations = await tx.integration.count({
+            where: { tenantId, credentialId, deletedAt: null },
+          })
+          const totalReferences = activeSchedules + referencingIntegrations
+          if (totalReferences > 0) {
+            return { kind: 'inUse', count: totalReferences }
           }
           await tx.integrationCredential.delete({
             where: { id: credentialId },
@@ -463,7 +471,7 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({
         error: {
           code: 'CREDENTIAL_IN_USE',
-          message: `Cannot delete: ${String(outcome.count)} active schedule(s) reference this credential`,
+          message: `Cannot delete: ${String(outcome.count)} active reference(s) to this credential`,
         },
       })
     }

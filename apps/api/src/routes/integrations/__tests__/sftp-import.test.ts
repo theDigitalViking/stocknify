@@ -511,6 +511,57 @@ describe('POST /v1/integrations/:id/import-now (Cycle 3-C R5)', () => {
       await app.close()
     }
   })
+
+  // -------------------------------------------------------------------------
+  // Cycle 5-A.5 — Integration default fallback
+  // -------------------------------------------------------------------------
+
+  it('Cycle 5-A.5: accepts a body without credentialId when Integration.credentialId is set', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    // Wire the credential as Integration default — body omits credentialId.
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { credentialId: credential.id },
+    })
+    const app = await buildTestApp()
+    try {
+      mockedStreamSftp.mockResolvedValue(makeStreamHandle(STOCK_CSV))
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { filePath: '/exports/x.csv' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect((res.json() as ImportRunBody).data.status).toBe('success')
+      // Connector still saw the right credential — i.e. the fallback ran.
+      expect(mockedStreamSftp).toHaveBeenCalledWith(
+        expect.objectContaining({ host: 'sftp.hive.example.com' }),
+        '/exports/x.csv',
+      )
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('Cycle 5-A.5: rejects body without credentialId when Integration.credentialId is null with 400 CREDENTIAL_NOT_CONFIGURED', async () => {
+    const { integration, headers } = await seedScenario()
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: {},
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as { error: { code: string } }).error.code).toBe(
+        'CREDENTIAL_NOT_CONFIGURED',
+      )
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 describe('GET /v1/integrations/:id/runs (Cycle 3-C R6)', () => {

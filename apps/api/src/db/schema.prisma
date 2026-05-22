@@ -397,6 +397,11 @@ model Integration {
   logoUrl               String?   @map("logo_url") @db.Text
   category              String?   @db.Text
   // 'shop' | 'erp' | 'warehouse' | 'fulfiller'
+  // Integration-level defaults (Cycle 5-A.5): authoritative credential + mapping
+  // for this integration's schedules and manual imports. Schedules carry the
+  // same FKs as optional overrides (schema preserves for future power-user UI).
+  credentialId         String?   @map("credential_id") @db.Uuid
+  csvMappingTemplateId String?   @map("csv_mapping_template_id") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
@@ -411,8 +416,12 @@ model Integration {
   attributeDefinitions IntegrationAttributeDefinition[]
   incidents            Incident[]
   importRuns           ImportRun[]
+  credential           IntegrationCredential? @relation("IntegrationDefaultCredential", fields: [credentialId], references: [id], onDelete: Restrict)
+  csvMappingTemplate   CsvMappingTemplate?    @relation("IntegrationDefaultMappingTemplate", fields: [csvMappingTemplateId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
+  @@index([credentialId])
+  @@index([csvMappingTemplateId])
   @@map("integrations")
 }
 
@@ -768,6 +777,10 @@ model IntegrationCredential {
   integration Integration?  @relation(fields: [integrationId], references: [id])
   schedules   IntegrationSchedule[]
   importRuns  ImportRun[]
+  // Inverse for Integration.credentialId (Cycle 5-A.5). Named because Integration
+  // now has two FK paths into IntegrationCredential (directly via credentialId
+  // and indirectly via Schedule.credentialId), and Prisma requires disambiguation.
+  defaultForIntegrations Integration[] @relation("IntegrationDefaultCredential")
 
   @@index([tenantId])
   @@index([tenantId, integrationId])
@@ -856,6 +869,8 @@ model CsvMappingTemplate {
   // Relations
   tenant    Tenant @relation(fields: [tenantId], references: [id])
   schedules IntegrationSchedule[]
+  // Inverse for Integration.csvMappingTemplateId (Cycle 5-A.5).
+  defaultForIntegrations Integration[] @relation("IntegrationDefaultMappingTemplate")
 
   @@index([tenantId])
   @@map("csv_mapping_templates")

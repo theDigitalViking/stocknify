@@ -203,7 +203,15 @@ export async function processSftpImportJob(
   const schedule = await db.integrationSchedule.findFirst({
     where: { id: data.scheduleId },
     include: {
-      integration: true,
+      // Cycle 5-A.5: Integration is the authoritative source for credential
+      // and mapping. The schedule's own credentialId / csvMappingTemplateId
+      // act as optional overrides (preserved for a future power-user UI).
+      integration: {
+        include: {
+          credential: true,
+          csvMappingTemplate: true,
+        },
+      },
       credential: true,
       csvMappingTemplate: true,
     },
@@ -221,9 +229,17 @@ export async function processSftpImportJob(
     log.warn('integration disabled or deleted — skipping', integration.id)
     return { status: 'skipped', reason: 'integration_disabled' }
   }
-  const credential = schedule.credential
-  if (!credential || credential.deletedAt !== null || !credential.isActive) {
-    log.warn('credential missing/inactive — skipping', schedule.credentialId)
+  // Cycle 5-A.5: schedule-level credential wins (override), Integration
+  // default acts as fallback. The same record-shape is returned by both
+  // relations so the rest of the worker doesn't care which path resolved.
+  const credential = schedule.credential ?? integration.credential
+  const credentialMissing =
+    !credential || credential.deletedAt !== null || !credential.isActive
+  if (credentialMissing) {
+    log.warn(
+      'credential missing/inactive — skipping',
+      schedule.credentialId ?? integration.credentialId,
+    )
     return { status: 'skipped', reason: 'credential_inactive' }
   }
   if (!isTestableType(credential.credentialType)) {
@@ -290,8 +306,13 @@ export async function processSftpImportJob(
     let delimiter = ','
     let hasHeaderRow = true
     let encoding = 'utf-8'
-    if (schedule.csvMappingTemplate) {
-      const t = schedule.csvMappingTemplate
+    // Cycle 5-A.5: schedule-level mapping wins; Integration default is the
+    // fallback. When both are null we fall through to the column-name
+    // matching path inside `processStockImportRows` (no template required).
+    const mappingTemplate =
+      schedule.csvMappingTemplate ?? integration.csvMappingTemplate
+    if (mappingTemplate) {
+      const t = mappingTemplate
       if (t.direction !== 'import' || t.resourceType !== 'stock') {
         const failed = await finalizeFailedRun(
           db,

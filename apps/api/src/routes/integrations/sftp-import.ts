@@ -78,7 +78,10 @@ const filesQuerySchema = z.object({
 
 const importNowBodySchema = z
   .object({
-    credentialId: z.string().uuid(),
+    // Cycle 5-A.5: credentialId is optional on the request — when omitted the
+    // route falls back to Integration.credentialId. Same for mappingTemplateId
+    // which now falls back to Integration.csvMappingTemplateId.
+    credentialId: z.string().uuid().optional(),
     filePath: z.string().min(1).max(1024).optional(),
     mappingTemplateId: z.string().uuid().optional(),
   })
@@ -372,11 +375,35 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
+    // Cycle 5-A.5: credentialId / mappingTemplateId fall back to the
+    // Integration's defaults when the body omits them.
+    const integrationDefaults = await request.db.integration.findFirst({
+      where: { id: params.data.id, tenantId: request.tenantId, deletedAt: null },
+      select: { id: true, credentialId: true, csvMappingTemplateId: true },
+    })
+    if (!integrationDefaults) {
+      return reply.code(404).send({
+        error: { code: 'INTEGRATION_NOT_FOUND', message: 'Integration not found' },
+      })
+    }
+    const credentialId = body.data.credentialId ?? integrationDefaults.credentialId
+    if (!credentialId) {
+      return reply.code(400).send({
+        error: {
+          code: 'CREDENTIAL_NOT_CONFIGURED',
+          message:
+            'Integration has no default credential. Set one on the integration first or provide a credentialId override.',
+        },
+      })
+    }
+    const mappingTemplateId =
+      body.data.mappingTemplateId ?? integrationDefaults.csvMappingTemplateId ?? undefined
+
     const ctx = await loadIntegrationAndCredential(
       request,
       reply,
       params.data.id,
-      body.data.credentialId,
+      credentialId,
     )
     if (!ctx) return reply
 
@@ -387,10 +414,10 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
     let delimiter = ','
     let hasHeaderRow = true
     let encoding = 'utf-8'
-    if (body.data.mappingTemplateId) {
+    if (mappingTemplateId) {
       const template = await request.db.csvMappingTemplate.findFirst({
         where: {
-          id: body.data.mappingTemplateId,
+          id: mappingTemplateId,
           tenantId: request.tenantId,
           deletedAt: null,
         },

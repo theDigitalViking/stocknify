@@ -556,7 +556,19 @@
         "scheduleDeletedToast": "Schedule deleted.",
         "scheduleSaveFailedToast": "Could not save schedule.",
         "scheduleDeleteFailedToast": "Could not delete schedule.",
-        "scheduleToggleFailedToast": "Could not toggle schedule."
+        "scheduleToggleFailedToast": "Could not toggle schedule.",
+        "editName": "Edit name",
+        "saveName": "Save name",
+        "cancelEdit": "Cancel",
+        "nameSaved": "Name updated",
+        "nameSaveFailed": "Could not update name",
+        "credentialSaved": "Credentials updated",
+        "credentialSaveFailed": "Could not update credentials",
+        "mappingSaved": "Mapping updated",
+        "mappingSaveFailed": "Could not update mapping",
+        "needCredentialForSchedule": "Select credentials first",
+        "savingShort": "Saving…",
+        "savedShort": "Saved"
       },
       "health": {
         "healthy": "Healthy",

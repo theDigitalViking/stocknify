@@ -137,6 +137,11 @@ export interface IntegrationDetail {
   lastSuccessfulSyncAt: string | null
   lastErrorAt: string | null
   consecutiveFailures: number
+  // Cycle 5-A.5: Integration is now the authoritative source for the
+  // credential + mapping. Both are nullable (operator may not have picked one
+  // yet); when set they act as the default for schedules and manual imports.
+  credentialId: string | null
+  csvMappingTemplateId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -167,6 +172,39 @@ export function useToggleIntegration(): UseMutationResult<unknown, Error, Toggle
     // Invalidate on settle (success + error) so the UI converges with the
     // server even when a transport error masks a successful commit.
     onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
+    },
+  })
+}
+
+// Cycle 5-A.5: generic PATCH /v1/integrations/:id mutation used by the
+// Edit-Page sections (name inline-edit, credential selector, mapping
+// selector) and by the Wizard's submit handler (post-install PATCH for
+// credential + mapping). Invalidates the per-id query, the list page, and
+// the marketplace catalog so every surface converges on the next read.
+export interface UpdateIntegrationInput {
+  id: string
+  name?: string
+  isEnabled?: boolean
+  credentialId?: string | null
+  csvMappingTemplateId?: string | null
+}
+
+export function useUpdateIntegration(): UseMutationResult<
+  unknown,
+  Error,
+  UpdateIntegrationInput
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: UpdateIntegrationInput) =>
+      apiFetch<unknown>(`/integrations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    onSettled: (_data, _error, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['integration', id] })
+      void qc.invalidateQueries({ queryKey: ['integrations-list'] })
       void qc.invalidateQueries({ queryKey: ['marketplace-catalog'] })
     },
   })

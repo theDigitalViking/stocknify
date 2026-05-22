@@ -182,3 +182,117 @@ describe('processSftpImportJob — final-attempt gating (Codex review fix)', () 
     expect(integrationAfter?.consecutiveFailures).toBe(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 5-A.5 — Worker resolves credential from Integration when Schedule has none
+// ---------------------------------------------------------------------------
+
+describe('processSftpImportJob — Integration default credential fallback (Cycle 5-A.5)', () => {
+  it('resolves credential from Integration when Schedule.credentialId is null', async () => {
+    const { tenant } = await createTestTenant(testDb)
+    const integration = await testDb.integration.create({
+      data: {
+        tenantId: tenant.id,
+        type: 'sftp',
+        name: 'Hive SFTP',
+        status: 'active',
+        consecutiveFailures: 0,
+        healthStatus: 'unknown',
+      },
+    })
+    const credential = await testDb.integrationCredential.create({
+      data: {
+        tenantId: tenant.id,
+        integrationId: integration.id,
+        credentialType: 'sftp',
+        name: 'Hive Production',
+        host: 'sftp.hive.example.com',
+        port: 22,
+        username: 'sebastian',
+        password: encryptCredential('supersecret'),
+        remotePath: '/exports',
+        isActive: true,
+      },
+    })
+    // Wire the credential as Integration default; schedule has NO credentialId.
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { credentialId: credential.id },
+    })
+    const schedule = await testDb.integrationSchedule.create({
+      data: {
+        tenantId: tenant.id,
+        integrationId: integration.id,
+        name: 'Daily',
+        resourceType: 'stock',
+        direction: 'import',
+        scheduleType: 'daily',
+        timeOfDay: '06:00',
+        cronExpression: '0 6 * * *',
+        credentialId: null,
+        isActive: true,
+      },
+    })
+
+    // Connector throws — we only care that the worker REACHED the connector
+    // path (which means credential resolution succeeded via the Integration
+    // fallback).
+    mockedList.mockRejectedValue(new Error('Connection refused'))
+
+    await expect(
+      processSftpImportJob(
+        { scheduleId: schedule.id },
+        { isFinalAttempt: false },
+      ),
+    ).rejects.toThrow('Connection refused')
+
+    // The ImportRun row was created — confirms the worker advanced past the
+    // credential resolution and into the connector call (a skipped run
+    // would not write an ImportRun).
+    const runs = await testDb.importRun.findMany({
+      where: { scheduleId: schedule.id },
+    })
+    expect(runs).toHaveLength(1)
+    expect(runs[0]?.credentialId).toBe(credential.id)
+  })
+
+  it('skips with credential_inactive when both Schedule and Integration have no credential', async () => {
+    const { tenant } = await createTestTenant(testDb)
+    const integration = await testDb.integration.create({
+      data: {
+        tenantId: tenant.id,
+        type: 'sftp',
+        name: 'Hive SFTP',
+        status: 'active',
+        consecutiveFailures: 0,
+        healthStatus: 'unknown',
+      },
+    })
+    const schedule = await testDb.integrationSchedule.create({
+      data: {
+        tenantId: tenant.id,
+        integrationId: integration.id,
+        name: 'Daily',
+        resourceType: 'stock',
+        direction: 'import',
+        scheduleType: 'daily',
+        timeOfDay: '06:00',
+        cronExpression: '0 6 * * *',
+        credentialId: null,
+        isActive: true,
+      },
+    })
+
+    const result = await processSftpImportJob(
+      { scheduleId: schedule.id },
+      { isFinalAttempt: true },
+    )
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toBe('credential_inactive')
+    // No ImportRun row created on the credential-missing skip path.
+    const runs = await testDb.importRun.findMany({
+      where: { scheduleId: schedule.id },
+    })
+    expect(runs).toHaveLength(0)
+  })
+})

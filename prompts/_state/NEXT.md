@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-13 (Cycle 5-A ✅ done, 5-A.5 🚧 in flight. Schema-Refactor mit aufgenommen: Credential + Mapping wandern auf Integration.)
+**Last updated:** 2026-05-22 (Cycle 5-A.5 ✅ done — Integration ist Konfig-Anker, Edit-Page restructured, SFTP/FTP/FTPS rename gate offen. Backend-Tests 95 → 109. Nächster Cycle 5-B Schedule Builder Rebuild profitiert vom schlankeren Schedule-Body.)
 
 ---
 
@@ -12,7 +12,7 @@
 
 **Batch 5 — SFTP Polish + Funktionstest.** Sebastian hat am 2026-05-13 alle bisherigen Findings konsolidiert (S1–S10 aus dem Batch-3-Production-Review) und durch eine detaillierte Walk-Through-Session 17 weitere Findings hinzugefügt (S12–S27). S9 bereits in 4-E gefixt, S18 als zu komplex für MVP verworfen. **Wichtige Architektur-Entscheidung in 5-A.5:** Credential + Mapping wandern aus `IntegrationSchedule` auf `Integration` als persistente Defaults — Schedules werden zu reinen Zeit-Plänen.
 
-**Backend-Tests:** 95 grün (Stand Cycle 4-E), Ziel nach 5-A.5: ≥105.
+**Backend-Tests:** 109 grün (Stand Cycle 5-A.5).
 
 ---
 
@@ -23,8 +23,8 @@
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
 | **5-A** | S1 (Ghost Integration), S2 (Delete-Button), S27 (Card-Konsistenz) | M | skip | ✅ Done |
-| **5-A.5** | Schema-Refactor: Credential+Mapping auf Integration verschieben + Name inline-edit + Section-Local-Saves auf Edit-Page | M–L | mandatory | 🚧 In Arbeit |
-| **5-B** | S15, S16, S17 (optional), S20, S25 — Schedule Builder Rebuild (profitiert von schlankerem Schedule-Modell) | M | recommended | pending |
+| **5-A.5** | Schema-Refactor: Credential+Mapping auf Integration verschieben + Name inline-edit + Section-Local-Saves auf Edit-Page | M–L | mandatory | ✅ Done 2026-05-22 |
+| **5-B** | S15, S16, S17 (optional), S20, S25 — Schedule Builder Rebuild (profitiert von schlankerem Schedule-Modell) | M | recommended | next |
 | **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | pending |
 
 ### Phase 2 — Test

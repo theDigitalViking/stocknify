@@ -56,7 +56,11 @@ const createScheduleBodySchema = z
     intervalValue: z.number().int().min(1).max(59).optional(),
     timeOfDay: timeOfDaySchema.optional(),
     weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
-    credentialId: uuidSchema,
+    // Cycle 5-A.5: credentialId is now optional on the schedule. When omitted,
+    // the schedule inherits Integration.credentialId (and the worker resolves
+    // it at run time). The schema preserves the column as an override path
+    // for a future power-user UI.
+    credentialId: uuidSchema.optional(),
     csvMappingTemplateId: uuidSchema.optional(),
     timezone: z.string().min(1).max(64).default('Europe/Berlin'),
   })
@@ -107,7 +111,9 @@ const updateScheduleBodySchema = z
     intervalValue: z.union([z.number().int().min(1).max(59), z.null()]).optional(),
     timeOfDay: z.union([timeOfDaySchema, z.null()]).optional(),
     weekdays: z.union([z.array(z.number().int().min(1).max(7)).min(1).max(7), z.null()]).optional(),
-    credentialId: uuidSchema.optional(),
+    // Cycle 5-A.5: explicit null clears the override (worker falls back to
+    // Integration.credentialId); UUID sets; undefined leaves as-is.
+    credentialId: z.union([uuidSchema, z.null()]).optional(),
     csvMappingTemplateId: z.union([uuidSchema, z.null()]).optional(),
     timezone: z.string().min(1).max(64).optional(),
     isActive: z.boolean().optional(),
@@ -348,7 +354,7 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
 
     const integration = await request.db.integration.findFirst({
       where: { id: params.data.id, tenantId: request.tenantId, deletedAt: null },
-      select: { id: true, isEnabled: true },
+      select: { id: true, isEnabled: true, credentialId: true },
     })
     if (!integration) {
       return reply.code(404).send({
@@ -356,15 +362,30 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const credErr = await validateCredentialForSchedule(
-      request,
-      body.data.credentialId,
-      integration.id,
-    )
-    if (credErr) {
-      return reply
-        .code(credErr.status)
-        .send({ error: { code: credErr.code, message: credErr.message } })
+    // Cycle 5-A.5: credentialId is optional on the request. When provided we
+    // validate as before (the schedule stores an explicit override). When
+    // omitted we require Integration.credentialId to be set so the worker
+    // can resolve a credential at run time; otherwise reject with a
+    // specific error so the UI can guide the user back to step 1.
+    if (body.data.credentialId !== undefined) {
+      const credErr = await validateCredentialForSchedule(
+        request,
+        body.data.credentialId,
+        integration.id,
+      )
+      if (credErr) {
+        return reply
+          .code(credErr.status)
+          .send({ error: { code: credErr.code, message: credErr.message } })
+      }
+    } else if (integration.credentialId === null) {
+      return reply.code(400).send({
+        error: {
+          code: 'CREDENTIAL_NOT_CONFIGURED',
+          message:
+            'Integration has no default credential. Set one on the integration first or provide a credentialId override.',
+        },
+      })
     }
 
     if (body.data.csvMappingTemplateId) {
@@ -443,7 +464,11 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
           cronExpression: cron,
           timezone: body.data.timezone,
           csvMappingTemplateId: body.data.csvMappingTemplateId ?? null,
-          credentialId: body.data.credentialId,
+          // Cycle 5-A.5: when the request omits credentialId the schedule
+          // stores null and the worker falls back to Integration.credentialId
+          // (resolved at run time). The schema preserves the column as an
+          // explicit override path for a future power-user UI.
+          credentialId: body.data.credentialId ?? null,
           nextRunAt,
           isActive: true,
         },
@@ -503,7 +528,11 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
     // bind a credential from a different integration (or an inactive /
     // soft-deleted one), and a swapped csvMappingTemplateId could attach a
     // template with the wrong direction or resourceType.
-    if (body.data.credentialId !== undefined) {
+    //
+    // Cycle 5-A.5: credentialId === null clears the override (worker falls
+    // back to Integration.credentialId at run time); no validation needed
+    // for that path.
+    if (body.data.credentialId !== undefined && body.data.credentialId !== null) {
       const credErr = await validateCredentialForSchedule(
         request,
         body.data.credentialId,
@@ -625,7 +654,10 @@ export async function schedulesRoutes(app: FastifyInstance): Promise<void> {
         weekdays: merged.weekdays,
         cronExpression: cron,
         timezone,
-        credentialId: body.data.credentialId ?? existing.credentialId,
+        credentialId:
+          body.data.credentialId === undefined
+            ? existing.credentialId
+            : body.data.credentialId,
         csvMappingTemplateId:
           body.data.csvMappingTemplateId === undefined
             ? existing.csvMappingTemplateId

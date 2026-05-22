@@ -1014,3 +1014,64 @@ describe('import_runs FK enforcement (Cycle 3-E review fix)', () => {
     expect(refreshed?.credentialId).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 5-A.5 — schedule credentialId optional with Integration fallback
+// ---------------------------------------------------------------------------
+
+describe('POST /v1/integrations/:id/schedules — Cycle 5-A.5 credential fallback', () => {
+  it('accepts a body without credentialId when Integration.credentialId is set', async () => {
+    const seed = await seedScenario()
+    // Wire the integration with a default credential.
+    await testDb.integration.update({
+      where: { id: seed.integration.id },
+      data: { credentialId: seed.credential.id },
+    })
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'Daily 06:00 inherit-cred',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+        },
+      })
+      expect(res.statusCode).toBe(201)
+      const body = res.json() as ScheduleBody
+      // Schedule stores null (override slot empty); worker resolves from
+      // Integration at run time.
+      expect(body.data.credentialId).toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects body without credentialId when Integration.credentialId is null with 400 CREDENTIAL_NOT_CONFIGURED', async () => {
+    const seed = await seedScenario()
+    // No Integration-level default — neither override on body nor fallback.
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${seed.integration.id}/schedules`,
+        headers: seed.headers,
+        payload: {
+          name: 'broken',
+          resourceType: 'stock',
+          direction: 'import',
+          scheduleType: 'daily',
+          timeOfDay: '06:00',
+        },
+      })
+      expect(res.statusCode).toBe(400)
+      expect((res.json() as ErrorBody).error.code).toBe('CREDENTIAL_NOT_CONFIGURED')
+    } finally {
+      await app.close()
+    }
+  })
+})
