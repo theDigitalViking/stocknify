@@ -58,6 +58,8 @@ export function MappingTemplateSelector({
 
       <Link
         href="/stock/import"
+        target="_blank"
+        rel="noopener noreferrer"
         className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
       >
         {t('manageTemplates')}

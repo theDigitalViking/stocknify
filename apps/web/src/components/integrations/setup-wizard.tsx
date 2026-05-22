@@ -27,6 +27,7 @@ import {
   useCredentials,
   type CredentialType,
 } from '@/lib/api/use-credentials'
+import { useCsvMappings } from '@/lib/api/use-csv'
 import {
   useInstallIntegration,
   useUpdateIntegration,
@@ -224,7 +225,12 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
             <Sparkles className="h-4 w-4 text-brand-600" />
             {t('title')}
           </DialogTitle>
-          <StepIndicator current={step} />
+          <StepIndicator
+            current={step}
+            onStepClick={(s) => {
+              setStep(s)
+            }}
+          />
         </DialogHeader>
 
         <div className="py-2 min-h-[280px]">
@@ -312,35 +318,56 @@ async function getAuthHeaders(): Promise<{ Authorization: string }> {
 // Step components
 // ---------------------------------------------------------------------------
 
-function StepIndicator({ current }: { current: Step }): JSX.Element {
+function StepIndicator({
+  current,
+  onStepClick,
+}: {
+  current: Step
+  onStepClick?: (step: Step) => void
+}): JSX.Element {
   const t = useTranslations('integrations.sftp.wizard.steps')
   const labels = [t('connection'), t('directory'), t('mapping'), t('schedule'), t('summary')]
   return (
     <div className="flex items-center gap-1.5 mt-3">
       {labels.map((label, idx) => {
-        const stepNum = idx + 1
+        const stepNum = (idx + 1) as Step
         const isActive = stepNum === current
         const isComplete = stepNum < current
+        const isClickable = isComplete && onStepClick !== undefined
+        const circleClass = cn(
+          'h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 transition-colors',
+          isActive && 'bg-brand-600 text-white',
+          isComplete && 'bg-brand-100 text-brand-700',
+          !isActive && !isComplete && 'bg-muted text-muted-foreground',
+          isClickable && 'hover:bg-brand-200 cursor-pointer',
+        )
+        const labelClass = cn(
+          'text-[11px] truncate transition-colors',
+          isActive ? 'text-foreground font-medium' : 'text-muted-foreground',
+          isClickable && 'hover:text-foreground cursor-pointer',
+        )
+        const circleContent = isComplete ? <Check className="h-3 w-3" /> : stepNum
+
+        if (isClickable) {
+          return (
+            <button
+              type="button"
+              key={label}
+              onClick={() => {
+                onStepClick(stepNum)
+              }}
+              className="flex items-center gap-1.5 flex-1 text-left"
+              aria-label={label}
+            >
+              <span className={circleClass}>{circleContent}</span>
+              <span className={labelClass}>{label}</span>
+            </button>
+          )
+        }
         return (
           <div key={label} className="flex items-center gap-1.5 flex-1">
-            <div
-              className={cn(
-                'h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0',
-                isActive && 'bg-brand-600 text-white',
-                isComplete && 'bg-brand-100 text-brand-700',
-                !isActive && !isComplete && 'bg-muted text-muted-foreground',
-              )}
-            >
-              {isComplete ? <Check className="h-3 w-3" /> : stepNum}
-            </div>
-            <span
-              className={cn(
-                'text-[11px] truncate',
-                isActive ? 'text-foreground font-medium' : 'text-muted-foreground',
-              )}
-            >
-              {label}
-            </span>
+            <div className={circleClass}>{circleContent}</div>
+            <span className={labelClass}>{label}</span>
           </div>
         )
       })}
@@ -507,6 +534,16 @@ function Step5Summary({
   // 3 retries) and the Edit-Page is where they can be changed.
   const tConfig = useTranslations('integrations.sftp.config')
   const locale = useLocale()
+  // Step 3 (mapping selector) primes the same query, so TanStack Query's
+  // cache satisfies this call without a network round-trip.
+  const { data: mappingTemplates = [] } = useCsvMappings({
+    direction: 'import',
+    resourceType: 'stock',
+  })
+  const mappingValue = state.mappingTemplateId
+    ? (mappingTemplates.find((tpl) => tpl.id === state.mappingTemplateId)?.name ??
+      state.mappingTemplateId)
+    : t('mappingDefault')
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-muted-foreground">{t('description')}</p>
@@ -533,10 +570,7 @@ function Step5Summary({
         label={t('directoryLabel')}
         value={state.filePath ?? t('autoNewest')}
       />
-      <SummaryRow
-        label={t('mappingLabel')}
-        value={state.mappingTemplateId ?? t('mappingDefault')}
-      />
+      <SummaryRow label={t('mappingLabel')} value={mappingValue} />
       <SummaryRow
         label={t('scheduleLabel')}
         value={
