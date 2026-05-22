@@ -582,7 +582,14 @@
         "maxRetriesHint": "How often a failed file is retried by the scheduler before the failed-action runs (0–10).",
         "manualRetryNote": "Manual imports always run with retries=0 — the failed-action applies immediately on failure.",
         "saved": "Saved",
-        "saveFailed": "Could not save"
+        "saveFailed": "Could not save",
+        "importPathSection": "Import directory",
+        "importPathHint": "Sub-directory under the credential's remote path. Leave empty to use the credential path directly.",
+        "importPathCurrentLabel": "Import path",
+        "importPathDefault": "Using credential default",
+        "importPathReset": "Reset to default",
+        "importPathSaved": "Import path updated",
+        "importPathSaveFailed": "Could not update import path"
       },
       "health": {
         "healthy": "Healthy",
@@ -630,7 +637,14 @@
         "columnName": "Name",
         "columnSize": "Size",
         "columnModified": "Modified",
-        "genericError": "Could not list remote files."
+        "genericError": "Could not list remote files.",
+        "breadcrumbRoot": "Root",
+        "selectDirectory": "Use this directory",
+        "selectedDirectoryHint": "Import directory: {path}",
+        "parentDirectory": "Parent directory",
+        "emptyDirectory": "Directory is empty",
+        "connectionFailed": "Connection failed",
+        "retry": "Retry"
       },
       "mappingSelector": {
         "loading": "Loading templates\u2026",
@@ -717,10 +731,10 @@
           "credentialLabel": "Credentials"
         },
         "step2": {
-          "description": "Pick a directory to monitor. You can change it later.",
-          "noIntegrationYetNote": "The remote directory will become browsable after the integration is created. The importer auto-picks the newest CSV unless a specific file is chosen.",
+          "description": "Browse the remote directory tree and pick the folder this integration should import from. Leave the default to use the credential's root path.",
           "linkedRemotePath": "Default path from credentials: {path}",
-          "selectedFile": "Selected: {path}"
+          "selectedFile": "Selected: {path}",
+          "importPathLabel": "Import directory"
         },
         "step3": {
           "description": "Choose how CSV columns map to Stocknify fields. The default mapping works if your CSV columns match our standard names."
@@ -734,6 +748,8 @@
           "integrationLabel": "Integration",
           "connectionLabel": "Connection",
           "directoryLabel": "Directory / file",
+          "importPathLabel": "Import directory",
+          "importPathDefault": "Auto (credential root)",
           "mappingLabel": "Mapping",
           "scheduleLabel": "Schedule",
           "defaultName": "SFTP / FTP",

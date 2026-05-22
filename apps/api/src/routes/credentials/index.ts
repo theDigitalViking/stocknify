@@ -2,8 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
-import { testFtpConnection } from '../../integrations/ftp-client.js'
-import { testSftpConnection } from '../../integrations/sftp-client.js'
+import { listFtpDirectory, testFtpConnection } from '../../integrations/ftp-client.js'
+import { listSftpDirectory, testSftpConnection } from '../../integrations/sftp-client.js'
 import { decryptCredential, encryptCredential, MASKED_SECRET } from '../../lib/encryption.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/require-role.js'
@@ -53,6 +53,12 @@ const updateCredentialBodySchema = z.object({
 })
 
 const idParamSchema = z.object({ id: uuidSchema })
+
+// Browse query — `path` is an optional absolute remote path; when omitted
+// the handler falls back to the credential's `remotePath`, then `/`.
+const browseQuerySchema = z.object({
+  path: z.string().max(1024).optional(),
+})
 
 // ---------------------------------------------------------------------------
 // Response shaping
@@ -574,6 +580,122 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return reply.send({ data: result })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /credentials/:id/browse — directory listing (files + folders, no
+  // extension filter) for the click-through directory browser (Cycle 5-E).
+  //
+  // The existing `GET /integrations/:id/files` route gates on an
+  // integrationId + filters to `.csv` only. The wizard does not have an
+  // integration yet (created at submit, Cycle 5-A ghost-fix), so we need a
+  // pre-integration browsing surface. Both wizard and edit page use this
+  // endpoint; the `:id/files` route stays for the import-now dialog.
+  // -------------------------------------------------------------------------
+  app.get('/credentials/:id/browse', async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params)
+    if (!params.success) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid credential id' },
+      })
+    }
+    const query = browseQuerySchema.safeParse(request.query)
+    if (!query.success) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: query.error.message },
+      })
+    }
+
+    const credential = await request.db.integrationCredential.findFirst({
+      where: { id: params.data.id, tenantId: request.tenantId, deletedAt: null },
+    })
+    if (!credential) {
+      return reply.code(404).send({
+        error: { code: 'CREDENTIAL_NOT_FOUND', message: 'Credential not found' },
+      })
+    }
+    if (!credential.isActive) {
+      return reply.code(409).send({
+        error: {
+          code: 'CREDENTIAL_INACTIVE',
+          message: 'Credential is marked inactive — re-activate it to browse files',
+        },
+      })
+    }
+    if (!isTestableType(credential.credentialType)) {
+      return reply.code(400).send({
+        error: {
+          code: 'CREDENTIAL_TYPE_NOT_SUPPORTED',
+          message: `Browsing not supported for credential type "${credential.credentialType}"`,
+        },
+      })
+    }
+    if (credential.host === null || credential.username === null) {
+      return reply.code(400).send({
+        error: {
+          code: 'CREDENTIAL_INCOMPLETE',
+          message: 'Credential is missing host or username',
+        },
+      })
+    }
+
+    let plainPassword: string | undefined
+    if (credential.password !== null) {
+      try {
+        plainPassword = decryptCredential(credential.password)
+      } catch (err) {
+        request.log.error(
+          { err, credentialId: credential.id },
+          'Failed to decrypt credential password',
+        )
+        return reply.code(500).send({
+          error: {
+            code: 'CREDENTIAL_DECRYPT_FAILED',
+            message: 'Failed to decrypt credential',
+          },
+        })
+      }
+    }
+
+    const port = credential.port ?? defaultPortForType(credential.credentialType)
+    const effectivePath =
+      query.data.path?.trim() || credential.remotePath?.trim() || '/'
+
+    try {
+      const entries =
+        credential.credentialType === 'sftp'
+          ? await listSftpDirectory(
+              {
+                host: credential.host,
+                port,
+                username: credential.username,
+                ...(plainPassword !== undefined ? { password: plainPassword } : {}),
+              },
+              effectivePath,
+            )
+          : await listFtpDirectory(
+              {
+                host: credential.host,
+                port,
+                username: credential.username,
+                ...(plainPassword !== undefined ? { password: plainPassword } : {}),
+                secure: credential.credentialType === 'ftps',
+              },
+              effectivePath,
+            )
+      return reply.send({ data: entries })
+    } catch (err) {
+      request.log.error(
+        { err, credentialId: credential.id, path: effectivePath },
+        'credential browse listing failed',
+      )
+      return reply.code(502).send({
+        error: {
+          code: 'CONNECTION_FAILED',
+          message: 'Failed to list remote directory',
+        },
+      })
+    }
   })
 }
 

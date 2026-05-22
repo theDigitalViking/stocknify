@@ -393,6 +393,9 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
         failedAction: true,
         failedSubdir: true,
         lastSuccessfulSyncAt: true,
+        // Cycle 5-E — listed during auto-pick (no body filePath) so the
+        // search scope honours the integration's per-instance sub-folder.
+        importPath: true,
       },
     })
     if (!integrationDefaults) {
@@ -516,7 +519,13 @@ export async function sftpImportRoutes(app: FastifyInstance): Promise<void> {
       // ImportRun is failed with a clear reason.
       filePath = body.data.filePath
       if (!filePath) {
-        const dir = resolvePath(undefined, ctx.credential.remotePath)
+        // Cycle 5-E: auto-pick searches the integration's importPath
+        // sub-folder when set, otherwise the credential's remotePath. An
+        // explicit body filePath bypasses this entirely (operator already
+        // pointed at a specific file via the browser).
+        const basePath = resolvePath(undefined, ctx.credential.remotePath)
+        const importSubdir = integrationDefaults.importPath?.trim() ?? ''
+        const dir = importSubdir ? joinRemotePath(basePath, importSubdir) : basePath
         const files = await listRemoteDirectory(ctx.credential, dir, { extension: '.csv' })
         const newest = files.find((f) => f.type === 'file')
         if (!newest) {

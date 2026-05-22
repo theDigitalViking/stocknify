@@ -199,6 +199,28 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
     )
   }
 
+  // Cycle 5-E — auto-save the import path on directory pick / reset.
+  // Treats empty / '/' / credential-default as a clear (null) so the
+  // listing falls back to credential.remotePath at runtime.
+  function handleImportPathChange(nextPath: string | null): void {
+    if (!integration) return
+    const normalised = nextPath?.trim() ? nextPath : null
+    if (normalised === (integration.importPath ?? null)) return
+    updateIntegration.mutate(
+      { id: integration.id, importPath: normalised },
+      {
+        onSuccess: () => {
+          toast({ title: t('importPathSaved') })
+          void integrationQuery.refetch()
+        },
+        onError: () => {
+          toast({ title: t('importPathSaveFailed'), variant: 'destructive' })
+          void integrationQuery.refetch()
+        },
+      },
+    )
+  }
+
   function commitNameEdit(): void {
     if (!integration) return
     const trimmed = nameDraft.trim()
@@ -367,6 +389,8 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
     updateIntegration.isPending && updateIntegration.variables?.credentialId !== undefined
   const isSavingMapping =
     updateIntegration.isPending && updateIntegration.variables?.csvMappingTemplateId !== undefined
+  const isSavingImportPath =
+    updateIntegration.isPending && updateIntegration.variables?.importPath !== undefined
 
   return (
     <div>
@@ -569,14 +593,53 @@ export default function AutomaticIntegrationConfigPage({ params }: PageProps): J
           <CredentialSelector value={credentialId} onChange={handleCredentialChange} />
         </section>
 
-        {/* Directory */}
+        {/* Directory + Import path (Cycle 5-E) */}
         <section className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">{t('directorySection')}</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">{t('importPathSection')}</h2>
+            {isSavingImportPath ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('savingShort')}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">{t('importPathHint')}</p>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              {integration.importPath ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {t('importPathCurrentLabel')}:{' '}
+                  </span>
+                  {integration.importPath}
+                </>
+              ) : (
+                <span className="italic">{t('importPathDefault')}</span>
+              )}
+            </span>
+            {integration.importPath ? (
+              <button
+                type="button"
+                onClick={() => {
+                  handleImportPathChange(null)
+                }}
+                className="text-brand-600 hover:underline"
+              >
+                {t('importPathReset')}
+              </button>
+            ) : null}
+          </div>
           {credentialId ? (
             <DirectoryBrowser
-              integrationId={integration.id}
               credentialId={credentialId}
-              initialPath={linkedCredential?.remotePath ?? ''}
+              initialPath={
+                integration.importPath ?? linkedCredential?.remotePath ?? ''
+              }
+              onDirectorySelect={(dir) => {
+                handleImportPathChange(dir)
+              }}
+              selectedDirectory={integration.importPath}
             />
           ) : (
             <p className="text-xs text-muted-foreground">{t('needCredential')}</p>

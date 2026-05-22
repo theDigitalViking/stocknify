@@ -33,6 +33,11 @@ const updateIntegrationSchema = z
     maxImportRetries: z.number().int().min(0).max(10).optional(),
     failedAction: z.enum(['delete', 'archive']).optional(),
     failedSubdir: z.string().min(1).max(64).regex(SUBDIR_PATTERN).optional(),
+    // Cycle 5-E — sub-directory under the credential's remote path; null
+    // clears the override so listings fall back to credential.remotePath.
+    // Paths are opaque strings (spaces, unicode, dots all allowed); only
+    // length is constrained here.
+    importPath: z.string().max(512).nullable().optional(),
   })
   .strict()
 
@@ -690,6 +695,10 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
       }
       if (parsed.data.failedSubdir !== undefined) {
         data.failedSubdir = parsed.data.failedSubdir
+      }
+      // Cycle 5-E — importPath is a nullable scalar; explicit null clears.
+      if (parsed.data.importPath !== undefined) {
+        data.importPath = parsed.data.importPath
       }
 
       if (Object.keys(data).length === 0) {

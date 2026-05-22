@@ -148,6 +148,9 @@ export interface IntegrationDetail {
   maxImportRetries: number
   failedAction: 'delete' | 'archive'
   failedSubdir: string
+  // Cycle 5-E: sub-directory under the credential's remote path, or null
+  // when the integration listens at the credential's root path.
+  importPath: string | null
   createdAt: string
   updatedAt: string
 }
@@ -200,6 +203,8 @@ export interface UpdateIntegrationInput {
   maxImportRetries?: number
   failedAction?: 'delete' | 'archive'
   failedSubdir?: string
+  // Cycle 5-E: explicit null clears the override.
+  importPath?: string | null
 }
 
 export function useUpdateIntegration(): UseMutationResult<

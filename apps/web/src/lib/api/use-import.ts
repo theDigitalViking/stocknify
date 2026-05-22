@@ -59,6 +59,25 @@ export function useRemoteFiles(
   })
 }
 
+// Cycle 5-E — credential-only directory listing used by the click-through
+// browser. Lists files AND directories (no extension filter). The wizard
+// uses it before an integration exists; the edit page uses it for the
+// import-path picker.
+export function useRemoteBrowse(
+  credentialId: string | undefined,
+  path: string | undefined,
+): UseQueryResult<RemoteFile[]> {
+  const qs = toQueryString({ path })
+  return useQuery<RemoteFile[]>({
+    queryKey: ['remote-browse', credentialId ?? null, path ?? null],
+    queryFn: () =>
+      apiFetch<RemoteFile[]>(`/credentials/${credentialId ?? ''}/browse${qs}`),
+    enabled: Boolean(credentialId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
 export function useImportNow(
   integrationId: string,
 ): UseMutationResult<ImportRun, Error, ImportNowInput> {

@@ -417,3 +417,47 @@ describe('processSftpImportJob — post-import cleanup wiring (Cycle 5-C)', () =
     expect(mockedApplyPostImport).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 5-E — Integration.importPath listing resolution
+// ---------------------------------------------------------------------------
+
+describe('processSftpImportJob — importPath resolution (Cycle 5-E)', () => {
+  it('lists `<credential.remotePath>/<integration.importPath>` when importPath is set', async () => {
+    const { integration, schedule } = await seedSchedule()
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { importPath: 'daily' },
+    })
+    // Empty listing — we only care about the directory the connector was
+    // called with.
+    mockedList.mockResolvedValueOnce([])
+
+    await processSftpImportJob(
+      { scheduleId: schedule.id },
+      { isFinalAttempt: true },
+    )
+
+    expect(mockedList).toHaveBeenCalledWith(
+      expect.anything(),
+      '/exports/daily',
+      expect.objectContaining({ extension: '.csv' }),
+    )
+  })
+
+  it('falls back to `credential.remotePath` when importPath is null', async () => {
+    const { schedule } = await seedSchedule()
+    mockedList.mockResolvedValueOnce([])
+
+    await processSftpImportJob(
+      { scheduleId: schedule.id },
+      { isFinalAttempt: true },
+    )
+
+    expect(mockedList).toHaveBeenCalledWith(
+      expect.anything(),
+      '/exports',
+      expect.objectContaining({ extension: '.csv' }),
+    )
+  })
+})

@@ -582,7 +582,14 @@
         "maxRetriesHint": "Wie oft eine fehlgeschlagene Datei vom Scheduler erneut versucht wird, bevor die Failed-Aktion greift (0\u201310).",
         "manualRetryNote": "Manuelle Imports laufen immer mit Wiederholungen=0 \u2014 die Failed-Aktion greift sofort beim Fehlschlag.",
         "saved": "Gespeichert",
-        "saveFailed": "Speichern fehlgeschlagen"
+        "saveFailed": "Speichern fehlgeschlagen",
+        "importPathSection": "Import-Verzeichnis",
+        "importPathHint": "Unterverzeichnis innerhalb des Zugangsdaten-Pfads. Leer lassen, um den Zugangsdaten-Pfad direkt zu verwenden.",
+        "importPathCurrentLabel": "Import-Pfad",
+        "importPathDefault": "Standardpfad der Zugangsdaten",
+        "importPathReset": "Auf Standard zur\u00fccksetzen",
+        "importPathSaved": "Import-Verzeichnis aktualisiert",
+        "importPathSaveFailed": "Import-Verzeichnis konnte nicht gespeichert werden"
       },
       "health": {
         "healthy": "Gesund",
@@ -630,7 +637,14 @@
         "columnName": "Name",
         "columnSize": "Gr\u00f6\u00dfe",
         "columnModified": "Ge\u00e4ndert",
-        "genericError": "Remote-Dateien konnten nicht aufgelistet werden."
+        "genericError": "Remote-Dateien konnten nicht aufgelistet werden.",
+        "breadcrumbRoot": "Stammverzeichnis",
+        "selectDirectory": "Dieses Verzeichnis verwenden",
+        "selectedDirectoryHint": "Import-Verzeichnis: {path}",
+        "parentDirectory": "\u00dcbergeordnetes Verzeichnis",
+        "emptyDirectory": "Verzeichnis ist leer",
+        "connectionFailed": "Verbindung fehlgeschlagen",
+        "retry": "Erneut versuchen"
       },
       "mappingSelector": {
         "loading": "Templates werden geladen\u2026",
@@ -717,10 +731,10 @@
           "credentialLabel": "Zugangsdaten"
         },
         "step2": {
-          "description": "W\u00e4hle ein Verzeichnis. Du kannst es sp\u00e4ter \u00e4ndern.",
-          "noIntegrationYetNote": "Das Verzeichnis l\u00e4sst sich erst nach dem Anlegen der Integration durchsuchen. Der Importer w\u00e4hlt automatisch die neueste CSV, wenn keine Datei festgelegt ist.",
+          "description": "Durchsuche den Remote-Verzeichnisbaum und w\u00e4hle den Ordner, aus dem diese Integration importieren soll. Lass den Standard, um den Stammpfad der Zugangsdaten zu nutzen.",
           "linkedRemotePath": "Standardpfad aus den Zugangsdaten: {path}",
-          "selectedFile": "Ausgew\u00e4hlt: {path}"
+          "selectedFile": "Ausgew\u00e4hlt: {path}",
+          "importPathLabel": "Import-Verzeichnis"
         },
         "step3": {
           "description": "W\u00e4hle, wie CSV-Spalten auf Stocknify-Felder abgebildet werden. Die Standard-Zuordnung funktioniert, wenn deine CSV-Spalten unseren Standard-Namen entsprechen."
@@ -734,6 +748,8 @@
           "integrationLabel": "Integration",
           "connectionLabel": "Verbindung",
           "directoryLabel": "Verzeichnis / Datei",
+          "importPathLabel": "Import-Verzeichnis",
+          "importPathDefault": "Automatisch (Zugangsdaten-Pfad)",
           "mappingLabel": "Mapping",
           "scheduleLabel": "Zeitplan",
           "defaultName": "SFTP / FTP",

@@ -414,6 +414,13 @@ model Integration {
   maxImportRetries   Int     @default(3)          @map("max_import_retries")
   failedAction       String  @default("archive")  @map("failed_action")
   failedSubdir       String  @default("failed")   @map("failed_subdir")
+  // Import sub-directory under the credential's remote path (Cycle 5-E).
+  // When set, the worker and manual-import resolve the listing directory as
+  // `joinRemotePath(credential.remotePath, importPath)` instead of using the
+  // credential's path alone. `null` = use the credential's remotePath
+  // directly (backwards-compatible default). Lets multiple integrations on
+  // the same credential read from disjoint sub-directories.
+  importPath         String? @map("import_path") @db.Text
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz

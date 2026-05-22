@@ -321,7 +321,13 @@ export async function processSftpImportJob(
   }
 
   try {
-    const dir = (credential.remotePath ?? '/').trim() || '/'
+    // Cycle 5-E: list the integration-specific sub-directory when
+    // `Integration.importPath` is set, otherwise fall back to the
+    // credential's remotePath (existing behaviour). joinRemotePath handles
+    // the `/` / empty-string edge cases.
+    const basePath = (credential.remotePath ?? '/').trim() || '/'
+    const importSubdir = integration.importPath?.trim() ?? ''
+    const dir = importSubdir ? joinRemotePath(basePath, importSubdir) : basePath
     const files = await listRemote(credential.credentialType, cfg, dir)
     const newest = files.find((f) => f.type === 'file')
     if (!newest) {

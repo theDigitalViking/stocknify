@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { CredentialSelector } from '@/components/integrations/credential-selector'
+import { DirectoryBrowser } from '@/components/integrations/directory-browser'
 import { MappingTemplateSelector } from '@/components/integrations/mapping-template-selector'
 import {
   ScheduleBuilder,
@@ -47,6 +48,10 @@ interface WizardState {
   protocol: CredentialType
   credentialId: string | null
   filePath: string | null
+  // Cycle 5-E: sub-directory under the credential's remote path. `null`
+  // means "use the credential's remotePath" — same default behaviour the
+  // worker had before this field existed.
+  importPath: string | null
   mappingTemplateId: string | null
   scheduleEnabled: boolean
   schedule: ScheduleBuilderValue
@@ -59,6 +64,7 @@ const INITIAL: WizardState = {
   protocol: 'sftp',
   credentialId: null,
   filePath: null,
+  importPath: null,
   mappingTemplateId: null,
   scheduleEnabled: true,
   schedule: { scheduleType: 'interval_hours', intervalValue: 1 },
@@ -118,14 +124,21 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
         throw new Error('Install succeeded but integration id is missing')
       }
 
-      // Cycle 5-A.5: persist Credential + Mapping on the Integration itself
-      // (authoritative defaults). The schedule POST below then omits them
-      // and the backend / worker resolve them via Integration fallback.
-      if (state.credentialId || state.mappingTemplateId) {
+      // Cycle 5-A.5 + 5-E: persist Credential + Mapping + importPath on the
+      // Integration itself (authoritative defaults). The schedule POST below
+      // then omits credential/mapping and the backend / worker resolve them
+      // via Integration fallback; the worker reads importPath directly off
+      // the integration row at run time.
+      if (
+        state.credentialId ||
+        state.mappingTemplateId ||
+        state.importPath !== null
+      ) {
         await updateIntegration.mutateAsync({
           id: integrationId,
           ...(state.credentialId ? { credentialId: state.credentialId } : {}),
           ...(state.mappingTemplateId ? { csvMappingTemplateId: state.mappingTemplateId } : {}),
+          ...(state.importPath !== null ? { importPath: state.importPath } : {}),
         })
       }
 
@@ -218,6 +231,7 @@ export function SetupWizard({ open, onOpenChange }: SetupWizardProps): JSX.Eleme
           {step === 2 && state.credentialId && (
             <Step2Directory
               state={state}
+              setState={setState}
               linkedRemotePath={linkedCredential?.remotePath ?? null}
             />
           )}
@@ -375,28 +389,40 @@ function Step1Connection({
 
 function Step2Directory({
   state,
+  setState,
   linkedRemotePath,
 }: {
   state: WizardState
+  setState: React.Dispatch<React.SetStateAction<WizardState>>
   linkedRemotePath: string | null
 }): JSX.Element {
   const t = useTranslations('integrations.sftp.wizard.step2')
-  // The directory-browser endpoint requires an installed integration id.
-  // Multi-install means the integration is created at submit time, so during
-  // the wizard we never have one — the operator skips file-pick and the
-  // importer auto-picks the newest CSV at first run.
+  // Cycle 5-E — real click-through browser. The new browse endpoint only
+  // needs a credentialId (the wizard doesn't have an integration id yet),
+  // so the operator can navigate the remote tree before the integration is
+  // installed. Picking a directory writes it to state.importPath; picking a
+  // CSV file writes to state.filePath. Both are optional — leaving them
+  // empty falls back to "credential root, newest CSV".
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">{t('description')}</p>
-      <div className="rounded-md border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-        {t('noIntegrationYetNote')}
-      </div>
       {linkedRemotePath ? (
-        <p className="text-xs text-muted-foreground">{t('linkedRemotePath', { path: linkedRemotePath })}</p>
+        <p className="text-xs text-muted-foreground">
+          {t('linkedRemotePath', { path: linkedRemotePath })}
+        </p>
       ) : null}
-      {state.filePath ? (
-        <p className="text-xs text-muted-foreground">{t('selectedFile', { path: state.filePath })}</p>
-      ) : null}
+      <DirectoryBrowser
+        credentialId={state.credentialId ?? undefined}
+        initialPath={linkedRemotePath ?? ''}
+        onDirectorySelect={(dir) => {
+          setState((s) => ({ ...s, importPath: dir }))
+        }}
+        onFileSelect={(file) => {
+          setState((s) => ({ ...s, filePath: file }))
+        }}
+        selectedDirectory={state.importPath}
+        selectedFile={state.filePath}
+      />
     </div>
   )
 }
@@ -491,6 +517,10 @@ function Step5Summary({
               })`
             : '—'
         }
+      />
+      <SummaryRow
+        label={t('importPathLabel')}
+        value={state.importPath ?? t('importPathDefault')}
       />
       <SummaryRow
         label={t('directoryLabel')}

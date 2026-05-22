@@ -253,12 +253,12 @@ function ImportNowDialog({
             <div>
               <Label className="mb-1 block">{t('fileLabel')}</Label>
               <DirectoryBrowser
-                integrationId={integrationId}
                 credentialId={credentialId}
                 selectedFile={filePath}
                 onFileSelect={(p) => {
                   setFilePath(p)
                 }}
+                showDirectorySelect={false}
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {filePath ? t('fileSelected', { path: filePath }) : t('autoNewest')}

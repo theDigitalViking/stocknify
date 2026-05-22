@@ -750,3 +750,84 @@ describe('POST /v1/integrations/:id/import-now → post-import cleanup (Cycle 5-
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cycle 5-E — importPath resolution on the manual-import auto-pick path.
+// When the request omits filePath, the route must list
+// `<credential.remotePath>/<integration.importPath>`, not just the
+// credential's remotePath.
+// ---------------------------------------------------------------------------
+
+describe('POST /v1/integrations/:id/import-now → importPath resolution (Cycle 5-E)', () => {
+  it('auto-pick lists the integration importPath sub-folder when set', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { credentialId: credential.id, importPath: 'incoming' },
+    })
+    mockedListSftp.mockResolvedValueOnce([
+      {
+        name: 'stock-2026-05-22.csv',
+        size: 100,
+        modifiedAt: new Date().toISOString(),
+        type: 'file',
+      },
+    ])
+    mockedStreamSftp.mockResolvedValue(makeStreamHandle(STOCK_CSV))
+
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        // No filePath → auto-pick path triggers, which uses listing.
+        payload: {},
+      })
+      expect(res.statusCode).toBe(200)
+
+      // The listing must have been requested for the integration's
+      // sub-folder, not the credential root.
+      expect(mockedListSftp).toHaveBeenCalledWith(
+        expect.anything(),
+        '/exports/incoming',
+        expect.objectContaining({ extension: '.csv' }),
+      )
+      // Streaming uses the joined path with the file picked from the listing.
+      expect(mockedStreamSftp).toHaveBeenCalledWith(
+        expect.anything(),
+        '/exports/incoming/stock-2026-05-22.csv',
+      )
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('explicit filePath in the body bypasses the importPath join', async () => {
+    const { integration, credential, headers } = await seedScenario()
+    await testDb.integration.update({
+      where: { id: integration.id },
+      data: { credentialId: credential.id, importPath: 'incoming' },
+    })
+    mockedStreamSftp.mockResolvedValue(makeStreamHandle(STOCK_CSV))
+
+    const app = await buildTestApp()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/integrations/${integration.id}/import-now`,
+        headers,
+        payload: { filePath: '/somewhere/else/file.csv' },
+      })
+      expect(res.statusCode).toBe(200)
+      // Explicit filePath wins — auto-pick (and the importPath join) skipped.
+      expect(mockedListSftp).not.toHaveBeenCalled()
+      expect(mockedStreamSftp).toHaveBeenCalledWith(
+        expect.anything(),
+        '/somewhere/else/file.csv',
+      )
+    } finally {
+      await app.close()
+    }
+  })
+})
