@@ -29,7 +29,15 @@ ALTER TABLE "integrations"
 CREATE INDEX "integrations_credential_id_idx" ON "integrations"("credential_id");
 CREATE INDEX "integrations_csv_mapping_template_id_idx" ON "integrations"("csv_mapping_template_id");
 
--- 4. Backfill from the newest active schedule per integration
+-- 4. Backfill from the newest ACTIVE schedule per integration.
+--
+-- Cycle 5-A.5 Codex review fix (F2): the original draft of this SQL filtered
+-- only on `deleted_at IS NULL`, which would have promoted credentials/mapping
+-- from an inactive (paused, but not deleted) schedule into the new
+-- integration-level defaults. That can silently switch which credential
+-- subsequent imports run against. The fix filters `is_active = TRUE` and
+-- adds an `id DESC` tie-breaker so the row choice is deterministic when
+-- multiple active schedules share a `created_at`.
 UPDATE "integrations" i
 SET
   "credential_id" = s.credential_id,
@@ -41,7 +49,8 @@ FROM (
     csv_mapping_template_id
   FROM "integration_schedules"
   WHERE deleted_at IS NULL
-  ORDER BY integration_id, created_at DESC
+    AND is_active = TRUE
+  ORDER BY integration_id, created_at DESC, id DESC
 ) s
 WHERE i.id = s.integration_id
   AND i.deleted_at IS NULL;

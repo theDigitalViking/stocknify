@@ -3,7 +3,7 @@
 **Prompt:** `prompts/PROMPT_5-A.5_INTEGRATION_CONFIG_ANCHOR.md`
 **Notion:** https://www.notion.so/35e24fe1d88a8141be4ce5e5e654aa26
 **Branch:** develop
-**Last commit:** (pending — set after the implementation commit)
+**Last commit:** fa606e6 — feat(integrations): Cycle 5-A.5 — Integration als Konfig-Anker
 **Date:** 2026-05-22
 
 ---

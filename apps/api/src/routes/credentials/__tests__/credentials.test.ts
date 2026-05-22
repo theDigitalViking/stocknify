@@ -245,6 +245,64 @@ describe('credentials routes (Cycle 3-B)', () => {
     }
   })
 
+  // Cycle 5-A.5 review fix (F1): soft-deleted integrations still hold their
+  // FK to the credential (`ON DELETE RESTRICT` doesn't know about soft-delete),
+  // so the precheck must count them too — otherwise the DB rejects the delete
+  // and the route would surface a P2003 / 500 instead of a deterministic 409.
+  it('rejects DELETE when a SOFT-DELETED Integration still references the credential (CREDENTIAL_IN_USE)', async () => {
+    const { tenant, user } = await createTestTenant(testDb)
+    const app = await buildTestApp()
+    try {
+      const integration = await testDb.integration.create({
+        data: {
+          tenantId: tenant.id,
+          type: 'sftp',
+          name: 'Hive SFTP',
+          status: 'active',
+        },
+      })
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/credentials',
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+        payload: {
+          name: 'Hive Production',
+          credentialType: 'sftp',
+          host: 'sftp.example.com',
+          username: 'sebastian',
+          password: 'pw',
+          integrationId: integration.id,
+        },
+      })
+      expect(created.statusCode).toBe(201)
+      const credentialId = (created.json() as SingleBody).data.id
+
+      // Wire the credential as default AND soft-delete the integration. The
+      // FK on integrations.credential_id is RESTRICT regardless of
+      // deleted_at, so the credential delete must still be blocked.
+      await testDb.integration.update({
+        where: { id: integration.id },
+        data: { credentialId, deletedAt: new Date() },
+      })
+
+      const del = await app.inject({
+        method: 'DELETE',
+        url: `/v1/credentials/${credentialId}`,
+        headers: authedHeaders({ tenantId: tenant.id, userId: user.id, role: 'admin' }),
+      })
+      expect(del.statusCode).toBe(409)
+      expect((del.json() as ErrorBody).error.code).toBe('CREDENTIAL_IN_USE')
+
+      // Credential still present.
+      const stillThere = await testDb.integrationCredential.findUnique({
+        where: { id: credentialId },
+      })
+      expect(stillThere).not.toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
+
   // Cycle 5-A.5: DELETE 409 now also fires when an Integration row references
   // the credential via Integration.credentialId (the new default field). The
   // existing schedule-reference test above pins the schedule path; this test

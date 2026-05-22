@@ -411,8 +411,15 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
           // directly (Integration.credentialId). Both reference paths block
           // deletion; the user-visible 409 sums them so a single message
           // covers "this credential is in use" regardless of path.
+          //
+          // Cycle 5-A.5 review fix (F1): the FK on `integrations.credential_id`
+          // is `ON DELETE RESTRICT` regardless of soft-delete state, so the
+          // precheck must NOT filter by `deletedAt: null` on the integration
+          // side — otherwise a soft-deleted integration still pointing at the
+          // credential would pass the app-level guard and surface as a DB
+          // P2003 / 500 instead of a deterministic 409.
           const referencingIntegrations = await tx.integration.count({
-            where: { tenantId, credentialId, deletedAt: null },
+            where: { tenantId, credentialId },
           })
           const totalReferences = activeSchedules + referencingIntegrations
           if (totalReferences > 0) {
@@ -455,6 +462,27 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
             error: {
               code: 'SERIALIZATION_FAILED',
               message: 'Concurrent change detected — please retry',
+            },
+          })
+        }
+        // Cycle 5-A.5 review fix (F1): if the app-level precheck somehow
+        // misses a referencing row (e.g. a concurrent insert between count
+        // and delete inside the same transaction — unlikely under
+        // SERIALIZABLE but defence-in-depth), the FK rejection comes back as
+        // P2003. Map it to the same 409 as the precheck path so external
+        // callers see a single deterministic outcome instead of a 500.
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2003'
+        ) {
+          request.log.warn(
+            { credentialId },
+            'FK violation on credential delete — referencing row not caught by precheck',
+          )
+          return reply.code(409).send({
+            error: {
+              code: 'CREDENTIAL_IN_USE',
+              message: 'Cannot delete: credential is still referenced',
             },
           })
         }
