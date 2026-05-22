@@ -643,7 +643,12 @@
         "previewIntervalMinutes": "Every {n} minutes",
         "previewIntervalHours": "Every {n} hours",
         "previewDaily": "Every day at {time}",
-        "previewWeekly": "Every {days} at {time}"
+        "previewWeekly": "Every {days} at {time}",
+        "preset15min": "15 min",
+        "preset30min": "30 min",
+        "preset1h": "1 h",
+        "preset2h": "2 h",
+        "preset4h": "4 h"
       },
       "runs": {
         "title": "Import history",

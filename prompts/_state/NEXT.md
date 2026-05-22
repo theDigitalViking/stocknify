@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Cycle 5-A.5 ✅ done inkl. Codex-Review. Planung Cycle 5-B: S17 ist Backlog — Multi-Time-Schedule braucht Schema-Änderung, nicht MVP.)
+**Last updated:** 2026-05-22 (Cycle 5-B ✅ done — Schedule Builder Rebuild: Presets fixed (S15/S16), Wizard-Summary lokalisiert (S20), Edit-Page mitgezogen (S25). Frontend-only, review:skip. Phase 1 Pre-Test fast komplett — nur noch 5-C (File-Handling) offen, dann Phase 2 Funktionstest.)
 
 ---
 
@@ -12,7 +12,7 @@
 
 **Batch 5 — SFTP Polish + Funktionstest.** Sebastian hat am 2026-05-13 alle bisherigen Findings konsolidiert (S1–S10 aus dem Batch-3-Production-Review) und durch eine detaillierte Walk-Through-Session 17 weitere Findings hinzugefügt (S12–S27). S9 bereits in 4-E gefixt, S18 als zu komplex für MVP verworfen. **Wichtige Architektur-Entscheidung in 5-A.5:** Credential + Mapping wandern aus `IntegrationSchedule` auf `Integration` als persistente Defaults — Schedules werden zu reinen Zeit-Plänen.
 
-**Backend-Tests:** 109 grün (Stand Cycle 5-A.5).
+**Backend-Tests:** 111 grün (Stand Cycle 5-A.5 + Codex-Review). 5-B war frontend-only — keine neuen Backend-Tests.
 
 ---
 
@@ -24,8 +24,8 @@
 |-------|----------|-------|--------|--------|
 | **5-A** | S1 (Ghost Integration), S2 (Delete-Button), S27 (Card-Konsistenz) | M | skip | ✅ Done |
 | **5-A.5** | Schema-Refactor: Credential+Mapping auf Integration verschieben + Name inline-edit + Section-Local-Saves auf Edit-Page | M–L | mandatory | ✅ Done 2026-05-22 |
-| **5-B** | S15, S16, S20, S25 — Schedule Builder Rebuild (Presets fixen + Locale-aware Cron-Description, profitiert von schlankerem Schedule-Modell aus 5-A.5) | M | recommended | next |
-| **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | pending |
+| **5-B** | S15, S16, S20, S25 — Schedule Builder Rebuild (Presets fixen + Locale-aware Cron-Description, profitiert von schlankerem Schedule-Modell aus 5-A.5) | M | skip | ✅ Done 2026-05-22 |
+| **5-C** | S22 — File-Handling delete/archive (passt thematisch zu 5-A.5 — beides "Konfig auf Integration") | M | mandatory | next |
 
 ### Phase 2 — Test
 
@@ -63,12 +63,12 @@
 - **S12** — Wizard Step 2 leer → 5-E
 - **S13** — Click-Through-Verzeichnisbrowser → 5-E
 - **S14** — "Template verwalten"-Link bricht Wizard ab → 5-F
-- **S15** — Zeitplan-Presets kaputt → 5-B
-- **S16** — Zeitplan-Presets müssen Typ mitziehen → 5-B
+- ~~**S15**~~ — Zeitplan-Presets kaputt → ✅ 5-B
+- ~~**S16**~~ — Zeitplan-Presets müssen Typ mitziehen → ✅ 5-B
 - **S17** — Täglich-Schedule mehrere Uhrzeiten → **Backlog** (siehe KNOWN_TODOS.md: Multi-Time-Schedule braucht Schema-Änderung + Worker-Anpassung, nicht MVP-relevant)
 - ~~S18~~ — Wöchentlich + Multi-Time → **out** (MVP-Entscheidung)
 - **S19** — Step 5 Mapping als UUID → 5-F
-- **S20** — Step 5 Zeitplan englisch → 5-B
+- ~~**S20**~~ — Step 5 Zeitplan englisch → ✅ 5-B
 - **S21** — Wizard-Navigation Step-Sprung → 5-F
 
 ### Neue Features
@@ -77,7 +77,7 @@
 ### Config-Seite (aus Triage 2026-05-13)
 - **S23** — Breadcrumbs Config-Seite → 5-G (Duplikat S3)
 - **S24** — Remote-Verzeichnis Click-Through → 5-E
-- **S25** — Zeitplan-Section erbt Wizard-Issues → 5-B
+- ~~**S25**~~ — Zeitplan-Section erbt Wizard-Issues → ✅ 5-B (Edit-Page rendert dieselbe `<ScheduleBuilder />`, R1 + R2 propagieren automatisch)
 - **S26** — "Jetzt importieren" Primary Action im Header → 5-G
 
 ### Konsistenz (aus Triage 2026-05-13)

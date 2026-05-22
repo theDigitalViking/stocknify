@@ -61,12 +61,25 @@ const WEEKDAY_LABELS_LONG_DE: Record<number, string> = {
   7: 'Sonntag',
 }
 
-const INTERVAL_PRESETS: Array<{ minutes: number; label: string }> = [
-  { minutes: 15, label: '15 min' },
-  { minutes: 30, label: '30 min' },
-  { minutes: 60, label: '1 h' },
-  { minutes: 120, label: '2 h' },
-  { minutes: 240, label: '4 h' },
+type IntervalPresetLabelKey =
+  | 'preset15min'
+  | 'preset30min'
+  | 'preset1h'
+  | 'preset2h'
+  | 'preset4h'
+
+interface IntervalPreset {
+  scheduleType: 'interval_minutes' | 'interval_hours'
+  intervalValue: number
+  labelKey: IntervalPresetLabelKey
+}
+
+const INTERVAL_PRESETS: IntervalPreset[] = [
+  { scheduleType: 'interval_minutes', intervalValue: 15, labelKey: 'preset15min' },
+  { scheduleType: 'interval_minutes', intervalValue: 30, labelKey: 'preset30min' },
+  { scheduleType: 'interval_hours', intervalValue: 1, labelKey: 'preset1h' },
+  { scheduleType: 'interval_hours', intervalValue: 2, labelKey: 'preset2h' },
+  { scheduleType: 'interval_hours', intervalValue: 4, labelKey: 'preset4h' },
 ]
 
 export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): JSX.Element {
@@ -104,18 +117,12 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): JSX.
     onChange({ ...value, scheduleType: next })
   }
 
-  function setInterval(n: number): void {
-    // The backend's `intervalValue` schema caps at 59 (Codex review).
-    // Convert preset minutes >= 60 into hours so the request validates.
-    if (value.scheduleType === 'interval_minutes' && n >= 60) {
-      onChange({
-        ...value,
-        scheduleType: 'interval_hours',
-        intervalValue: Math.floor(n / 60),
-      })
-      return
-    }
-    onChange({ ...value, intervalValue: n })
+  function applyPreset(preset: IntervalPreset): void {
+    onChange({
+      ...value,
+      scheduleType: preset.scheduleType,
+      intervalValue: preset.intervalValue,
+    })
   }
 
   function toggleWeekday(day: number): void {
@@ -188,18 +195,27 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): JSX.
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {INTERVAL_PRESETS.map((p) => (
-              <button
-                key={p.minutes}
-                type="button"
-                onClick={() => {
-                  setInterval(p.minutes)
-                }}
-                className="rounded-md border border-border bg-background px-2 py-1 text-[11px] hover:bg-muted"
-              >
-                {p.label}
-              </button>
-            ))}
+            {INTERVAL_PRESETS.map((p) => {
+              const isActive =
+                value.scheduleType === p.scheduleType && value.intervalValue === p.intervalValue
+              return (
+                <button
+                  key={`${p.scheduleType}-${String(p.intervalValue)}`}
+                  type="button"
+                  onClick={() => {
+                    applyPreset(p)
+                  }}
+                  className={cn(
+                    'rounded-md border px-2 py-1 text-[11px] transition-colors',
+                    isActive
+                      ? 'border-brand-600 bg-brand-50 text-brand-700'
+                      : 'border-border bg-background hover:bg-muted',
+                  )}
+                >
+                  {t(p.labelKey)}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -252,14 +268,14 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): JSX.
       <div className="rounded-md bg-muted/40 px-3 py-2">
         <p className="text-xs text-muted-foreground">{t('previewLabel')}</p>
         <p className="text-sm font-medium text-foreground mt-0.5">
-          {previewSentence(value, locale, t)}
+          {formatSchedulePreview(value, locale, t)}
         </p>
       </div>
     </div>
   )
 }
 
-function previewSentence(
+export function formatSchedulePreview(
   value: ScheduleBuilderValue,
   locale: string,
   t: (key: string, vars?: Record<string, string | number>) => string,

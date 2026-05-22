@@ -2,13 +2,14 @@
 
 import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { CredentialSelector } from '@/components/integrations/credential-selector'
 import { MappingTemplateSelector } from '@/components/integrations/mapping-template-selector'
 import {
   ScheduleBuilder,
+  formatSchedulePreview,
   type ScheduleBuilderValue,
 } from '@/components/integrations/schedule-builder'
 import { Button } from '@/components/ui/button'
@@ -465,6 +466,8 @@ function Step5Summary({
   linkedCredential: { name: string; host: string | null; port: number | null } | null
 }): JSX.Element {
   const t = useTranslations('integrations.sftp.wizard.step5')
+  const tSchedule = useTranslations('integrations.sftp.scheduleBuilder')
+  const locale = useLocale()
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-muted-foreground">{t('description')}</p>
@@ -496,7 +499,7 @@ function Step5Summary({
         value={
           !state.scheduleEnabled
             ? t('manualOnly')
-            : describeSchedule(state.schedule)
+            : formatSchedulePreview(state.schedule, locale, tSchedule)
         }
       />
     </div>
@@ -510,19 +513,4 @@ function SummaryRow({ label, value }: { label: string; value: string }): JSX.Ele
       <span className="text-xs text-foreground col-span-2 break-words">{value}</span>
     </div>
   )
-}
-
-function describeSchedule(s: ScheduleBuilderValue): string {
-  switch (s.scheduleType) {
-    case 'interval_minutes':
-      return `Every ${String(s.intervalValue ?? '?')} minutes`
-    case 'interval_hours':
-      return `Every ${String(s.intervalValue ?? '?')} hours`
-    case 'daily':
-      return `Daily at ${s.timeOfDay ?? '?'}`
-    case 'weekly':
-      return `Weekly on days ${(s.weekdays ?? []).join(',')} at ${s.timeOfDay ?? '?'}`
-    default:
-      return '—'
-  }
 }
