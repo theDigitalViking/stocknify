@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-05-12 — Redis: self-hosted on Hetzner, replacing Upstash
+
+**Decision:** BullMQ Redis runs as a Kamal accessory (`redis:7-alpine`) on the same Hetzner VPS as the API. `REDIS_URL=redis://stocknify-api-redis:6379` (Docker network, no TLS, no password). Upstash decommissioned.
+
+**Rationale:** Upstash free tier (500k commands/month) exhausted in <2 days due to BullMQ’s constant polling (~250k–430k commands/day even idle). Self-hosted Redis on the existing VPS eliminates command limits, reduces latency, and costs nothing additional. `noeviction` + `appendonly yes` ensures job durability.
+
+**Alternatives considered:** Upstash pay-as-you-go (∼$0.20/100k cmds, ongoing cost), BullMQ polling interval increase (delays job execution, workaround not solution).
+
 ## 2026-05-07 — Credentials: hard delete, not soft delete
 
 **Decision:** `DELETE /v1/credentials/:id` performs a hard delete (row removal) instead of a soft delete (`deletedAt` + `isActive = false`). The 409 `CREDENTIAL_IN_USE` guard stays — credentials referenced by active schedules cannot be deleted.

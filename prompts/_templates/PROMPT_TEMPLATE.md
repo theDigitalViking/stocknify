@@ -3,6 +3,7 @@
 **Phase:** <Phase 1-6 | Übergreifend>
 **Area:** <Backend | Frontend | Infrastructure | Integrations | Rule Engine | Notifications | Billing | Schema | Security>
 **Type:** <Feature | Fix | Add-on | Review>
+**Review:** <review:mandatory | review:recommended | review:skip>
 **Notion:** <URL of the Notion entry created by Claude (Chat)>
 
 ---
@@ -55,7 +56,7 @@ After commit, in the same commit or a follow-up commit, update the memory bank:
 
 ## Push (mandatory final step on `develop`)
 
-After the Memory Bank update is committed and the Codex review gate has passed (or been skipped with Sebastian's approval):
+After the Memory Bank update is committed:
 
 ```
 git push origin develop
@@ -65,9 +66,26 @@ This pushes to `origin/develop` only. CI runs and a Vercel Preview Deployment is
 
 **Never push to `main`.** That branch is Sebastian's manual merge target.
 
+## Codex review (if not `review:skip`)
+
+After pushing, tell Sebastian to run the Codex review in this session:
+
+```
+Please run: /codex:adversarial-review --base origin/main
+```
+
+Wait for the findings to appear, then:
+
+1. **Parse & classify** every finding as ACTIONABLE or DEFERRED per DECISIONS 2026-04-16.
+2. **Fix all ACTIONABLE findings.** Commit each fix (or batch related fixes).
+3. **Document everything** in `prompts/results/REVIEW_<same-name-as-this-prompt>.md` following `prompts/_templates/REVIEW_TEMPLATE.md`.
+4. **Update memory bank:** `STATE.md` (review-fix note) + `KNOWN_TODOS.md` (any DEFERRED findings).
+5. **Push again** (`git push origin develop`).
+
+Do NOT use `/codex:setup --enable-review-gate` — it hangs.
+
 ## Reminders
 
 - **Branch is `develop`.** Verify with `git rev-parse --abbrev-ref HEAD` before committing.
 - **Do not push to `main`** under any circumstances.
-- **Codex review gate** is enabled automatically via Step 1 of the bootstrap. It will run before the session finishes. If it hangs, Sebastian will `Esc` and run `/codex:adversarial-review --base origin/develop --wait` manually.
 - Pure documentation cycles skip Codex review (no security/correctness surface) but still push to `develop`.
