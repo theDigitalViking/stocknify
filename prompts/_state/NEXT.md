@@ -2,7 +2,7 @@
 
 > Top 3-5 next steps, prioritized. Updated by Claude (Chat) at the end of every cycle. Always answers: "if I had 90 minutes right now, what would I do?"
 
-**Last updated:** 2026-05-22 (Cycle 5-E ✅ done — Click-Through Directory Browser + Integration.importPath. Neuer Browse-Endpoint auf Credentials, DirectoryBrowser-Refactor, Wizard Step 2 live, importPath auf Worker + Manual-Import. Codex-Review: 2 ACTIONABLE (path-escape + browse containment), beide in-session gefixt. Tests 152→252. Nächster Cycle: 5-F Wizard-UX-Polish.)
+**Last updated:** 2026-05-22 (Cycle 5-F ✅ done — Wizard UX Polish: S14 template-link new-tab, S19 mapping name in summary, S21 step-jump navigation. Frontend-only, review:skip. Nächster Cycle: 5-G Polish-Sammelcycle.)
 
 ---
 
@@ -32,8 +32,8 @@
 | Cycle | Findings | Größe | Review | Status |
 |-------|----------|-------|--------|--------|
 | **5-E** | S12 (Wizard Step 2 leer), S13 (Click-Through-Browser Wizard + Edit), S24 (Click-Through Config Remote-Section), **plus `Integration.importPath` Schema** | M–L | mandatory | ✅ Done 2026-05-22 |
-| **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | next |
-| **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | pending |
+| **5-F** | S14 (Template-Link bricht Wizard ab), S19 (Mapping-UUID statt Name), S21 (Step-Sprung-Navigation) | S–M | skip | ✅ Done 2026-05-22 |
+| **5-G** | S3/S23 (Breadcrumbs), S4 (Health-Info bei neuer Integration), S5 (Header-Layout SFTP/Toggle), S6 (Marketplace Badge-Position), S7 (Modal schließen nach Install), S10 (Marketplace Edit-Möglichkeit — falls nicht durch S27 abgedeckt), S26 ("Jetzt importieren" Primary Action) | M | skip | next |
 
 ### Phase 3 — Test (pending, am Ende)
 
@@ -62,14 +62,14 @@
 ### Wizard (aus Triage 2026-05-13)
 - ~~**S12**~~ — Wizard Step 2 leer → ✅ 5-E
 - ~~**S13**~~ — Click-Through-Verzeichnisbrowser → ✅ 5-E
-- **S14** — "Template verwalten"-Link bricht Wizard ab → 5-F
+- ~~**S14**~~ — "Template verwalten"-Link bricht Wizard ab → ✅ 5-F
 - ~~**S15**~~ — Zeitplan-Presets kaputt → ✅ 5-B
 - ~~**S16**~~ — Zeitplan-Presets müssen Typ mitziehen → ✅ 5-B
 - **S17** — Täglich-Schedule mehrere Uhrzeiten → **Backlog** (siehe KNOWN_TODOS.md: Multi-Time-Schedule braucht Schema-Änderung + Worker-Anpassung, nicht MVP-relevant)
 - ~~S18~~ — Wöchentlich + Multi-Time → **out** (MVP-Entscheidung)
-- **S19** — Step 5 Mapping als UUID → 5-F
+- ~~**S19**~~ — Step 5 Mapping als UUID → ✅ 5-F
 - ~~**S20**~~ — Step 5 Zeitplan englisch → ✅ 5-B
-- **S21** — Wizard-Navigation Step-Sprung → 5-F
+- ~~**S21**~~ — Wizard-Navigation Step-Sprung → ✅ 5-F
 
 ### Neue Features
 - ~~**S22**~~ — Post-Import Datei-Handling → ✅ 5-C
